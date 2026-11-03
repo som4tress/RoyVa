@@ -1,5 +1,6 @@
 import {resolveReportScope,namedStatusTarget} from '../../lib/ha-scope.mjs';
-import {captureTools,restoreSelected,expandedCapabilities,isDiscoveryTool,isGeneralInformationTool,selectCapabilities,DISCOVERY_RULE,EVIDENCE_RULE} from '../../lib/capability-discovery.mjs';
+import {captureTools,restoreSelected,selectedCapabilities,expandedCapabilities,isGeneralInformationTool,DISCOVERY_RULE,EVIDENCE_RULE} from '../../lib/capability-discovery.mjs';
+import {allowsTaskTool} from '../../lib/tool-permissions.mjs';
 import {onDiscard} from '../../lib/session-lifecycle.mjs';
 import {isDiscarded} from '/home/somdutta/Projects/agent-learning/src/discard.mjs';
 import {isSimpleStatusQuery} from '../../lib/ha-native-status.mjs';
@@ -56,7 +57,7 @@ export function classify(text){
  return null;
 }
 const isMcp=name=>/^(home[-_]assistant_|ha[-_]history_)/.test(name);
-const allow=(name,kind)=>kind==='history'?/^ha[-_]history_/.test(name)||/GetDateTime$/.test(name):isMcp(name);
+const isProfileOperation=(name,kind)=>kind==='history'?/^ha[-_]history_/.test(name)||/GetDateTime$/.test(name):isMcp(name);
 const isLocal=state=>state&&['history','devices'].includes(state.kind);
 const key=id=>'ha-turn:'+id;
 export const isHAFollowup=text=>/^(?:please )?(?:turn|switch)(?: it| them| those)?(?: back)? (?:on|off)[.!?]*$/i.test(text)||/^(?:please )?(?:(?:turn|switch|set|dim|make) (?:(?:on|off) )?(?:it|them|those|both)\b|(?:who|what|when|why|how)\b.{0,60}\b(?:it|them|those|they)\b|(?:and |what about )?(?:on|off|brighter|dimmer)\b|what about (?:yesterday|today)\b)/i.test(text);
@@ -132,7 +133,7 @@ if(cloudDirective(text)){
      for(let attempt=0;attempt<40;attempt++){
       const catalog=await ctx.tool.list();
       const statusOnly=!!namedStatus||presence(text.toLowerCase())||kind==='devices'&&!/\b(all|every|everything|turn|toggle|set|dim|change|enable|disable|why|cause|history|when|automation|script|also)\b/i.test(text)&&/\b(status|state|is|are)\b/i.test(text)&&/\b(light|lights|fan|fans|switch|switches)\b/i.test(text);
-      const requiredReady=reportOnly?catalog.some(tool=>tool.id===REPORT_TOOL):kind==='devices'&&!statusOnly?catalog.some(tool=>/^home[-_]assistant_/.test(tool.id)):catalog.some(tool=>allow(tool.id,kind));
+      const requiredReady=reportOnly?catalog.some(tool=>tool.id===REPORT_TOOL):kind==='devices'&&!statusOnly?catalog.some(tool=>/^home[-_]assistant_/.test(tool.id)):catalog.some(tool=>isProfileOperation(tool.id,kind));
       if(requiredReady && (!learned || catalog.some(tool=>tool.id===learned.route.requiredTool))){ready=true;break;}
       if(attempt===0&&ctx.tool.reload)await ctx.tool.reload();
       await new Promise(resolve=>setTimeout(resolve,250));
@@ -165,14 +166,8 @@ if(cloudDirective(text)){
   });
   await ctx.session.hook('context',async event=>{
    if(isDiscarded(event.sessionID))throw new Error('This rejected session was discarded. Start a fresh session.');
-   captureTools(event.sessionID,event.tools);
-   if(await media.active(event.sessionID))return;
+   if(await media.active(event.sessionID)){captureTools(event.sessionID,event.tools,{replace:true});return;}
    let state=await stateFor(event.sessionID);
-   if(expandedCapabilities(event.sessionID)){
-    restoreSelected(event.sessionID,event.tools);
-    if(state){state.kind='discovered';delete state.requiredTool;await save(event.sessionID,state);}
-    event.system.push({type:'text',text:DISCOVERY_RULE});return;
-   }
    if(!state){
     const session=await ctx.session.get({sessionID:event.sessionID});
     if(session.agent==='ha'){
@@ -180,6 +175,9 @@ if(cloudDirective(text)){
      await save(event.sessionID,state);
     }
    }
+   captureTools(event.sessionID,event.tools,{replace:true,allows:name=>allowsTaskTool(name,state)});
+   restoreSelected(event.sessionID,event.tools);
+   if(expandedCapabilities(event.sessionID))event.system.push({type:'text',text:DISCOVERY_RULE});
    if(!state||['explanation','cloud-explicit','configuration','investigation'].includes(state.kind))return;
    if(['orchestrate','fallback'].includes(state.kind)){
     state.cloudCalls=(state.cloudCalls||0)+1;await save(event.sessionID,state);
@@ -189,13 +187,13 @@ if(cloudDirective(text)){
     event.system.push({type:'text',text:'This is a mixed request. You are coordinating a mixed request. Break it into individual tasks. Delegate each atomic supported Home Assistant device task and each location-history task separately to the ha subagent; never delegate the complete mixed request. Keep media retrieval/sharing and final synthesis here. Use an explicitly available Ring/video tool for retrieval and an available media delivery tool for sharing; if absent, state that limitation. Never invent a clip, URL, successful action, tool, or unrecorded visited/passed-by location. No shell/REST workarounds for Home Assistant. A named-zone crossing is not proof of a stop. If a subagent fails, use the HA MCP tools here or report the error; do not repeatedly send the same failing task back.'});return;
    }
    if(state.kind==='fallback'){
-    for(const name of Object.keys(event.tools))if(!isMcp(name)&&!isGeneralInformationTool(name))delete event.tools[name];
-    event.system.push({type:'text',text:'HA routing status: '+state.reason+'. You are now handling this request on the configured cloud model. Finish the request using the available MCP tools, or clearly report unavailable capabilities. Do not delegate back to ha/Qwen this turn. Never repeat a failing tool call with unchanged arguments. Do not use shell/REST to bypass Home Assistant MCP. Do not claim actions or media delivery without a successful tool result.'});return;
+    for(const name of Object.keys(event.tools))if(!allowsTaskTool(name,state))delete event.tools[name];
+    event.system.push({type:'text',text:'HA routing status: '+state.reason+'. You are now handling the original request on the configured cloud model. Use the available native-permitted tools and methods needed to finish it; preserve explicit user constraints and approval requirements. Do not delegate back to ha/Qwen this turn or repeat failing calls with unchanged arguments. Do not claim actions or media delivery without successful tool evidence.'});return;
    }
    state.calls=(state.calls||0)+1;
    if(state.calls>6||Date.now()-(state.startedAt||Date.now())>=HA_LOCAL_MS){await fallback(event.sessionID,state,`Local HA task exceeded six model steps or ${HA_LOCAL_MS/1000} seconds`);return;}
    await save(event.sessionID,state);
-   for(const name of Object.keys(event.tools))if(!allow(name,state.kind)&&!isGeneralInformationTool(name))delete event.tools[name];
+   for(const name of Object.keys(event.tools))if(!allowsTaskTool(name,state))delete event.tools[name];
    if(!Object.keys(event.tools).length){await fallback(event.sessionID,state,'Required MCP tools are unavailable');return;}
    event.system.push({type:'text',text:'This task was initially routed toward Home Assistant; that profile is a starting point, not a capability limit. Define the task from the current user request. Current private resources are available through inspect_resources; public information can use websearch/webfetch. Use discover_capabilities for other registered operations before guessing or refusing. Prefer supported adapters over reconstructing API readers. Use exact verified targets for authorized controls; information requests do not authorize device changes. Never broaden actions, invent targets, or bypass HA write controls with shell/REST. Do not send private resource details to public search.'});
    if(state.learnedIntent)event.system.push({type:'text',text:'A previous successful HA interpretation of matching wording is supplied as data: '+JSON.stringify({task:state.learnedIntent})+'. Use it only as an intent hint for the current request. Do not broaden its entities or actions.'});
@@ -250,7 +248,8 @@ if(cloudDirective(text)){
    if(state&&(event.status==='error'||event.result?.isError)&&/HassTurn(?:On|Off)$|HassLightSet$|HassFanSetSpeed$|HassClimateSetTemperature$|play_media$/.test(event.tool)&&/timeout|transport|connection|socket|write_uncertain/i.test(JSON.stringify(event.error||event.result||{}))){state.writeUncertain=true;await save(event.sessionID,state);}
    if(!isLocal(state))return;
    const body=await event.request.clone().json();
-   const discoveryTools=(body.tools||[]).filter(t=>isGeneralInformationTool(t.function?.name));
+   const selected=selectedCapabilities(event.sessionID);
+   const discoveryTools=(body.tools||[]).filter(t=>(isGeneralInformationTool(t.function?.name)||selected.has(t.function?.name))&&allowsTaskTool(t.function?.name,state));
    if(event.kind!=='primary'){
     body.chat_template_kwargs={...body.chat_template_kwargs,enable_thinking:false};
     body.max_tokens=Math.min(body.max_tokens||1024,/title/i.test(event.kind)?128:1024);
@@ -293,16 +292,10 @@ if(cloudDirective(text)){
    if(state.referenceFollowup&&!state.focusTargets?.length){body.tool_choice='none';}
    else if(!state.fulfilled){
     if(!body.tools?.length)throw new Error('HA MCP tool definitions missing.');
-    if(state.requiredTool&&body.tools.some(t=>t.function?.name===state.requiredTool))body.tools=body.tools.filter(t=>t.function?.name===state.requiredTool||isGeneralInformationTool(t.function?.name));
+    if(state.requiredTool&&body.tools.some(t=>t.function?.name===state.requiredTool))body.tools=body.tools.filter(t=>t.function?.name===state.requiredTool||isGeneralInformationTool(t.function?.name)||selected.has(t.function?.name));
     body.tool_choice='required';
    }
    event.request=new Request(event.request,{body:JSON.stringify(body)});
-  });
-  await ctx.tool?.hook('execute.before',async event=>{
-   if(isGeneralInformationTool(event.tool)&&!isDiscoveryTool(event.tool)){
-    const st=await stateFor(event.sessionID);
-    if(st&&['devices','history','fallback'].includes(st.kind)){selectCapabilities(event.sessionID,[event.tool]);st.kind='discovered';st.fulfilled=true;delete st.requiredTool;await save(event.sessionID,st);}
-   }
   });
   await ctx.tool?.hook('execute.after',async event=>{
    if(isDiscarded(event.sessionID))return;
@@ -347,11 +340,11 @@ if(cloudDirective(text)){
    const state=await stateFor(event.sessionID);
    if(state&&(event.status==='error'||event.result?.isError)&&/HassTurn(?:On|Off)$|HassLightSet$|HassFanSetSpeed$|HassClimateSetTemperature$|play_media$/.test(event.tool)&&/timeout|transport|connection|socket|write_uncertain/i.test(JSON.stringify(event.error||event.result||{}))){state.writeUncertain=true;await save(event.sessionID,state);}
    if(!isLocal(state))return;
-   if(event.status==='completed'&&allow(event.tool,state.kind)&&!state.referenceFollowup){
+   if(event.status==='completed'&&isProfileOperation(event.tool,state.kind)&&!state.referenceFollowup){
     const targets=resolvedTargets(event.tool,{...(event.result||{}),input:event.input||{}});
     if(targets.length){state.focusGroups||=[];let group=state.focusGroups.at(-1);if(!group||group.query!==state.requestText){group={query:state.requestText,targets:[]};state.focusGroups.push(group);}group.targets=[...new Map([...group.targets,...targets].map(t=>[JSON.stringify(t),t])).values()];state.focusGroups=state.focusGroups.slice(-2);state.focusTargets=group.targets;}
    }
-   if(event.status==='completed'&&allow(event.tool,state.kind)){
+   if(event.status==='completed'&&isProfileOperation(event.tool,state.kind)){
     state.fulfilled=true;
     const signature=event.tool+':'+canonical(event.input||{});
     state.successCounts||={};state.successCounts[signature]=(state.successCounts[signature]||0)+1;
@@ -367,6 +360,7 @@ if(cloudDirective(text)){
   });
   await ctx.tool?.hook('execute.before',async event=>{
    const state=await stateFor(event.sessionID);
+   if(!allowsTaskTool(event.tool,state))throw new Error('This request is read-only; a write requires a new explicit instruction.');
    if(state&&['history','devices','fallback'].includes(state.kind)&&isMcp(event.tool)&&(isLocal(state)?HA_LOCAL_MS-(Date.now()-(state.startedAt||Date.now())):HA_CLOUD_MS-(Date.now()-(state.cloudStartedAt||Date.now())))<5000){
     if(isLocal(state)){await fallback(event.sessionID,state,'Insufficient remaining local HA budget to start another network tool safely');throw new Error('Local budget reached before this tool executed. No HA request was sent by this call. Continue on the configured cloud model and execute this still-pending operation there; preserve completed results and never repeat uncertain writes.');}
     throw new Error('Cloud recovery budget reached; completion is unconfirmed. Do not start further calls or claim success.');
@@ -398,12 +392,11 @@ if(cloudDirective(text)){
      event.input={...event.input,date:yesterday};
     }
    }
-   if(!allow(event.tool,state.kind))throw new Error('This local task must use its supplied HA MCP tools.');
    if(state.alias&&/HassTurn(?:On|Off)$/.test(event.tool)){event.input=await validateAlias(state.alias);}
   });
   await ctx.permission.hook('evaluate',async event=>{
    const state=await stateFor(event.sessionID);
-   if(isLocal(state)&&!allow(event.action,state.kind)){event.effect='deny';event.message='Local HA tasks must use their supplied MCP tools. Repeated failures fall back to the configured cloud model.';}
+   if(event.source?.type==='tool'&&!allowsTaskTool(event.action,state)){event.effect='deny';event.message='This request is read-only; a write requires a new explicit instruction.';}
   });
  }
 };

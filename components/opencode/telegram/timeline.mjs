@@ -21,7 +21,8 @@ export function renderTimeline({startedAt,now=Date.now(),events=[],models=[],act
  const current=models.length?models:sorted.at(-1)?.models||[];
  const lastModels=[...sorted].reverse().find(e=>e.models?.length)?.models||[];
  let detail;
- if(finished)detail=lastModels.length?'Last model: '+lastModels.map(modelName).join(' + '):'OpenCode';
+ if(!finished&&activity?.status==='approval-required'&&activity.at>=startedAt)detail='Awaiting your approval for '+modelName(activity.action||'a tool')+'. Review this session in your OpenCode browser/client.';
+ else if(finished)detail=lastModels.length?'Last model: '+lastModels.map(modelName).join(' + '):'OpenCode';
  else if(phase!=='other')detail=(current.length?current.map(modelName).join(' + '):label+' model')+' — generating next action / answer';
  else if(activity?.tool&&activity.at>=startedAt)detail='OpenCode — '+(activity.status==='running'?describeTool(activity.tool):describeTool(activity.tool)+' completed; preparing next step');
  else detail='OpenCode — preparing request / next step';

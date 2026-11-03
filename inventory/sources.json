@@ -108,7 +108,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/capability-discovery.mjs",
-    "sha256": "3bdb6b5862b74c02240f6b909dd30127299d3b6d9556f6682c113156e4f082c5",
+    "sha256": "3c350944abbf5f7415c5f33cf4b1d6843187c53861709bba45d3847e932f4517",
     "source": "/home/somdutta/.config/opencode/lib/capability-discovery.mjs"
   },
   {
@@ -303,6 +303,13 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/opencode/lib/tool-permissions.mjs",
+    "sha256": "1b146f326dff670b0478947a0d8a7bc146151e35506e9064c607fc35374fae31",
+    "source": "/home/somdutta/.config/opencode/lib/tool-permissions.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/opencode/lib/user-scope.mjs",
     "sha256": "d1b4333a96faf4c2e468bf2c77b9fae75934f38beb4dfa8ab6fe2c80e95e6bcf",
     "source": "/home/somdutta/.config/opencode/lib/user-scope.mjs"
@@ -402,7 +409,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/capability-discovery/index.js",
-    "sha256": "a2bae731d1d9c9c8246ccd682dbcb893b6988e3f65f6a6070977588ec1c98af5",
+    "sha256": "a84dc4a16856a207bea09267a296249358c7b8c8403ae71739f7058712803c98",
     "source": "/home/somdutta/.config/opencode/plugins/capability-discovery/index.js"
   },
   {
@@ -423,7 +430,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/ha-mcp-routing/index.js",
-    "sha256": "2a54286cfdfcbde493e2af75f67256f9117bd1a057f14ba4ec975460664cc864",
+    "sha256": "bd511c4686f4f182abdd08952e5d49d72980c4ff8be78200677f13964b8edd06",
     "source": "/home/somdutta/.config/opencode/plugins/ha-mcp-routing/index.js"
   },
   {
@@ -612,7 +619,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/native-runner.mjs",
-    "sha256": "499f4b908172323d0cd98f5c72812991d8ab79404625b8773a3dab297fdf9438",
+    "sha256": "f540b6c05131c0d9e5ab634c138b3f9f413dafecbeeb166032c56ec6d2f0a887",
     "source": "/home/somdutta/.config/opencode/telegram/native-runner.mjs"
   },
   {
@@ -626,7 +633,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/timeline.mjs",
-    "sha256": "30e3c8c6c167915a8c9269e84b47df25d52d84b7dde7289f4eccbdc5e0812e67",
+    "sha256": "8c31591d71a5d739cb0ad7c735841c31b2e912b1322142a0abce214839c2f718",
     "source": "/home/somdutta/.config/opencode/telegram/timeline.mjs"
   },
   {
@@ -5269,6 +5276,13 @@
     "repository": "components/llm-server/novel5-20261102/usage.py",
     "sha256": "ffbe502987ac66192675140279517eb5aa0994ccaffd54fc0e2a56f69f408dad",
     "source": "/home/somdutta/llm-server/novel5-20261102/usage.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/permissions-audit-20261103/permissions.test.mjs",
+    "sha256": "c30e20e075446abd7e1740156584c3820e5de07141ff8e8c9b4ecbe4306e5ec3",
+    "source": "/home/somdutta/llm-server/permissions-audit-20261103/permissions.test.mjs"
   },
   {
     "executable": false,
