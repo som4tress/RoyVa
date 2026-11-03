@@ -4,14 +4,16 @@ This repository versions Royva's deployed custom code, configuration templates,
 service definitions, tests, and the pinned upstream OpenCode source.
 
 Before changing deployed files, run `python3 tools/capture.py --check` and inspect
-any existing drift. Preserve and commit other agents' work separately; never
+any existing drift. Preserve other agents' work separately; never
 overwrite it or assume it is part of your own change.
 
-Every logical code or configuration change requires a descriptive Git commit.
-Run focused relevant checks, run `python3 tools/capture.py`, review `git diff`,
-then commit with a message describing the behavior changed and why. Record tests
-and remaining failures in the commit body or docs. A commit is a checkpoint,
-not a claim that the code is correct. Do not claim untested fixes.
+Commit only when the user explicitly requests a commit for the current change.
+Do not commit test results or benchmark reports unless specifically authorized.
+Run focused relevant checks and capture deployed sources for review. When a
+commit is authorized, inspect `git diff` and use a descriptive commit message
+limited to that change. Keep test results in the conversation or private files
+unless the user asks otherwise. A commit is a checkpoint, not a claim that the
+code is correct. Do not claim untested fixes.
 
 Deployed paths remain in their original locations. The repository mirrors them;
 the capture/check commands detect drift, but do not deploy or automatically

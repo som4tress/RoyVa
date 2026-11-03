@@ -1,5 +1,5 @@
 import {resolveReportScope,namedStatusTarget} from '../../lib/ha-scope.mjs';
-import {captureTools,restoreSelected,expandedCapabilities,isDiscoveryTool,isGeneralInformationTool,selectCapabilities,DISCOVERY_RULE} from '../../lib/capability-discovery.mjs';
+import {captureTools,restoreSelected,expandedCapabilities,isDiscoveryTool,isGeneralInformationTool,selectCapabilities,DISCOVERY_RULE,EVIDENCE_RULE} from '../../lib/capability-discovery.mjs';
 import {onDiscard} from '../../lib/session-lifecycle.mjs';
 import {isDiscarded} from '/home/somdutta/Projects/agent-learning/src/discard.mjs';
 import {isSimpleStatusQuery} from '../../lib/ha-native-status.mjs';
@@ -277,7 +277,7 @@ if(cloudDirective(text)){
     let namingGuide='';
     try{const notes=readFileSync(homedir()+'/.config/opencode/instructions/home-assistant.md','utf8');namingGuide=(notes.split('## Name resolution')[1]||'').split('\n## ')[0].slice(0,2500);}catch{}
     let instruction=readFileSync(homedir()+'/.config/opencode/instructions/ha-compact.md','utf8');
-    instruction+='\n'+DISCOVERY_RULE;
+    instruction+='\n'+DISCOVERY_RULE+'\n'+EVIDENCE_RULE;
     instruction+='\nCurrent local date and time from the system clock: '+new Date().toLocaleString('en-US',{timeZone:'America/Los_Angeles'})+' America/Los_Angeles. Never infer today from training data. Omit the history date argument for today.\n';
     instruction+='\nExisting naming configuration (data, not action authorization):\n'+namingGuide;
     if(!state.referenceFollowup&&!state.fastStatus&&!state.reportOnly){const reuse=procedureHint(state.requestText||'',event.sessionID);if(reuse)instruction+='\n'+reuse;}

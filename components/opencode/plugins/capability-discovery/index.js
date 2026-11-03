@@ -21,10 +21,11 @@ export default {id:'capability-discovery',async setup(ctx){
  });
  await ctx.session.hook('prompt',event=>{clearDiscovery(event.sessionID);clearCompletionCheck(event.sessionID);});
  await ctx.session.hook('context',event=>{
+  event.system.push({type:'text',text:EVIDENCE_RULE});
   if(event.model?.providerID==='evo-vision'){delete event.tools.discover_capabilities;delete event.tools.inspect_resources;return;}
   const s=captureTools(event.sessionID,event.tools);
   const names=Object.keys(s.baseline).filter(x=>!/^(home[-_]assistant_|ha[-_]history_)/.test(x));
-  event.system.push({type:'text',text:DISCOVERY_RULE+' '+EVIDENCE_RULE+' General tools observed in this agent context: '+names.join(', ').slice(0,700)+'.'});
+  event.system.push({type:'text',text:DISCOVERY_RULE+' General tools observed in this agent context: '+names.join(', ').slice(0,700)+'.'});
   const repair=readCompletionCheck(event.sessionID);
   if(repair)event.system.push({type:'text',text:'Completion check: the previous response was '+repair.reason+'. Continue the ORIGINAL task using the available capabilities and actual source evidence; a necessary clarification is valid. Retrieve missing task evidence before attributing results to a source. Do not repeat the question, invent a capability limit, or replay completed actions.'});
  });

@@ -28,14 +28,16 @@ python3 tools/capture.py --check
 python3 tools/capture.py
 git diff --stat
 git diff
+# Only when the user explicitly authorizes this commit:
 git add components inventory docs tools AGENTS.md README.md .gitignore
 git commit -m "fix: describe the behavior changed" -m "Validation and remaining limits."
 ```
 
 The capture command reads deployed code and writes repository mirrors. It does
 **not** modify production or restart services. `--check` exits nonzero if sources
-have drifted. There is no automatic commit: the agent making a change must review
-and commit it. The local pre-commit hook checks staged files for known credential
+have drifted. Commit only when the user explicitly requests it for the current
+change; do not commit test results or benchmark reports unless specifically
+authorized. The local pre-commit hook checks staged files for known credential
 values and common token formats; it is an aid, not a guarantee of no secrets.
 
 Mirrors retain deployment-specific paths. Redacted files are identified in

@@ -3,7 +3,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/AGENTS.md",
-    "sha256": "fc4723b23c2880dd69b9e666a79bc754339827946687c2356ecbcdf1a79086f6",
+    "sha256": "d9d302791d7cde64e3622fcf31c1be64058520e27773df5b36f1506a2deb8532",
     "source": "/home/somdutta/.config/opencode/AGENTS.md"
   },
   {
@@ -108,7 +108,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/capability-discovery.mjs",
-    "sha256": "bbc45aafacb3fc01df7d73bbc6c9a53f82f66a620017d88de68085b9481f6a68",
+    "sha256": "3bdb6b5862b74c02240f6b909dd30127299d3b6d9556f6682c113156e4f082c5",
     "source": "/home/somdutta/.config/opencode/lib/capability-discovery.mjs"
   },
   {
@@ -402,7 +402,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/capability-discovery/index.js",
-    "sha256": "bd9ec2304926c930ae72b86137861f406e2301b50350c41d01d064176b193dab",
+    "sha256": "a2bae731d1d9c9c8246ccd682dbcb893b6988e3f65f6a6070977588ec1c98af5",
     "source": "/home/somdutta/.config/opencode/plugins/capability-discovery/index.js"
   },
   {
@@ -423,7 +423,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/ha-mcp-routing/index.js",
-    "sha256": "a9b64e0076102f5056f0ef73321db31235a2e24a155cea76241d0a6d21faffc7",
+    "sha256": "2a54286cfdfcbde493e2af75f67256f9117bd1a057f14ba4ec975460664cc864",
     "source": "/home/somdutta/.config/opencode/plugins/ha-mcp-routing/index.js"
   },
   {
@@ -6779,7 +6779,7 @@
     "executable": false,
     "redacted": false,
     "repository": "inventory/workspace-AGENTS.md",
-    "sha256": "c3e6958da254c2af99707e320f77ae3cd5d3ecc59c6cf743c472ad8500793d2f",
+    "sha256": "273d103ecde2736df156125260330d20e6a61f0b544def2591bcf8bf65ee1d48",
     "source": "/home/somdutta/Documents/Codex/AGENTS.md"
   }
 ]
