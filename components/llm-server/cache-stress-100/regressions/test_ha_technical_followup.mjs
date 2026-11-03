@@ -1,0 +1,4 @@
+import assert from'node:assert/strict';import{homedir}from'node:os';const h=homedir();const scope=await import(h+'/.config/opencode/lib/user-scope.mjs');const {classify}=await import(h+'/.config/opencode/plugins/ha-mcp-routing/index.js');const {inferHAIntent}=await import(h+'/.config/opencode/lib/ha-intent.mjs');
+const q='can you do it through api, token can be found in somdutta@somdutta-linux.local /home/somdutta/Projects/.venv/bin/activate';assert.ok(scope.isTechnicalRequest(q));assert.equal(classify(q),null);assert.equal(await inferHAIntent(q),null);
+assert.equal(scope.withoutCloudDirective('Assign entities to Upstairs.\n\nRoute it to DeepSeek'),'Assign entities to Upstairs.');
+assert.equal(scope.withoutCloudDirective('Explain "Route it to DeepSeek"'),'Explain "Route it to DeepSeek"');console.log('PASS: credential paths cannot become person-location requests; model directives stripped from reusable task identity.');

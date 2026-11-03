@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "adapters": [
+    {
+      "module": "local-host-info.mjs",
+      "enabled": true
+    },
+    {
+      "module": "local-calculator.mjs",
+      "enabled": true
+    }
+  ]
+}

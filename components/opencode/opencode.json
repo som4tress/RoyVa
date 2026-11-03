@@ -1,0 +1,154 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "evo-agent/qwen36-agent",
+  "instructions": [
+    "/home/somdutta/.config/opencode/instructions/formatting.md",
+    "/home/somdutta/.config/opencode/instructions/home-assistant.md",
+    "/home/somdutta/.config/opencode/instructions/identity.md",
+    "/home/somdutta/.config/opencode/instructions/routing.md",
+    "/home/somdutta/.config/opencode/instructions/usage-footer.md"
+  ],
+  "mcp": {
+    "servers": {
+      "home-assistant": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/.config/opencode/mcp/ha_mcp_transport.py"
+        ],
+        "codemode": false
+      },
+      "ha-history": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/.config/opencode/mcp/ha_history.py"
+        ],
+        "codemode": false
+      }
+    }
+  },
+  "providers": {
+    "vllm": {
+      "models": {
+        "qwen35-9b": {
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 1024
+          },
+          "body": {
+            "max_tokens": 1024,
+            "temperature": 0,
+            "chat_template_kwargs": {
+              "enable_thinking": true
+            }
+          },
+          "name": "EVO 35B Agent (legacy session alias)"
+        },
+        "qwen38-27b": {
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 1024
+          },
+          "body": {
+            "max_tokens": 1024,
+            "temperature": 0,
+            "chat_template_kwargs": {
+              "enable_thinking": true
+            }
+          },
+          "name": "EVO 35B Agent (legacy session alias)"
+        }
+      },
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8011/local/v1",
+        "apiKey": "{env:VLLM_API_KEY}"
+      }
+    },
+    "evo-agent": {
+      "name": "EVO Qwen 35B Agent",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8000/v1",
+        "apiKey": "{env:VLLM_API_KEY}"
+      },
+      "models": {
+        "qwen36-agent": {
+          "name": "Qwen3.6 35B Agent (128K)",
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          },
+          "compatibility": {
+            "reasoningField": "reasoning"
+          },
+          "body": {
+            "chat_template_kwargs": {
+              "enable_thinking": true
+            }
+          }
+        }
+      }
+    },
+    "evo-vision": {
+      "name": "EVO Qwen 9B Vision",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://127.0.0.1:8001/v1",
+        "apiKey": "{env:VLLM_API_KEY}"
+      },
+      "models": {
+        "qwen35-vision": {
+          "name": "Qwen3.5 9B Vision",
+          "capabilities": {
+            "tools": false,
+            "input": [
+              "text",
+              "image"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 16384,
+            "output": 2048
+          },
+          "body": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
+        }
+      }
+    }
+  }
+}

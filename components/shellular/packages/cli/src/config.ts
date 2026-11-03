@@ -1,0 +1,194 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import nodeMachineId from "node-machine-id";
+import { z } from "zod";
+import packageJson from "../package.json";
+import { logger } from "./logger";
+import type { ServerUrl } from "./server-url";
+import { isErrnoException } from "./utils";
+
+const filename =
+	typeof __filename === "string" ? __filename : fileURLToPath(import.meta.url);
+const dirname =
+	typeof __dirname === "string" ? __dirname : path.dirname(filename);
+
+const SHELLULAR_DIR = path.resolve(os.homedir(), ".shellular");
+const CONFIG_FILE = path.resolve(SHELLULAR_DIR, "config.json");
+
+const username = os.userInfo().username.replace(/[^a-zA-Z0-9._-]/g, "_");
+const machineId = process.env.SHELLULAR_MIGRATED_MACHINE_ID || nodeMachineId.machineIdSync();
+
+const _config = {
+	NAME: "shellular",
+	VERSION: packageJson.version,
+	DESCRIPTION: packageJson.description,
+	SHELLULAR_DEV: process.env.SHELLULAR_DEV === "true",
+	SHELLULAR_DIR,
+	CONFIG_FILE,
+	DEFAULT_SERVER_URL: "https://server.shellular.dev",
+	LOGS_DIR: path.join(SHELLULAR_DIR, "logs"),
+	// Self-update worker logs live in their own subdir so they don't mix into
+	// the daemon log glob and so `logs --self-updates` is just a dir listing.
+	SELF_UPDATE_LOGS_DIR: path.join(SHELLULAR_DIR, "logs", "self-updates"),
+	CLIENTS_FILE: path.join(SHELLULAR_DIR, "clients.json"),
+	// Allowlist of accounts permitted to connect, keyed by account email OR
+	// stable user ID. When non-empty it gates every join *before* the per-device
+	// approvals in CLIENTS_FILE, so revoking an entry locks out all of that
+	// person's devices at once. A user ID entry matches the account regardless of
+	// which linked provider email a given device happened to sign in with.
+	USERS_FILE: path.join(SHELLULAR_DIR, "users.json"),
+	// One JSON file per persisted terminal session (buffer/cwd/title), restored
+	// across CLI restarts. A directory (not a single file) so each terminal's
+	// debounced snapshot writes touch only its own file and removing a killed
+	// terminal is a single unlink.
+	TERMINALS_DIR: path.join(SHELLULAR_DIR, "terminals"),
+	MACHINE_ID: machineId,
+	PLATFORM: process.platform,
+	USERNAME: username,
+	HOSTNAME: os.hostname(),
+	EXT_SRC_DIR: path.join(dirname, "..", "vscode-extension"),
+	EXT_OUT_DIR: path.join(dirname, "..", "dist"),
+	RELAY_CACHE_FILE: path.join(SHELLULAR_DIR, "relay-cache.json"),
+	/** How long a disk-cached relay choice is trusted before we re-probe. */
+	RELAY_CACHE_TTL_MS: 24 * 60 * 60 * 1000,
+	// Project-wide SQLite database. Currently holds the agent chat transcript
+	// cache; state that lives in individual JSON files today will migrate
+	// here over time
+	SHELLULAR_DB_FILE: path.join(SHELLULAR_DIR, "shellular.sqlite"),
+} as const;
+
+export function ensureConfig() {
+	if (!fs.existsSync(_config.SHELLULAR_DIR)) {
+		fs.mkdirSync(_config.SHELLULAR_DIR, { recursive: true });
+	}
+
+	if (!fs.existsSync(_config.LOGS_DIR)) {
+		fs.mkdirSync(_config.LOGS_DIR, { recursive: true });
+	}
+
+	if (!fs.existsSync(_config.SELF_UPDATE_LOGS_DIR)) {
+		fs.mkdirSync(_config.SELF_UPDATE_LOGS_DIR, { recursive: true });
+	}
+
+	if (!fs.existsSync(_config.TERMINALS_DIR)) {
+		fs.mkdirSync(_config.TERMINALS_DIR, { recursive: true });
+	}
+}
+
+const configFileSchema = z.object({
+	hostId: z.string().optional(),
+	machineId: z.string().optional(),
+});
+
+type ConfigFileData = z.infer<typeof configFileSchema>;
+
+function readConfigFile(): ConfigFileData | null {
+	try {
+		const raw = fs.readFileSync(_config.CONFIG_FILE, "utf-8");
+		const parsed = configFileSchema.safeParse(JSON.parse(raw));
+		if (!parsed.success) {
+			throw new Error(
+				`Config file is invalid or corrupted: ${parsed.error.message}`,
+			);
+		}
+		return parsed.data;
+	} catch (err) {
+		if (isErrnoException(err) && err.code === "ENOENT") {
+			// config file doesn't exist yet - not an error, just means we need to register and create it
+			return null;
+		}
+
+		throw err;
+	}
+}
+
+const registerRespSchema = z.discriminatedUnion("success", [
+	z.object({
+		success: z.literal(true),
+		data: z.object({
+			hostId: z.string(),
+		}),
+	}),
+	z.object({
+		success: z.literal(false),
+		error: z.string(),
+	}),
+]);
+
+export async function getOrRegisterHostId(
+	serverUrl: ServerUrl,
+): Promise<string> {
+	const existing = readConfigFile();
+	if (existing) {
+		if (existing.machineId && existing.machineId !== machineId) {
+			throw new Error(
+				"Machine ID mismatch — config file belongs to a different machine.",
+			);
+		}
+
+		if (existing.hostId) {
+			return existing.hostId;
+		}
+	}
+
+	const url = serverUrl.toApiUrl({ path: "/host/register" });
+	logger.debug(`Registering host with server at ${url}`);
+	const resp = await fetch(url, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+			"User-Agent": `shellular/${_config.VERSION}`,
+		},
+		body: JSON.stringify({
+			machineId: _config.MACHINE_ID,
+			platform: _config.PLATFORM,
+		}),
+	});
+
+	let data: unknown;
+	try {
+		data = await resp.json();
+	} catch (err) {
+		logger.error("Failed to parse registration response as JSON:", err);
+		throw new Error(`Registration failed: ${resp.statusText}`);
+	}
+
+	const respJson = registerRespSchema.parse(data);
+
+	if (!respJson.success) {
+		throw new Error(`Registration error: ${resp.status} ${respJson.error}`);
+	}
+
+	const { hostId } = respJson.data;
+	logger.log(`Registered host with ID: ${hostId}`);
+
+	fs.writeFileSync(
+		_config.CONFIG_FILE,
+		JSON.stringify({ hostId, machineId: _config.MACHINE_ID }, null, 2),
+		"utf-8",
+	);
+
+	return hostId;
+}
+
+export const config = {
+	..._config,
+};
+
+export const npxCommand = config.PLATFORM === "win32" ? "npx.cmd" : "npx";
+
+/**
+ * Build a fresh, timestamped log path for one self-update run, e.g.
+ * `~/.shellular/logs/self-updates/shellular.2026-06-30T17-58-00.log`. A new
+ * file per run keeps history instead of overwriting, and since they live in
+ * their own subdir, `logs --self-updates` is just a listing of that dir.
+ */
+export function getSelfUpdateLogPath(): string {
+	const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	return path.join(
+		config.SELF_UPDATE_LOGS_DIR,
+		`${config.NAME}.${timestamp}.log`,
+	);
+}

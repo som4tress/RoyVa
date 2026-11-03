@@ -1,0 +1,14 @@
+--- a/opencode.json
++++ b/opencode.json
+@@ -16,5 +16,10 @@
+         }
+       }
+     }
+-  }
++  },
++  "plugins": [
++    {
++      "package": "/home/somdutta/OpenCode/opencode-smart-router"
++    }
++  ]
+ }

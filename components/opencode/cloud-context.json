@@ -1,0 +1,10 @@
+{
+  "enabled": true,
+  "minChars": 6000,
+  "turnBudgetMs": 8000,
+  "semanticEnabled": false,
+  "evidenceWindows": true,
+  "evidenceThreshold": 16000,
+  "evidenceChars": 6000,
+  "pilotStateFile": "/home/somdutta/llm-server/clean-context-retest-20261103/pilot.json"
+}

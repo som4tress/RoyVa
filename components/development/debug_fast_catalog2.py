@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path.home()/'.config/opencode/plugins/ha-mcp-routing/index.js';s=p.read_text().replace("   for(const name of Object.keys(event.tools))if(!allow(name,state.kind))delete event.tools[name];","   if(state.fastStatus)log({sessionID:event.sessionID,event:'fast-original-catalog',tools:Object.keys(event.tools)});\n   for(const name of Object.keys(event.tools))if(!allow(name,state.kind))delete event.tools[name];");p.write_text(s)

@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {resolvedTargets,assertFocusedWrite} from '/home/somdutta/.config/opencode/lib/ha-focus.mjs';
+import {planHA,rememberHA} from '/home/somdutta/.config/opencode/telegram/ha-context.mjs';
+const target={name:'Media Wall Side Lights',domain:['light']};
+const refs=[{tool:'ha-history_get_device_status',input:'{"name":"Media"}',targets:[target]}];
+const old=rememberHA('Den light status',{text:'on',references:[{tool:'ha-history_get_device_status',input:'{"name":"Den"}',targets:[{name:'Den Switch',domain:['light']}]}]});
+const prior=rememberHA('Media side lights is still off',{text:'off',references:refs},Date.now(),old);
+const plan=planHA('Turn them on',prior);assert.equal(plan.carry.exchanges.length,1);assert.deepEqual(plan.focusTargets,[target]);
+const state={referenceFollowup:true,focusTargets:plan.focusTargets};
+assertFocusedWrite('home-assistant_intent__HassTurnOn',{name:target.name},state);
+assert.throws(()=>assertFocusedWrite('home-assistant_intent__HassTurnOn',{name:'Den Switch'},state));
+assert.throws(()=>assertFocusedWrite('home-assistant_media_player__HassMediaPlayerMute',{},state));
+assert.throws(()=>assertFocusedWrite('home-assistant_intent__HassTurnOn',{name:'Side'},state));
+assert.throws(()=>assertFocusedWrite('home-assistant_intent__HassTurnOn',{name:'Whatever'},{referenceFollowup:true,focusTargets:[]}));
+assert.equal(planHA('Turn on both',prior).focusTargets.length,2);
+assert.deepEqual(resolvedTargets('ha-history_get_device_status',{output:JSON.stringify({matches:[{name:target.name,domain:'light'}]})}),[target]);
+console.log('PASS: latest target only for it/them; both combines two groups; wrong switch, Den, media mute, missing focus blocked.');

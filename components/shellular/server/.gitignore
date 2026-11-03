@@ -1,0 +1,13 @@
+node_modules/
+data/
+*.sqlite
+*.sqlite-*
+.env
+mermaid/
+
+.DS_Store
+
+*.local
+
+credentials.json
+*.p8

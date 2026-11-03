@@ -1,0 +1,3694 @@
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import type * as acp from "@agentclientprotocol/sdk";
+import type {
+	AcpAiSession,
+	AcpMessage,
+	AcpPromptRequest,
+	AgentId,
+	AiAttachmentWriteMsg,
+	AiAttachmentWriteResultMsg,
+	AiEvent,
+	AiPromptQueueItem,
+	AiPromptQueuePauseAckMsg,
+	AiPromptQueuePauseMsg,
+	AiPromptQueueRemoveAckMsg,
+	AiPromptQueueUpdateAckMsg,
+	AiSession,
+	AiSessionConfigOption,
+	AiSessionCreateMsg,
+	AiSessionOwner,
+	AiSessionRuntimeState,
+	AiSessionState,
+	CustomAcpAgentInput,
+	ManagedAcpAgentInfo,
+} from "@shellular/protocol";
+import {
+	AcpContentBlockSchema,
+	AiSessionOwnerSchema,
+	MsgType,
+} from "@shellular/protocol";
+
+import { config } from "@/config";
+import type { Connection } from "@/connection";
+import { logger } from "@/logger";
+import { commandsExist } from "@/utils";
+import { BUILTIN_AGENT_DESCRIPTORS } from "./agents";
+import { ACP } from "./base";
+import { ClaudeCode } from "./claude-code";
+import { Codex } from "./codex";
+import { Copilot } from "./copilot";
+import { Cursor } from "./cursor";
+import { AgentUnavailableError, AiNewError } from "./errors";
+import { Fx } from "./fx";
+import { GrokActiveSessionsWatcher } from "./grok-active-sessions-watcher";
+import { GrokBuild } from "./grok-build";
+import { Hermes } from "./hermes";
+import { NotifyBridge, type NotifyEvent } from "./notify-bridge";
+import { Omp } from "./omp";
+import { OpenCode } from "./opencode";
+import { Pi } from "./pi";
+import { terminateAgentProcess } from "./process-scanner";
+import {
+	readCachedSessionConfig,
+	writeCachedSessionConfig,
+} from "./session-config-cache";
+import { type ExternalSessionUpdate, SessionWatcher } from "./session-watcher";
+import {
+	normalizeCustomAgentInput,
+	readAgentsConfig,
+	toCustomDescriptor,
+	writeAgentsConfig,
+} from "./store";
+import { TranscriptStore } from "./transcript-store";
+import type { AgentDescriptor, AgentInfo } from "./types";
+
+const MAX_AGENT_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+const RECENT_SESSION_ACTIVITY_MS = 10 * 60 * 1000;
+const SESSION_RUNTIME_IDLE_MS = 2 * 60 * 1000;
+// How many newest messages a session.snapshot push carries when every attached
+// client supports paging. One app page (PAGE_SIZE=30): prefetching a second page
+// costs its bytes on every single attach, up front and in the user's way, to
+// save a scroll-back fetch that often never happens. Measured on a
+// 115-message session, 60 messages was ~376KB / ~3.7s of relay transit against
+// ~20ms to decode and render — so the wire, not the CPU, sets this bound.
+const SNAPSHOT_TAIL = 30;
+
+/**
+ * Which slice of a transcript a caller wants. `tail` (newest N) and `from`/`to`
+ * (explicit `[from, to)`) are mutually exclusive — see `sliceWindow`.
+ */
+export interface MessageWindow {
+	tail?: number;
+	from?: number;
+	to?: number;
+}
+
+interface QueuedPrompt {
+	id: string;
+	clientId: string;
+	agentId: AgentId;
+	sessionId: string;
+	text: string;
+	content: AcpPromptRequest["prompt"];
+	createdAt: number;
+	updatedAt: number;
+}
+
+interface PromptQueueState {
+	running: boolean;
+	paused: boolean;
+	items: QueuedPrompt[];
+}
+
+/** True when a window asks for an explicit range rather than a tail. */
+function isRangeWindow(window?: MessageWindow) {
+	return window?.from !== undefined || window?.to !== undefined;
+}
+
+/**
+ * Resolve a window against a resident message array. `baseIdx` is the transcript
+ * index of `messages[0]`, so all arithmetic is in transcript space and the
+ * returned `from` is directly reportable to the client.
+ *
+ * Omitting both forms yields the whole array — callers that want the default
+ * newest-N window pass `{ tail: SNAPSHOT_TAIL }` explicitly rather than relying
+ * on a default here, so "no window" keeps meaning "everything".
+ */
+function sliceWindow(
+	messages: AcpMessage[],
+	baseIdx: number,
+	window?: MessageWindow,
+) {
+	if (isRangeWindow(window)) {
+		const end = baseIdx + messages.length;
+		// Clamp into what is actually resident, then guard from <= to so an
+		// inverted or out-of-range request yields empty rather than a wrapped
+		// slice.
+		const from = Math.min(Math.max(window?.from ?? 0, baseIdx), end);
+		const to = Math.min(Math.max(window?.to ?? end, from), end);
+		return withBounds(messages.slice(from - baseIdx, to - baseIdx), from);
+	}
+	const tail = window?.tail;
+	const sliced = tail ? messages.slice(-tail) : messages;
+	return withBounds(sliced, baseIdx + (messages.length - sliced.length));
+}
+
+/**
+ * Tag a slice with the window it occupies. Bounds are omitted for an empty
+ * slice: `from`/`to` are indices of real messages, so a zero-length window has
+ * no meaningful position and must not report one.
+ */
+function withBounds(messages: AcpMessage[], from: number) {
+	if (messages.length === 0) {
+		return { messages, from: undefined, to: undefined };
+	}
+	return { messages, from, to: from + messages.length };
+}
+// How long a cold attach (nothing live, nothing stored) waits for the in-flight
+// replay before giving up and replying empty. Sized above a typical replay
+// (~0.9-1.5s measured) because the alternative is strictly worse: an empty reply
+// costs an extra relay round trip (~0.6s each way) plus a full re-send of the
+// transcript as a separate push. Anything slower than this is likely one of the
+// tens-of-seconds replays, where returning promptly and pushing later wins.
+const COLD_ATTACH_REPLAY_WAIT_MS = 2500;
+// Streaming emits a `message` event per chunk carrying the ENTIRE evolving
+// message, which is quadratic on the wire for long replies. Coalesce them:
+// each message event supersedes the previous one for the same message id, so
+// dropping intermediates is lossless. `token` events still flow per-chunk for
+// smooth streaming; this only paces the full-payload reconciliation events.
+const STREAM_MESSAGE_COALESCE_MS = 150;
+type RuntimePatch = Partial<
+	Omit<AiSessionRuntimeState, "agentId" | "sessionId" | "updatedAt">
+> & {
+	updatedAt?: number;
+};
+type AttachedSessionSnapshot = {
+	backend: AgentId;
+	session: AcpAiSession;
+	state: AiSessionState;
+	runtimeState?: AiSessionRuntimeState;
+	messages: AcpMessage[];
+	// Transcript index of messages[0]. Non-zero only while the snapshot holds a
+	// store-hydrated tail; a completed replay always resets it to 0.
+	baseIdx: number;
+	// Full transcript length, even when messages holds only a tail.
+	totalCount: number;
+	// Bumped on every full authoritative reload. Paging clients echo it so a
+	// reload can invalidate their in-flight scroll pages.
+	generation: number;
+	revision: number;
+	syncing?: boolean;
+};
+
+function getErrorMessage(err: unknown): string {
+	if (err instanceof Error) return err.message;
+	if (typeof err === "string") return err;
+	return String(err);
+}
+
+function safeAttachmentSegment(value: string) {
+	return (
+		value.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown"
+	);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function errorEventProperties(error: unknown): Record<string, unknown> {
+	if (!(error instanceof AiNewError)) return {};
+	return { errorCode: error.code, errorDetails: error.details };
+}
+
+function sessionOwnerFromError(error: unknown): AiSessionOwner | undefined {
+	if (!(error instanceof AiNewError)) return undefined;
+	if (!isRecord(error.details)) return undefined;
+	const parsed = AiSessionOwnerSchema.safeParse(error.details.owner);
+	return parsed.success ? parsed.data : undefined;
+}
+
+function parseIsoTimestamp(value: unknown): number | undefined {
+	if (typeof value !== "string") return undefined;
+	const timestamp = Date.parse(value);
+	return Number.isFinite(timestamp) ? timestamp : undefined;
+}
+
+function runtimeMetadataFromStatus(
+	properties: Record<string, unknown>,
+): RuntimePatch | undefined {
+	const status = properties.status;
+	if (!isRecord(status) || status.sessionUpdate !== "session_info_update") {
+		return undefined;
+	}
+	const patch: RuntimePatch = {};
+	if (typeof status.title === "string") patch.title = status.title;
+	if (status.title === null) patch.title = undefined;
+	const updatedAt = parseIsoTimestamp(status.updatedAt);
+	if (updatedAt !== undefined) patch.updatedAt = updatedAt;
+	return Object.keys(patch).length > 0 ? patch : undefined;
+}
+
+function decodeBase64Attachment(content: string): Buffer {
+	if (
+		content.length % 4 === 1 ||
+		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+			content,
+		)
+	) {
+		throw new Error("Invalid attachment encoding");
+	}
+	const bytes = Buffer.from(content, "base64");
+	if (bytes.length > MAX_AGENT_ATTACHMENT_BYTES) {
+		throw new Error("Attachment is too large");
+	}
+	return bytes;
+}
+
+function nextAvailableAttachmentPath(dirPath: string, fileName: string) {
+	const parsed = path.parse(fileName);
+	for (let index = 0; index < 1000; index += 1) {
+		const suffix = index === 0 ? "" : `-${index}`;
+		const candidate = path.join(
+			dirPath,
+			`${parsed.name}${suffix}${parsed.ext}`,
+		);
+		if (!existsSync(candidate)) return candidate;
+	}
+	throw new Error("Unable to allocate attachment path");
+}
+
+function writeAgentAttachment(msg: AiAttachmentWriteMsg) {
+	if (!/^(image|video)\//.test(msg.data.mimeType || "")) {
+		throw new Error("Only image and video attachments are supported");
+	}
+	const agent = safeAttachmentSegment(msg.data.backend);
+	const session = safeAttachmentSegment(msg.data.sessionId);
+	const fileName = safeAttachmentSegment(path.basename(msg.data.name));
+	const dirPath = path.join(
+		config.SHELLULAR_DIR,
+		agent,
+		session,
+		"chat-attachments",
+	);
+	const bytes = decodeBase64Attachment(msg.data.content);
+	mkdirSync(dirPath, { recursive: true });
+	const filePath = nextAvailableAttachmentPath(dirPath, fileName);
+	writeFileSync(filePath, bytes, { flag: "wx" });
+	return {
+		path: filePath,
+		name: path.basename(filePath),
+		size: bytes.length,
+		mimeType: msg.data.mimeType,
+	};
+}
+
+function eventClientId(event: AiEvent, fallbackClientId: string): string {
+	const value = event.properties.clientId;
+	return typeof value === "string" ? value : fallbackClientId;
+}
+
+export class AgentsManager {
+	private descriptors = new Map<string, AgentDescriptor>();
+	private disabledAgents = new Set<string>();
+	// private customAgentIds = new Set<string>();
+	private agents = new Map<string, ACP>();
+	private sessionRuntimes = new Map<string, ACP>();
+	private sessionSnapshots = new Map<string, AttachedSessionSnapshot>();
+	private sessionLoadTasks = new Map<string, Promise<void>>();
+	private runtimeIds = new WeakMap<ACP, string>();
+	private nextRuntimeId = 0;
+	private sessionRuntimeCleanupTimers = new Map<
+		string,
+		ReturnType<typeof setTimeout>
+	>();
+	private sessionAgents = new Map<string, string>();
+	private sessionWatcher?: SessionWatcher;
+	private grokActiveSessionsWatcher?: GrokActiveSessionsWatcher;
+	private notifyBridge?: NotifyBridge;
+	// Sessions whose runtime state was sourced from on-disk watching rather than
+	// a Shellular-managed runtime. Used so the recency/expiry rules can treat
+	// them differently (they persist until dismissed).
+	private externalSessions = new Set<string>();
+	// External session keys the user has dismissed from the home view. Kept so
+	// the watcher's continued reports of the same finished state don't re-add it.
+	private dismissedSessions = new Set<string>();
+	private transcriptStore = new TranscriptStore();
+	private sessionGenerations = new Map<string, number>();
+	// Clients that attached with `tail` (newest-N paging). Snapshot pushes are
+	// tail-sized only when every attached client opted in.
+	private pagingClients = new Map<string, Set<string>>();
+	// Sessions whose stored transcript may be stale because an external writer
+	// (scheduler, laptop CLI, editor) touched them since our last full replay.
+	private staleSessions = new Set<string>();
+	// Sessions where a cold attach is waiting on the in-flight replay and will
+	// return its transcript directly, so the background push must stay quiet
+	// rather than re-sending the same payload.
+	private coldReplayClaims = new Set<string>();
+	// Completed turns per session. A background replay compares this before and
+	// after its load: if it changed, the replay predates a turn and its result
+	// must not overwrite the newer live transcript.
+	private sessionTurnCounts = new Map<string, number>();
+	private promptQueues = new Map<string, PromptQueueState>();
+	private sessionOwners = new Map<string, AiSessionOwner>();
+
+	constructor() {
+		this.reloadDescriptors();
+		this.startSessionWatcher();
+		this.startGrokActiveSessionsWatcher();
+		this.startNotifyBridge();
+	}
+
+	private startSessionWatcher() {
+		if (this.sessionWatcher) return;
+		this.sessionWatcher = new SessionWatcher(
+			(update) => this.applyExternalRuntimeState(update),
+			(agentId, sessionId) =>
+				this.removeExternalRuntimeState(agentId, sessionId),
+		);
+		this.sessionWatcher.start();
+	}
+
+	/**
+	 * Watches Grok Build's `active_sessions.json`, which Grok maintains listing the
+	 * sessions currently open in a `grok` CLI. Grok gives us presence directly (an
+	 * entry means the CLI is open, its removal means it closed), so unlike the
+	 * jsonl-tailing SessionWatcher this just surfaces each active session and
+	 * removes it when it disappears. We report it as a persistent external session
+	 * (it stays on the home view until dismissed or the CLI closes); a Grok ACP
+	 * notification via the notify bridge upgrades it to running/permission when the
+	 * session is attached.
+	 */
+	private startGrokActiveSessionsWatcher() {
+		if (this.grokActiveSessionsWatcher) return;
+		this.grokActiveSessionsWatcher = new GrokActiveSessionsWatcher(
+			(session) =>
+				this.applyExternalRuntimeState({
+					agentId: "grok-build",
+					sessionId: session.sessionId,
+					status: "finished",
+					updatedAt: session.updatedAt,
+					workspacePath: session.cwd,
+				}),
+			(agentId, sessionId) =>
+				this.removeExternalRuntimeState(agentId, sessionId),
+		);
+		this.grokActiveSessionsWatcher.start();
+	}
+
+	/**
+	 * Removes an externally-observed session (its agent process exited). Mirrors
+	 * the watcher's gate: only sessions surfaced from disk are removed this way,
+	 * never a Shellular-managed runtime.
+	 */
+	private removeExternalRuntimeState(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		if (!this.externalSessions.has(key)) return;
+		this.externalSessions.delete(key);
+		this.sessionRuntimeStates.delete(key);
+		// Tell connected clients to drop it from the home view.
+		this.broadcastActivityRemoved(agentId, sessionId);
+	}
+
+	private broadcastActivityRemoved(agentId: AgentId, sessionId: string) {
+		const event: AiEvent = {
+			type: "session.removed",
+			properties: { sessionId },
+			revision: this.nextSessionRevision(agentId, sessionId),
+		};
+		const targets = new Set<string>(this.knownClients);
+		const attached = this.attachedSessionClients.get(
+			this.sessionKey(agentId, sessionId),
+		);
+		if (attached) for (const id of attached) targets.add(id);
+		for (const subscriber of this.subscribers) {
+			for (const clientId of targets) {
+				subscriber(clientId, agentId, event);
+			}
+		}
+	}
+
+	private startNotifyBridge() {
+		if (this.notifyBridge) return;
+		this.notifyBridge = new NotifyBridge((event) =>
+			this.applyNotifyEvent(event),
+		);
+		this.notifyBridge.start();
+	}
+
+	/**
+	 * Applies a state from an agent notify hook. Unlike the file watcher, this is
+	 * authoritative for permission waits (which never reach disk), so it can
+	 * override a watcher-derived running/finished state.
+	 */
+	private applyNotifyEvent(event: NotifyEvent) {
+		this.applyExternalRuntimeState(
+			{
+				agentId: event.agentId,
+				sessionId: event.sessionId,
+				status: event.status,
+				updatedAt: event.updatedAt,
+				message: event.message,
+				workspacePath: event.workspacePath,
+			},
+			{ authoritative: true },
+		);
+	}
+
+	/**
+	 * Applies a runtime state derived from on-disk session logs for an agent
+	 * session that Shellular did not start. If Shellular already owns a live
+	 * runtime for this session, the in-process state wins (it is authoritative,
+	 * e.g. it can see permission prompts), so we skip the external update.
+	 */
+	private applyExternalRuntimeState(
+		update: ExternalSessionUpdate,
+		options: { authoritative?: boolean } = {},
+	) {
+		const { agentId, sessionId } = update;
+		if (!this.isAgentEnabled(agentId)) return;
+		const key = this.sessionKey(agentId, sessionId);
+
+		// A live Shellular runtime is authoritative; don't override it with a
+		// file-watch guess. Notify-hook events are authoritative (they see things
+		// the transcript can't, like permission prompts), so they may override.
+		if (this.sessionRuntimes.has(key) && !options.authoritative) {
+			const owned = this.sessionRuntimeStates.get(key);
+			if (owned && !this.externalSessions.has(key)) return;
+		}
+
+		this.externalSessions.add(key);
+		// An external writer is appending to this session, so any transcript we
+		// have cached (memory or store) can no longer be trusted until the next
+		// full replay reconciles it.
+		this.staleSessions.add(key);
+		// Don't resurrect a session the user has dismissed; the watcher will keep
+		// reporting the file's last finished state otherwise.
+		if (this.dismissedSessions.has(key)) {
+			// Only re-show if it became live again (new activity after dismissal),
+			// or on an authoritative notify (e.g. it now needs permission).
+			if (!isLiveRuntimeStatus(update.status) && !options.authoritative) return;
+			this.dismissedSessions.delete(key);
+		}
+		const state = this.setSessionRuntimeState(agentId, sessionId, {
+			status: update.status,
+			updatedAt: update.updatedAt,
+			external: true,
+			// External sessions are surfaced only while a live agent process exists
+			// for them, and are removed when that process exits. So they should not
+			// expire on the app's recency timer regardless of working/finished —
+			// a session that finished while you were away (but whose CLI is still
+			// open) must remain visible until you see it or the process exits.
+			persistent: true,
+			...(update.title ? { title: update.title } : {}),
+			...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
+			...(update.message ? { message: update.message } : {}),
+		});
+
+		// Push to all connected clients so the home view updates live without a
+		// re-fetch. Unlike emit(), this isn't tied to a session the client is
+		// attached to — a client viewing the home page should see it. We bypass
+		// emit() because it re-derives runtime state and targets only attached
+		// clients.
+		this.broadcastRuntimeState(agentId, sessionId, state, update.message);
+
+		// If someone is viewing this chat while the external turn just finished,
+		// reconcile now so their transcript catches up without a re-open. The
+		// refresh guards (no runtime / our prompt active / load in-flight) make
+		// repeated triggers safe.
+		const externalCwd =
+			update.workspacePath ??
+			this.sessionSnapshots.get(key)?.session.workspacePath;
+		if (
+			!this.sessionRuntimes.has(key) &&
+			externalCwd &&
+			!isLiveRuntimeStatus(update.status) &&
+			this.attachedSessionClients.get(key)?.size
+		) {
+			setTimeout(() => {
+				this.refreshSessionSnapshot(
+					this.sessionClientIds.get(key) ?? "",
+					agentId,
+					sessionId,
+					externalCwd,
+					{},
+					{ emitSnapshot: true },
+				);
+			}, 0);
+		}
+	}
+
+	private broadcastRuntimeState(
+		agentId: AgentId,
+		sessionId: string,
+		state: AiSessionRuntimeState,
+		message?: string,
+	) {
+		const revision = this.nextSessionRevision(agentId, sessionId);
+		const event: AiEvent = {
+			type: "session.status",
+			properties: { sessionId, message },
+			state,
+			revision,
+		};
+		const targets = new Set<string>(this.knownClients);
+		const attached = this.attachedSessionClients.get(
+			this.sessionKey(agentId, sessionId),
+		);
+		if (attached) for (const id of attached) targets.add(id);
+		for (const subscriber of this.subscribers) {
+			for (const clientId of targets) {
+				subscriber(clientId, agentId, event);
+			}
+		}
+	}
+
+	/**
+	 * Resolves which agent executables are installed, in one shell spawn.
+	 *
+	 * Every caller that needs availability for more than one descriptor should go
+	 * through this and pass the result down, rather than probing per descriptor:
+	 * a probe spawns a login shell (~170ms), so per-descriptor checks used to
+	 * serialize into seconds of blocked event loop on the first connection.
+	 */
+	/** Availability for a single descriptor, in the shape getManagedAgentInfo wants. */
+	private async resolveInstalledFor(
+		descriptor: AgentDescriptor,
+	): Promise<Map<string, boolean>> {
+		const found = await commandsExist([descriptor.agentExecutable]);
+
+		return new Map([
+			[
+				descriptor.id,
+				!descriptor.disabled && found.get(descriptor.agentExecutable) === true,
+			],
+		]);
+	}
+
+	private async resolveInstalled(): Promise<Map<string, boolean>> {
+		const executables = [...this.descriptors.values()].map(
+			(descriptor) => descriptor.agentExecutable,
+		);
+		const found = await commandsExist(executables);
+		return new Map(
+			[...this.descriptors.values()].map((descriptor) => [
+				descriptor.id,
+				!descriptor.disabled && found.get(descriptor.agentExecutable) === true,
+			]),
+		);
+	}
+
+	async listAgents() {
+		this.reloadDescriptors();
+		const installed = await this.resolveInstalled();
+		return [...this.descriptors.values()]
+			.filter(
+				(descriptor) =>
+					this.isAgentEnabled(descriptor.id) &&
+					installed.get(descriptor.id) === true,
+			)
+			.map((descriptor) => {
+				const info = this.getManagedAgentInfo(descriptor, installed);
+				// Last-known session config, so a draft chat (which has no session
+				// yet) can render real modes/models/slash commands instead of an
+				// empty toolbar. Advisory only — the live session overwrites it.
+				const cached = readCachedSessionConfig(descriptor.id, info.version);
+				return cached ? { ...info, sessionConfig: cached } : info;
+			});
+	}
+
+	async listManagedAgents() {
+		this.reloadDescriptors();
+		const installed = await this.resolveInstalled();
+		return [...this.descriptors.values()].map((descriptor) =>
+			this.getManagedAgentInfo(descriptor, installed),
+		);
+	}
+
+	async setAgentEnabled(agentId: AgentId, enabled: boolean) {
+		const descriptor = this.descriptors.get(agentId);
+		if (!descriptor) throw new AgentUnavailableError(agentId, "unknown agent");
+		const config = readAgentsConfig();
+		const disabled = new Set(config.disabled);
+		if (enabled) {
+			disabled.delete(agentId);
+		} else {
+			disabled.add(agentId);
+			this.destroyAgentRuntimes(agentId);
+		}
+		writeAgentsConfig({ ...config, disabled: [...disabled].sort() });
+		this.reloadDescriptors();
+		const updated = this.descriptors.get(agentId);
+		if (!updated) throw new AgentUnavailableError(agentId, "unknown agent");
+		return this.getManagedAgentInfo(
+			updated,
+			await this.resolveInstalledFor(updated),
+		);
+	}
+
+	async addCustomAgent(input: CustomAcpAgentInput) {
+		const config = readAgentsConfig();
+		const existingIds = new Set([
+			...Object.keys(BUILTIN_AGENT_DESCRIPTORS),
+			...config.custom.map((agent) => agent.id),
+		]);
+		const normalized = normalizeCustomAgentInput(input, existingIds);
+		writeAgentsConfig({
+			...config,
+			custom: [...config.custom, normalized],
+		});
+		this.reloadDescriptors();
+		const descriptor = this.descriptors.get(normalized.id);
+		if (!descriptor)
+			throw new AgentUnavailableError(normalized.id, "unknown agent");
+		return this.getManagedAgentInfo(
+			descriptor,
+			await this.resolveInstalledFor(descriptor),
+		);
+	}
+
+	async updateCustomAgent(input: CustomAcpAgentInput) {
+		const config = readAgentsConfig();
+		const currentIndex = config.custom.findIndex(
+			(agent) => agent.id === input.id,
+		);
+		if (currentIndex < 0) {
+			throw new Error("Only custom agents can be edited.");
+		}
+		const existingIds = new Set([
+			...Object.keys(BUILTIN_AGENT_DESCRIPTORS),
+			...config.custom
+				.filter((agent) => agent.id !== input.id)
+				.map((agent) => agent.id),
+		]);
+		const normalized = normalizeCustomAgentInput(input, existingIds, {
+			allowExistingId: input.id,
+		});
+		const custom = [...config.custom];
+		custom[currentIndex] = normalized;
+		writeAgentsConfig({ ...config, custom });
+		this.destroyAgentRuntimes(normalized.id);
+		this.reloadDescriptors();
+		const descriptor = this.descriptors.get(normalized.id);
+		if (!descriptor)
+			throw new AgentUnavailableError(normalized.id, "unknown agent");
+		return this.getManagedAgentInfo(
+			descriptor,
+			await this.resolveInstalledFor(descriptor),
+		);
+	}
+
+	removeCustomAgent(agentId: AgentId) {
+		const config = readAgentsConfig();
+		const custom = config.custom.filter((agent) => agent.id !== agentId);
+		if (custom.length === config.custom.length) {
+			throw new Error("Only custom agents can be removed.");
+		}
+		writeAgentsConfig({
+			disabled: config.disabled.filter((id) => id !== agentId),
+			custom,
+		});
+		this.destroyAgentRuntimes(agentId);
+		this.reloadDescriptors();
+	}
+
+	private reloadDescriptors() {
+		const config = readAgentsConfig();
+		this.disabledAgents = new Set(config.disabled);
+		// this.customAgentIds = new Set(config.custom.map((agent) => agent.id));
+		this.descriptors.clear();
+		for (const agent of Object.values(BUILTIN_AGENT_DESCRIPTORS)) {
+			this.descriptors.set(agent.id, {
+				...agent,
+				source: "builtin",
+			});
+		}
+		for (const agent of config.custom) {
+			this.descriptors.set(agent.id, toCustomDescriptor(agent));
+		}
+	}
+
+	private isAgentEnabled(agentId: string) {
+		const descriptor = this.descriptors.get(agentId);
+		return Boolean(
+			descriptor && !descriptor.disabled && !this.disabledAgents.has(agentId),
+		);
+	}
+
+	private getManagedAgentInfo(
+		descriptor: AgentDescriptor,
+		// Availability resolved once by the caller (see resolveInstalled), so this
+		// stays synchronous instead of spawning a login shell per descriptor.
+		installedByAgent: Map<string, boolean>,
+	): ManagedAcpAgentInfo {
+		const runtime = this.agents.get(descriptor.id);
+		const runtimeInfo = runtime?.getInfo();
+		const installed = installedByAgent.get(descriptor.id) === true;
+		const enabled = this.isAgentEnabled(descriptor.id);
+		const state = installed
+			? (runtimeInfo?.state ?? "exited")
+			: ("unavailable" as const);
+		return {
+			...runtimeInfo,
+			id: descriptor.id,
+			backend: descriptor.id,
+			name: descriptor.name,
+			title: descriptor.title,
+			version: runtimeInfo?.version ?? descriptor.version,
+			description: descriptor.description,
+			note: descriptor.note,
+			icon: descriptor.icon,
+			source: descriptor.source ?? "builtin",
+			state,
+			enabled,
+			installed,
+			available:
+				enabled && installed && state !== "unavailable" && state !== "failed",
+			installationCommands: descriptor.installationCommands,
+			custom:
+				descriptor.source === "custom"
+					? {
+							id: descriptor.id,
+							name: descriptor.name,
+							title: descriptor.title,
+							description: descriptor.description,
+							icon: descriptor.icon,
+							command: descriptor.spawn.command,
+							args: descriptor.spawn.args,
+							env: descriptor.spawn.env,
+							cwd: descriptor.spawn.cwd,
+						}
+					: undefined,
+			adapter: {
+				command: [descriptor.spawn.command, ...descriptor.spawn.args].join(" "),
+				available: installed,
+			},
+		};
+	}
+
+	private destroyAgentRuntimes(agentId: string) {
+		const shared = this.agents.get(agentId);
+		shared?.destroy();
+		this.agents.delete(agentId);
+		for (const [key, agent] of this.sessionRuntimes.entries()) {
+			const [backend] = this.parseSessionKey(key);
+			if (backend !== agentId) continue;
+			agent.destroy();
+			this.sessionRuntimes.delete(key);
+			this.sessionRuntimeCleanupTimers.delete(key);
+		}
+	}
+
+	listActivities(agentId?: AgentId) {
+		const now = Date.now();
+		return [...this.sessionRuntimeStates.values()]
+			.filter((activity) => !agentId || activity.agentId === agentId)
+			.filter((activity) => this.isAgentEnabled(activity.agentId))
+			.filter(
+				(activity) =>
+					isLiveRuntimeStatus(activity.status) ||
+					// Persistent (e.g. externally-observed) states stay until the user
+					// dismisses them, so a session that finished while they were away
+					// is still shown when they open the app.
+					activity.persistent ||
+					now - activity.updatedAt <= RECENT_SESSION_ACTIVITY_MS,
+			)
+			.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	dismissActivity(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		this.dismissedSessions.add(key);
+		this.sessionRuntimeStates.delete(key);
+		this.externalSessions.delete(key);
+	}
+
+	notifyClient(clientId: string) {
+		if (clientId) this.knownClients.add(clientId);
+		for (const [agentId, agent] of this.agents.entries()) {
+			this.registerPermissionListener(agentId, clientId, agent);
+			agent.requestPendingPermissions(clientId);
+		}
+		for (const [key, agent] of this.sessionRuntimes.entries()) {
+			const [agentId] = this.parseSessionKey(key);
+			if (!agentId) continue;
+			this.registerPermissionListener(agentId, clientId, agent);
+			agent.requestPendingPermissions(clientId);
+		}
+	}
+
+	async connectAgent(clientId: string, agentId: AgentId) {
+		const descriptor = this.descriptors.get(agentId);
+		if (!descriptor) {
+			throw new AgentUnavailableError(agentId, "unknown agent");
+		}
+		if (!this.isAgentEnabled(agentId)) {
+			throw new AgentUnavailableError(agentId, "agent is disabled");
+		}
+
+		let agent = this.agents.get(agentId);
+		if (agent && !agent.canReuse()) {
+			this.agents.delete(agentId);
+			agent = undefined;
+		}
+		if (!agent) {
+			agent = this.createManagedRuntime(agentId);
+			this.agents.set(agentId, agent);
+		}
+
+		this.registerPermissionListener(agentId, clientId, agent);
+		await agent.init();
+		return agent;
+	}
+
+	private async connectSessionAgent(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		if (!this.isAgentEnabled(agentId)) {
+			throw new AgentUnavailableError(agentId, "agent is disabled");
+		}
+		let agent = this.sessionRuntimes.get(key);
+		if (agent && !agent.canReuse()) {
+			this.sessionRuntimes.delete(key);
+			agent = undefined;
+		}
+		if (!agent) {
+			agent = this.createManagedRuntime(agentId);
+			this.sessionRuntimes.set(key, agent);
+		}
+		this.cancelSessionRuntimeCleanup(agentId, sessionId);
+		this.registerPermissionListener(agentId, clientId, agent);
+		await agent.init();
+		return agent;
+	}
+
+	async listSessions(
+		clientId: string,
+		agentId: AgentId,
+		cwd?: string,
+		cursor?: string,
+	): Promise<{ sessions: AiSession[]; nextCursor?: string }> {
+		const agent = await this.connectAgent(clientId, agentId);
+		const result = await agent.listAiSessionsPage(cwd, cursor);
+		for (const session of result.sessions) {
+			this.rememberSessionRuntimeMetadata(agentId, session);
+		}
+		return result;
+	}
+
+	async createSession(
+		clientId: string,
+		agentId: AgentId,
+		cwd: string,
+		options: Parameters<ACP["createSession"]>[1] = {},
+		draftConfigOptions?: AiSessionConfigOption[],
+	) {
+		if (!this.isAgentEnabled(agentId)) {
+			throw new AgentUnavailableError(agentId, "agent is disabled");
+		}
+		const agent = this.createManagedRuntime(agentId);
+		this.registerPermissionListener(agentId, clientId, agent);
+		await agent.init();
+		// This is the same config the draft UI rendered before `session/new`.
+		// Capture it before the new agent response has a chance to replace the
+		// agent-wide cache with its own defaults.
+		const cachedConfig = readCachedSessionConfig(
+			agentId,
+			agent.getInfo().version,
+		);
+		const desiredConfigOptions =
+			draftConfigOptions ?? cachedConfig?.configOptions ?? [];
+		let result = await agent.createSession(cwd, options);
+		const sessionId = result.session.id ?? result.response.sessionId;
+		this.sessionRuntimes.set(this.sessionKey(agentId, sessionId), agent);
+		this.sessionAgents.set(sessionId, agentId);
+		let configOptions = result.response.configOptions;
+		logger.debug(
+			`New ${agentId} session ${sessionId}: ACP defaults ${JSON.stringify(configOptions)}`,
+		);
+		if (desiredConfigOptions.length && configOptions?.length) {
+			for (const desiredOption of desiredConfigOptions) {
+				const liveOption = configOptions.find(
+					(option) => option.id === desiredOption.id,
+				);
+				if (
+					!liveOption ||
+					liveOption.currentValue === undefined ||
+					desiredOption.currentValue === undefined ||
+					liveOption.currentValue === desiredOption.currentValue
+				) {
+					continue;
+				}
+				try {
+					const updated = await agent.setSessionConfigOption({
+						sessionId,
+						configId: desiredOption.id,
+						...(typeof desiredOption.currentValue === "boolean"
+							? { type: "boolean" as const, value: desiredOption.currentValue }
+							: { value: desiredOption.currentValue }),
+					});
+					configOptions = updated.configOptions;
+					logger.debug(
+						`New ${agentId} session ${sessionId}: applied desired ${desiredOption.id}=${JSON.stringify(desiredOption.currentValue)} -> ${JSON.stringify(configOptions)}`,
+					);
+				} catch (err) {
+					logger.warn(
+						`Failed to apply desired config ${desiredOption.id} to new ${agentId} session ${sessionId}:`,
+						err,
+					);
+				}
+			}
+			result = {
+				...result,
+				response: { ...result.response, configOptions },
+				session: {
+					...result.session,
+					configOptions,
+				},
+			};
+		}
+		// Commands are deliberately not cached here. `result.availableCommands`
+		// reads the connection's per-session tracking map, which is keyed by a
+		// session id created moments ago and populated only by an incoming
+		// `available_commands_update` — so for a brand-new session it is always
+		// empty. The real list is cached when that notification arrives (see
+		// `cacheSessionConfigFromUpdate`).
+		writeCachedSessionConfig(agentId, {
+			configOptions: result.response.configOptions,
+			modes: result.response.modes,
+			version: agent.getInfo().version,
+		});
+		return result;
+	}
+
+	async attachSession(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		cwd: string,
+		options: Partial<
+			Omit<Parameters<ACP["loadSession"]>[0], "sessionId" | "cwd">
+		> = {},
+		window?: MessageWindow,
+	) {
+		const startedAt = Date.now();
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		this.attachSessionClient(agentId, sessionId, clientId);
+		this.rememberSessionClient(agentId, sessionId, clientId);
+		const key = this.sessionKey(agentId, sessionId);
+		// A client that asks for any bounded window is a paging client: snapshot
+		// pushes may be tail-sized for it. An explicit range counts too — it has
+		// told us it can fetch more.
+		if (window?.tail || isRangeWindow(window)) {
+			let paging = this.pagingClients.get(key);
+			if (!paging) {
+				paging = new Set();
+				this.pagingClients.set(key, paging);
+			}
+			paging.add(clientId);
+		}
+		const loadParams = {
+			...options,
+			sessionId,
+			cwd,
+			mcpServers: options.mcpServers ?? [],
+		};
+		const cached = this.sessionSnapshots.get(key);
+		if (cached && !agent.hasActivePrompt()) {
+			if (!agent.getSession(sessionId) || this.staleSessions.has(key)) {
+				setTimeout(() => {
+					this.refreshSessionSnapshot(
+						clientId,
+						agentId,
+						sessionId,
+						cwd,
+						options,
+						{
+							emitSnapshot: true,
+						},
+					);
+				}, 0);
+			}
+			const result = this.toAttachResult(
+				agentId,
+				sessionId,
+				cached,
+				window,
+				!agent.getSession(sessionId),
+			);
+			logger.debug(
+				`AI attach warm-hit ${key}: ${result.messages.length}/${result.totalCount} messages in ${Date.now() - startedAt}ms`,
+			);
+			return result;
+		}
+		const result = agent.snapshotSession(loadParams, clientId);
+		let coldReplay: Promise<void> | undefined;
+		if (!agent.hasActivePrompt()) {
+			// Kept synchronous (rather than the previous setTimeout) so the task
+			// handle exists before the cold-start branch below decides whether to
+			// wait on it.
+			coldReplay = this.refreshSessionSnapshot(
+				clientId,
+				agentId,
+				sessionId,
+				cwd,
+				options,
+				{
+					emitSnapshot: true,
+				},
+			);
+		}
+
+		// True cold start (no live transcript): hydrate from the durable store so
+		// the app renders the last-known tail instantly while the replay runs in
+		// the background. The store may be stale; the reconcile that follows
+		// wholesale-replaces it and pushes a fresh session.snapshot.
+		if (result.messages.length === 0) {
+			const meta = this.transcriptStore.getSessionMeta(agentId, sessionId);
+			// The store hydrates a tail regardless of the requested form: an
+			// explicit range is still bounded by what was persisted, and
+			// `toAttachResult` re-slices this snapshot to the actual window below.
+			const page = meta
+				? this.transcriptStore.getTail(
+						agentId,
+						sessionId,
+						window?.tail ?? SNAPSHOT_TAIL,
+					)
+				: null;
+			if (meta && page) {
+				this.sessionGenerations.set(key, page.generation);
+				const snapshot = this.setSessionSnapshot(agentId, sessionId, {
+					backend: agentId,
+					session: meta.session,
+					state: meta.state,
+					runtimeState: this.rememberSessionRuntimeMetadata(
+						agentId,
+						meta.session,
+					),
+					messages: page.messages,
+					// Undefined only for an empty page, where the base is moot.
+					baseIdx: page.from ?? 0,
+					totalCount: page.totalCount,
+					generation: page.generation,
+					revision: this.getSessionRevision(agentId, sessionId),
+					syncing: true,
+				});
+				const attachResult = this.toAttachResult(
+					agentId,
+					sessionId,
+					snapshot,
+					window,
+					true,
+				);
+				logger.debug(
+					`AI attach store-hydrate ${key}: ${attachResult.messages.length}/${attachResult.totalCount} messages in ${Date.now() - startedAt}ms`,
+				);
+				return attachResult;
+			}
+
+			// Nothing live and nothing stored: replying now means replying empty,
+			// and the transcript then costs a whole second delivery (another relay
+			// round trip plus a full re-send). Give the in-flight replay a short
+			// window to land so it can ride back in this reply instead. Bounded
+			// because a replay can take tens of seconds, which must never block the
+			// reply — past the deadline this falls through to the empty result and
+			// the background push delivers as before.
+			if (coldReplay) {
+				// Registered before awaiting: the replay's continuation may run the
+				// moment we yield, and it checks this to decide whether to push.
+				this.coldReplayClaims.add(key);
+				const settled = await Promise.race([
+					coldReplay.then(() => true),
+					new Promise<false>((resolve) =>
+						setTimeout(() => resolve(false), COLD_ATTACH_REPLAY_WAIT_MS),
+					),
+				]);
+				const replayed = settled ? this.sessionSnapshots.get(key) : undefined;
+				if (!replayed || replayed.messages.length === 0) {
+					// Timed out, or the replay produced nothing worth returning: hand
+					// delivery back to the background push.
+					this.coldReplayClaims.delete(key);
+				}
+				if (replayed && replayed.messages.length > 0) {
+					const attachResult = this.toAttachResult(
+						agentId,
+						sessionId,
+						replayed,
+						window,
+						false,
+					);
+					logger.debug(
+						`AI attach cold-replay ${key}: ${attachResult.messages.length}/${attachResult.totalCount} messages in ${Date.now() - startedAt}ms`,
+					);
+					return attachResult;
+				}
+			}
+		}
+
+		const session = agent.getSession(sessionId) ?? {
+			id: sessionId,
+			createdAt: Date.now(),
+			updatedAt: Date.now(),
+			workspacePath: cwd,
+			configOptions: result.response.configOptions ?? undefined,
+		};
+		const runtimeState = this.rememberSessionRuntimeMetadata(agentId, session);
+		const loadedCommands = latestAvailableCommands(
+			result.updates,
+			agent.getAvailableCommands(sessionId),
+		);
+		// Unlike session/new, commands are real here: session/load replays the
+		// session's notifications before its response resolves, so `result.updates`
+		// genuinely carries an `available_commands_update` for this session.
+		writeCachedSessionConfig(agentId, {
+			configOptions: result.response.configOptions,
+			availableCommands: loadedCommands,
+			modes: result.response.modes,
+			version: agent.getInfo().version,
+		});
+		const snapshot = this.setSessionSnapshot(agentId, sessionId, {
+			backend: agentId,
+			session,
+			state: {
+				configOptions: result.response.configOptions ?? undefined,
+				modes: result.response.modes,
+				availableCommands: loadedCommands,
+			},
+			runtimeState,
+			messages: result.messages,
+			baseIdx: 0,
+			totalCount: result.messages.length,
+			generation: this.sessionGenerations.get(key) ?? 0,
+			revision: this.getSessionRevision(agentId, sessionId),
+			syncing: !agent.hasActivePrompt(),
+		});
+		logger.debug(
+			`AI attach cold-miss ${key}: ${snapshot.messages.length} messages in ${Date.now() - startedAt}ms`,
+		);
+		return this.toAttachResult(
+			agentId,
+			sessionId,
+			snapshot,
+			window,
+			snapshot.syncing,
+		);
+	}
+
+	/**
+	 * Shape a snapshot into the exact AI_SESSION_ATTACH_RESULT payload. The one
+	 * place internal snapshot fields are allowed to cross the wire boundary —
+	 * never `baseIdx`, and never the removed `updates`. With `tail`, only the
+	 * newest N messages ship plus paging info for scroll-back.
+	 */
+	private toAttachResult(
+		agentId: AgentId,
+		sessionId: string,
+		snapshot: AttachedSessionSnapshot,
+		window?: MessageWindow,
+		syncing?: boolean,
+	) {
+		const { messages, from, to } = sliceWindow(
+			snapshot.messages,
+			snapshot.baseIdx,
+			window,
+		);
+		return {
+			backend: snapshot.backend,
+			session: snapshot.session,
+			state: snapshot.state,
+			runtimeState:
+				this.getSessionRuntimeState(agentId, sessionId) ??
+				snapshot.runtimeState,
+			messages,
+			revision: this.getSessionRevision(agentId, sessionId),
+			syncing: syncing ?? snapshot.syncing,
+			totalCount: snapshot.totalCount,
+			hasMoreBefore: from !== undefined && from > 0,
+			from,
+			to,
+			generation: snapshot.generation,
+		};
+	}
+
+	/**
+	 * Serve a backward page of transcript history for scroll-back. Reads memory
+	 * when the range is resident, else the durable store. Never spawns an agent
+	 * runtime — a page read must stay a read.
+	 */
+	getMessagesPage(
+		agentId: AgentId,
+		sessionId: string,
+		to: number,
+		limit: number,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		const snapshot = this.sessionSnapshots.get(key);
+		const from = Math.max(0, to - limit);
+		if (
+			snapshot &&
+			from >= snapshot.baseIdx &&
+			to <= snapshot.baseIdx + snapshot.messages.length
+		) {
+			const messages = snapshot.messages.slice(
+				from - snapshot.baseIdx,
+				to - snapshot.baseIdx,
+			);
+			// A zero-width or empty slice has no position: omit the bounds so
+			// `from`/`to` always index real messages.
+			return {
+				backend: agentId,
+				sessionId,
+				messages,
+				from: messages.length > 0 ? from : undefined,
+				to: messages.length > 0 ? to : undefined,
+				totalCount: snapshot.totalCount,
+				hasMoreBefore: messages.length > 0 && from > 0,
+				generation: snapshot.generation,
+			};
+		}
+		const page = this.transcriptStore.getPage(agentId, sessionId, to, limit);
+		if (!page || page.messages.length === 0) {
+			// Nothing stored before `to`. The window is empty, so it has no
+			// bounds; `hasMoreBefore: false` is the only thing telling the client
+			// to stop — it cannot be derived from an absent `from`.
+			return {
+				backend: agentId,
+				sessionId,
+				messages: [] as AcpMessage[],
+				totalCount: snapshot?.totalCount ?? page?.totalCount ?? 0,
+				hasMoreBefore: false,
+				generation: snapshot?.generation ?? page?.generation ?? 0,
+			};
+		}
+		return {
+			backend: agentId,
+			sessionId,
+			messages: page.messages,
+			from: page.from,
+			to: page.to,
+			totalCount: page.totalCount,
+			hasMoreBefore: (page.from ?? 0) > 0,
+			generation: page.generation,
+		};
+	}
+
+	private nextSessionGeneration(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		const current =
+			this.sessionGenerations.get(key) ??
+			this.transcriptStore.getSessionMeta(agentId, sessionId)?.generation ??
+			0;
+		const next = current + 1;
+		this.sessionGenerations.set(key, next);
+		return next;
+	}
+
+	detachSession(clientId: string, agentId: AgentId, sessionId: string) {
+		this.detachSessionClient(agentId, sessionId, clientId);
+		this.scheduleSessionRuntimeCleanup(agentId, sessionId);
+	}
+
+	async resumeSession(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		cwd: string,
+		options: Partial<
+			Omit<Parameters<ACP["resumeSession"]>[0], "sessionId" | "cwd">
+		> = {},
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		this.rememberSessionClient(agentId, sessionId, clientId);
+		return agent.resumeSession({
+			...options,
+			sessionId,
+			cwd,
+			mcpServers: options.mcpServers ?? [],
+		});
+	}
+
+	async forkSession(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		cwd: string,
+		options: Partial<
+			Omit<Parameters<ACP["forkSession"]>[0], "sessionId" | "cwd">
+		> = {},
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		const result = await agent.forkSession({
+			...options,
+			sessionId,
+			cwd,
+			mcpServers: options.mcpServers ?? [],
+		});
+		if (result.session.id) this.sessionAgents.set(result.session.id, agentId);
+		return result;
+	}
+
+	async closeSession(clientId: string, agentId: AgentId, sessionId: string) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		const response = await agent.closeSession({ sessionId });
+		this.sessionAgents.delete(sessionId);
+		this.attachedSessionClients.delete(this.sessionKey(agentId, sessionId));
+		this.sessionRevisions.delete(this.sessionKey(agentId, sessionId));
+		this.sessionLoadTasks.delete(this.sessionKey(agentId, sessionId));
+		this.destroySessionRuntime(agentId, sessionId);
+		return response;
+	}
+
+	async prompt(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		content: string | unknown[],
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		this.attachSessionClient(agentId, sessionId, clientId);
+		this.rememberSessionClient(agentId, sessionId, clientId);
+		this.setSessionRuntimeState(agentId, sessionId, {
+			status: "running",
+			message: "Working",
+		});
+		this.emit(clientId, agentId, {
+			type: "session.status",
+			properties: {
+				sessionId,
+				message: "Working",
+			},
+		});
+		if (!agent.getSession(sessionId)) {
+			await this.ensureSessionRuntimeLoaded(clientId, agentId, sessionId);
+		}
+		// ACP agents may restore a session with their default config even though
+		// Shellular previously selected a different value for this session. Do not
+		// mutate ACP while loading/attaching; reconcile the persisted desired value
+		// lazily at the first subsequent prompt instead.
+		await this.applyPersistedSessionConfig(clientId, agentId, sessionId, agent);
+		// Captured before the turn starts: live message events upsert into the
+		// snapshot as they stream, so by resolve time its length already includes
+		// the turn. The pre-turn length anchors the durable tail write below.
+		const promptKey = this.sessionKey(agentId, sessionId);
+		const preTurnSnapshot = this.sessionSnapshots.get(promptKey);
+		const preTurnLength = preTurnSnapshot?.messages.length ?? 0;
+		const preTurnComplete = (preTurnSnapshot?.baseIdx ?? 0) === 0;
+		const prompt = normalizePromptContent(content);
+		const coalescer = this.createMessageEventCoalescer(
+			clientId,
+			agent.descriptor.id,
+		);
+		let result: Awaited<ReturnType<ACP["prompt"]>>;
+		try {
+			result = await agent.prompt(
+				{
+					sessionId,
+					prompt,
+				},
+				{
+					onEvent: (event) => coalescer.push(event),
+				},
+				clientId,
+			);
+		} finally {
+			coalescer.dispose();
+			// Mark the turn even if it failed or was cancelled: the transcript
+			// still advanced, so any replay started before now is stale.
+			this.sessionTurnCounts.set(
+				promptKey,
+				(this.sessionTurnCounts.get(promptKey) ?? 0) + 1,
+			);
+		}
+		const snapshot = this.sessionSnapshots.get(promptKey);
+		// The ACP response and streamed session/update notifications can cross at
+		// the SDK boundary. Every streamed message event has already upserted the
+		// latest message into this snapshot, so never replace a richer live view
+		// with a shorter prompt result; doing so makes the answer disappear until
+		// the next ACP replay (for example after restarting the CLI).
+		const messages =
+			snapshot && snapshot.messages.length >= result.messages.length
+				? snapshot.messages
+				: result.messages;
+		if (snapshot) {
+			this.sessionSnapshots.set(promptKey, {
+				...snapshot,
+				messages,
+				baseIdx: 0,
+				totalCount: messages.length,
+				revision: this.getSessionRevision(agentId, sessionId),
+			});
+		}
+		// Durable turn-boundary commit, from the live transcript rather than a
+		// reload — the in-memory turn is always the freshest view. This runs even
+		// without a snapshot (a session prompted without an attached client, e.g.
+		// from the scheduler); otherwise those turns would never be persisted.
+		// From the pre-turn anchor (minus one: the last pre-turn message may have
+		// been mutated by the turn) so only the turn's rows are rewritten, and
+		// generation stays untouched so paging clients aren't invalidated by
+		// normal chatting. A tail-only pre-turn snapshot has no trustworthy
+		// anchor — rewrite from zero instead.
+		const session = snapshot?.session ?? agent.getSession(sessionId);
+		if (session) {
+			this.transcriptStore.writeFrom(
+				agentId,
+				sessionId,
+				snapshot && preTurnComplete ? Math.max(0, preTurnLength - 1) : 0,
+				messages,
+				{
+					session,
+					state: snapshot?.state ?? {},
+					generation: snapshot?.generation,
+				},
+			);
+		}
+		return { ...result, messages };
+	}
+
+	private enqueuePrompt(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		content: string | unknown[],
+	) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		const prompt = normalizePromptContent(content);
+		const now = Date.now();
+		const item: QueuedPrompt = {
+			id: `prompt_queue_${now.toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+			clientId,
+			agentId,
+			sessionId,
+			text: promptContentText(prompt),
+			content: prompt,
+			createdAt: now,
+			updatedAt: now,
+		};
+		queue.items.push(item);
+		this.emitPromptQueueUpdate(clientId, agentId, sessionId);
+		void this.drainPromptQueue(clientId, agentId, sessionId);
+		return item;
+	}
+
+	private updateQueuedPrompt(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		queueId: string,
+		text: string,
+		content: unknown[],
+	) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		const item = queue.items.find((entry) => entry.id === queueId);
+		if (!item) throw new Error("Queued prompt is no longer pending");
+		const prompt = normalizePromptContent(content.length ? content : text);
+		item.text = promptContentText(prompt);
+		item.content = prompt;
+		item.updatedAt = Date.now();
+		this.emitPromptQueueUpdate(clientId, agentId, sessionId);
+		return queue;
+	}
+
+	private removeQueuedPrompt(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		queueId: string,
+	) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		const nextItems = queue.items.filter((entry) => entry.id !== queueId);
+		if (nextItems.length === queue.items.length) {
+			throw new Error("Queued prompt is no longer pending");
+		}
+		queue.items = nextItems;
+		this.emitPromptQueueUpdate(clientId, agentId, sessionId);
+		return queue;
+	}
+
+	private async drainPromptQueue(
+		fallbackClientId: string,
+		agentId: AgentId,
+		sessionId: string,
+	) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		if (queue.running) return;
+		queue.running = true;
+		this.emitPromptQueueUpdate(fallbackClientId, agentId, sessionId);
+		try {
+			if (queue.paused) return;
+			while (queue.items.length > 0) {
+				if (queue.paused) break;
+				const item = queue.items.shift();
+				if (!item) break;
+				this.emitPromptQueueUpdate(item.clientId, agentId, sessionId);
+				this.emitQueuedUserMessage(item);
+				try {
+					await this.prompt(item.clientId, agentId, sessionId, item.content);
+				} catch (err) {
+					const owner = sessionOwnerFromError(err);
+					if (owner) {
+						this.sessionOwners.set(this.sessionKey(agentId, sessionId), owner);
+					}
+					logger.error(
+						`Agent prompt failed for ${agentId} session ${sessionId} (client ${item.clientId}): ${getErrorMessage(err)}`,
+						err,
+					);
+					this.emit(item.clientId, agentId, {
+						type: "error",
+						properties: {
+							sessionId,
+							error: getErrorMessage(err),
+							...errorEventProperties(err),
+						},
+					});
+				}
+			}
+		} finally {
+			queue.running = false;
+			this.emitPromptQueueUpdate(fallbackClientId, agentId, sessionId);
+			if (queue.items.length === 0) {
+				this.promptQueues.delete(this.sessionKey(agentId, sessionId));
+			}
+		}
+	}
+
+	private getPromptQueue(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		let queue = this.promptQueues.get(key);
+		if (!queue) {
+			queue = { running: false, paused: false, items: [] };
+			this.promptQueues.set(key, queue);
+		}
+		return queue;
+	}
+
+	private promptQueueAckData(agentId: AgentId, sessionId: string) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		return {
+			backend: agentId,
+			sessionId,
+			queue: queue.items.map((item) => this.toPromptQueueItem(item)),
+			running: queue.running,
+		};
+	}
+
+	private toPromptQueueItem(item: QueuedPrompt): AiPromptQueueItem {
+		return {
+			id: item.id,
+			backend: item.agentId,
+			sessionId: item.sessionId,
+			text: item.text,
+			content: item.content,
+			createdAt: item.createdAt,
+			updatedAt: item.updatedAt,
+		};
+	}
+
+	private emitPromptQueueUpdate(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+	) {
+		this.emit(clientId, agentId, {
+			type: "prompt_queue.updated",
+			properties: this.promptQueueAckData(agentId, sessionId),
+		});
+	}
+
+	private setPromptQueuePaused(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		paused: boolean,
+	) {
+		const queue = this.getPromptQueue(agentId, sessionId);
+		queue.paused = paused;
+		this.emitPromptQueueUpdate(clientId, agentId, sessionId);
+		if (!paused) void this.drainPromptQueue(clientId, agentId, sessionId);
+		return queue;
+	}
+
+	private emitQueuedUserMessage(item: QueuedPrompt) {
+		this.emit(item.clientId, item.agentId, {
+			type: "message",
+			properties: {
+				sessionId: item.sessionId,
+				message: {
+					id: item.id,
+					requestId: item.id,
+					role: "user",
+					parts: promptContentToMessageParts(item.content),
+					timestamp: Date.now(),
+				},
+			},
+		});
+	}
+
+	private async applyPersistedSessionConfig(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		agent: ACP,
+	) {
+		const desired = this.transcriptStore.getSessionMeta(agentId, sessionId)
+			?.state.configOptions;
+		const live = agent.getSession(sessionId)?.configOptions;
+		if (!desired?.length || !live?.length) return;
+
+		for (const desiredOption of desired) {
+			const liveOption = live.find((option) => option.id === desiredOption.id);
+			// An omitted current value means the agent did not give us a value to
+			// compare against; leave it alone rather than blindly setting it.
+			if (
+				!liveOption ||
+				liveOption.currentValue === undefined ||
+				desiredOption.currentValue === undefined ||
+				liveOption.currentValue === desiredOption.currentValue
+			) {
+				continue;
+			}
+			try {
+				await this.setSessionConfigOption(
+					clientId,
+					agentId,
+					sessionId,
+					desiredOption.id,
+					desiredOption.currentValue,
+				);
+			} catch (err) {
+				logger.warn(
+					`Failed to lazily restore config ${desiredOption.id} for ${agentId}:${sessionId}:`,
+					err,
+				);
+			}
+		}
+	}
+
+	/**
+	 * Pace full-payload `message` events during a prompt turn. Leading edge
+	 * emits immediately (the bubble must appear at once); afterwards the latest
+	 * event for the same message is held and flushed on a trailing timer. Any
+	 * other event type flushes first so relative ordering is preserved. Only
+	 * one message evolves at a time, so a single pending slot suffices — a
+	 * different message id flushes the previous one.
+	 */
+	private createMessageEventCoalescer(clientId: string, agentId: AgentId) {
+		let pending: AiEvent | null = null;
+		let pendingClientId = clientId;
+		let timer: ReturnType<typeof setTimeout> | null = null;
+		let lastEmitAt = 0;
+		let lastMessageId: unknown;
+
+		const emitPending = () => {
+			if (timer) {
+				clearTimeout(timer);
+				timer = null;
+			}
+			if (!pending) return;
+			const event = pending;
+			pending = null;
+			lastEmitAt = Date.now();
+			this.emit(pendingClientId, agentId, event);
+		};
+
+		return {
+			push: (event: AiEvent) => {
+				const targetClientId = eventClientId(event, clientId);
+				if (event.type !== "message") {
+					emitPending();
+					this.emit(targetClientId, agentId, event);
+					return;
+				}
+				const messageId = event.properties.id;
+				if (messageId !== lastMessageId) {
+					emitPending();
+					lastMessageId = messageId;
+					lastEmitAt = 0;
+				}
+				pending = event;
+				pendingClientId = targetClientId;
+				const elapsed = Date.now() - lastEmitAt;
+				if (elapsed >= STREAM_MESSAGE_COALESCE_MS) {
+					emitPending();
+				} else if (!timer) {
+					timer = setTimeout(emitPending, STREAM_MESSAGE_COALESCE_MS - elapsed);
+				}
+			},
+			dispose: () => {
+				emitPending();
+			},
+		};
+	}
+
+	private async ensureSessionRuntimeLoaded(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		const existingLoad = this.sessionLoadTasks.get(key);
+		if (existingLoad) {
+			await existingLoad;
+			return;
+		}
+		const snapshot = this.sessionSnapshots.get(key);
+		if (!snapshot?.session.workspacePath) return;
+		this.refreshSessionSnapshot(
+			clientId,
+			agentId,
+			sessionId,
+			snapshot.session.workspacePath,
+			{},
+			{ emitSnapshot: true },
+		);
+		const load = this.sessionLoadTasks.get(key);
+		if (load) await load;
+	}
+
+	async cancel(clientId: string, agentId: AgentId, sessionId: string) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		this.setSessionRuntimeState(agentId, sessionId, {
+			status: "stopping",
+			message: "Stopping",
+		});
+		this.emit(clientId, agentId, {
+			type: "session.status",
+			properties: {
+				sessionId,
+				message: "Stopping",
+			},
+		});
+		const result = await agent.interrupt({ sessionId });
+		this.setSessionRuntimeState(agentId, sessionId, {
+			status: "stopped",
+			message: "Stopped",
+		});
+		this.emit(clientId, agentId, {
+			type: "session.status",
+			properties: {
+				sessionId,
+				message: "Stopped",
+			},
+		});
+		this.scheduleSessionRuntimeCleanup(agentId, sessionId);
+		return result;
+	}
+
+	async replyPermission(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		permissionId: string,
+		optionId: string | undefined,
+	) {
+		if (!optionId) {
+			throw new Error("ACP permission reply requires an optionId");
+		}
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		return agent.replyPermission(permissionId, optionId);
+	}
+
+	async replyElicitation(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		elicitationId: string,
+		action: "accept" | "decline" | "cancel",
+		content?: Record<string, unknown>,
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		const response =
+			action === "accept" ? { action, content: content ?? {} } : { action };
+		const result = agent.replyElicitation(
+			elicitationId,
+			response as Parameters<ACP["replyElicitation"]>[1],
+		);
+		// Tell every viewing client the card is resolved (including the sender's
+		// other devices), mirroring how permission resolution propagates.
+		this.emit(clientId, agentId, {
+			type: "elicitation.updated",
+			properties: {
+				id: elicitationId,
+				sessionId,
+				resolved: true,
+			},
+		});
+		return result;
+	}
+
+	async setSessionConfigOption(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		configId: string,
+		value: string | boolean,
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		const response = await agent.setSessionConfigOption({
+			sessionId,
+			configId,
+			...(typeof value === "boolean" ? { type: "boolean", value } : { value }),
+		});
+		// The updated list comes back on this response rather than as a
+		// session/update, so it would otherwise bypass the notification-based
+		// caching entirely — leaving a draft chat showing the option list from
+		// before the user changed their model.
+		writeCachedSessionConfig(agentId, {
+			configOptions: response.configOptions,
+			version: agent.getInfo().version,
+		});
+		// `attachSession()` can serve a warm in-memory snapshot without calling
+		// ACP session/load again. Keep that snapshot in sync with the live ACP
+		// response, otherwise leaving and reopening a chat restores the option
+		// value from before this change even though the agent and SQLite cache have
+		// already accepted the new value.
+		const key = this.sessionKey(agentId, sessionId);
+		const snapshot = this.sessionSnapshots.get(key);
+		if (snapshot) {
+			this.sessionSnapshots.set(key, {
+				...snapshot,
+				state: {
+					...snapshot.state,
+					configOptions: response.configOptions,
+				},
+				revision: this.getSessionRevision(agentId, sessionId),
+			});
+			this.transcriptStore.updateState(agentId, sessionId, {
+				...snapshot.state,
+				configOptions: response.configOptions,
+			});
+		}
+		return response;
+	}
+
+	async setSessionMode(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		modeId: string,
+	) {
+		const agent = await this.connectSessionAgent(clientId, agentId, sessionId);
+		const result = await agent.setSessionMode({ sessionId, modeId });
+		const key = this.sessionKey(agentId, sessionId);
+		const snapshot = this.sessionSnapshots.get(key);
+		if (snapshot) {
+			const modes =
+				snapshot.state.modes && typeof snapshot.state.modes === "object"
+					? snapshot.state.modes
+					: {};
+			this.sessionSnapshots.set(key, {
+				...snapshot,
+				state: {
+					...snapshot.state,
+					modes: { ...modes, currentModeId: modeId },
+				},
+				revision: this.getSessionRevision(agentId, sessionId),
+			});
+		}
+		return result;
+	}
+
+	destroy() {
+		this.sessionWatcher?.destroy();
+		this.sessionWatcher = undefined;
+		this.grokActiveSessionsWatcher?.destroy();
+		this.grokActiveSessionsWatcher = undefined;
+		this.notifyBridge?.destroy();
+		this.notifyBridge = undefined;
+		for (const agent of this.agents.values()) {
+			agent.destroy();
+		}
+		for (const agent of this.sessionRuntimes.values()) {
+			agent.destroy();
+		}
+		for (const timer of this.sessionRuntimeCleanupTimers.values()) {
+			clearTimeout(timer);
+		}
+		this.agents.clear();
+		this.sessionRuntimes.clear();
+		this.sessionRuntimeCleanupTimers.clear();
+		this.sessionAgents.clear();
+		this.sessionOwners.clear();
+		this.transcriptStore.close();
+	}
+
+	async getAvailableAgents(): Promise<AgentId[]> {
+		this.reloadDescriptors();
+		const installed = await this.resolveInstalled();
+		return [...this.descriptors.values()].flatMap((descriptor) =>
+			this.isAgentEnabled(descriptor.id) &&
+			installed.get(descriptor.id) === true
+				? [descriptor.id]
+				: [],
+		);
+	}
+
+	private subscribers = new Set<
+		(clientId: string, backend: AgentId, event: AiEvent) => void
+	>();
+	private sessionClientIds = new Map<string, string>();
+	private knownClients = new Set<string>();
+	private attachedSessionClients = new Map<string, Set<string>>();
+	private sessionRevisions = new Map<string, number>();
+	private sessionRuntimeStates = new Map<string, AiSessionRuntimeState>();
+	private permissionListenerCleanups = new Map<string, () => void>();
+
+	subscribe(
+		emitter: (clientId: string, backend: AgentId, event: AiEvent) => void,
+	): () => void {
+		this.subscribers.add(emitter);
+		return () => this.subscribers.delete(emitter);
+	}
+
+	handleConnection(conn: Connection) {
+		// This adapter keeps the current app protocol stable while the internals
+		// move to ACP. Future UI work can consume listAgents/connectAgent directly.
+		const unsubscribe = this.subscribe((clientId, backend, event) => {
+			if (!clientId) return;
+			if (typeof event.properties.sessionId !== "string") return;
+			conn.send({
+				clientId,
+				type: MsgType.AI_EVENT,
+				data: {
+					backend,
+					...event,
+					revision: event.revision,
+					state: "state" in event ? event.state : undefined,
+					properties: {
+						...event.properties,
+						sessionId: event.properties.sessionId,
+					},
+				},
+			});
+		});
+
+		conn.on(MsgType.AI_SESSION_LIST, async (msg) => {
+			try {
+				const backend = msg.data?.backend;
+				const workspace = (msg.data as { workspace?: string } | undefined)
+					?.workspace;
+				const cursor = (msg.data as { cursor?: string } | undefined)?.cursor;
+				const result = backend
+					? await this.listSessions(msg.clientId, backend, workspace, cursor)
+					: {
+							sessions: await this.listAllBuiltinSessions(
+								msg.clientId,
+								workspace,
+							),
+						};
+				conn.send({
+					type: MsgType.AI_SESSION_LIST_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: result,
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_LIST_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_AGENTS_LIST, async (msg) => {
+			const agents = await this.listAgents();
+			conn.send({
+				type: MsgType.AI_AGENTS_LIST_RESULT,
+				clientId: msg.clientId,
+				respTo: msg.id,
+				data: { agents },
+			});
+		});
+
+		conn.on(MsgType.AI_AGENTS_MANAGE_LIST, async (msg) => {
+			conn.send({
+				type: MsgType.AI_AGENTS_MANAGE_LIST_RESULT,
+				clientId: msg.clientId,
+				respTo: msg.id,
+				data: { ok: true, agents: await this.listManagedAgents() },
+			});
+		});
+
+		conn.on(MsgType.AI_AGENTS_ENABLE_SET, async (msg) => {
+			try {
+				const agent = await this.setAgentEnabled(
+					msg.data.backend,
+					msg.data.enabled,
+				);
+				conn.send({
+					type: MsgType.AI_AGENTS_ENABLE_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true, agent },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_AGENTS_ENABLE_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+					data: { ok: false },
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_AGENTS_CUSTOM_ADD, async (msg) => {
+			try {
+				const agent = await this.addCustomAgent(msg.data);
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_ADD_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true, agent },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_ADD_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+					data: { ok: false },
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_AGENTS_CUSTOM_UPDATE, async (msg) => {
+			try {
+				const agent = await this.updateCustomAgent(msg.data);
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_UPDATE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true, agent },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_UPDATE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+					data: { ok: false },
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_AGENTS_CUSTOM_REMOVE, async (msg) => {
+			try {
+				this.removeCustomAgent(msg.data.backend);
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_REMOVE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true, agents: await this.listManagedAgents() },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_AGENTS_CUSTOM_REMOVE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+					data: { ok: false },
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_ACTIVITY_LIST, (msg) => {
+			conn.send({
+				type: MsgType.AI_ACTIVITY_LIST_RESULT,
+				clientId: msg.clientId,
+				respTo: msg.id,
+				data: {
+					activities: this.listActivities(msg.data?.backend),
+				},
+			});
+		});
+
+		conn.on(MsgType.AI_ACTIVITY_DISMISS, (msg) => {
+			try {
+				this.dismissActivity(msg.data.backend, msg.data.sessionId);
+				conn.send({
+					type: MsgType.AI_ACTIVITY_DISMISS_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						ok: true,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_ACTIVITY_DISMISS_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_CREATE, async (msg: AiSessionCreateMsg) => {
+			try {
+				const { session, response, availableCommands } =
+					await this.createSession(
+						msg.clientId,
+						msg.data.backend,
+						msg.data.cwd ?? msg.data.workspacePath,
+						{
+							additionalDirectories: msg.data.additionalDirectories,
+							mcpServers: msg.data.mcpServers as never,
+						},
+						msg.data.configOptions,
+					);
+				if (session.id) {
+					this.rememberSessionClient(
+						msg.data.backend,
+						session.id,
+						msg.clientId,
+					);
+				}
+				const runtimeState = this.rememberSessionRuntimeMetadata(
+					msg.data.backend,
+					session,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_CREATE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						session: {
+							...session,
+							configOptions: response.configOptions ?? undefined,
+						} as typeof session,
+						state: {
+							availableCommands,
+							configOptions: response.configOptions ?? undefined,
+							modes: response.modes,
+						},
+						runtimeState,
+					},
+				});
+				if (session.id && msg.data.prompt.trim()) {
+					this.enqueuePrompt(
+						msg.clientId,
+						msg.data.backend,
+						session.id,
+						msg.data.content ?? msg.data.prompt,
+					);
+				}
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_CREATE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_ATTACH, async (msg) => {
+			try {
+				const { tail, from, to } = msg.data;
+				// `tail` and `from`/`to` answer opposite questions ("newest N" vs
+				// "this range"), so reject the combination instead of silently
+				// picking a winner.
+				if (tail !== undefined && (from !== undefined || to !== undefined)) {
+					throw new Error(
+						"session attach accepts either `tail` or `from`/`to`, not both",
+					);
+				}
+				const window: MessageWindow =
+					tail === undefined && from === undefined && to === undefined
+						? { tail: SNAPSHOT_TAIL }
+						: { tail, from, to };
+				const result = await this.attachSession(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.cwd,
+					{
+						additionalDirectories: msg.data.additionalDirectories,
+						mcpServers: msg.data.mcpServers as never,
+					},
+					window,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_ATTACH_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: result,
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_ATTACH_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_DETACH, (msg) => {
+			try {
+				this.detachSession(msg.clientId, msg.data.backend, msg.data.sessionId);
+				conn.send({
+					type: MsgType.AI_SESSION_DETACH_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						ok: true,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_DETACH_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_RESUME, async (msg) => {
+			try {
+				const result = await this.resumeSession(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.cwd,
+					{
+						additionalDirectories: msg.data.additionalDirectories,
+						mcpServers: msg.data.mcpServers as never,
+					},
+				);
+				this.rememberSessionClient(
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.clientId,
+				);
+				const runtimeState = this.rememberSessionRuntimeMetadata(
+					msg.data.backend,
+					result.session,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_RESUME_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						session: result.session,
+						state: {
+							configOptions: result.response.configOptions ?? undefined,
+							modes: result.response.modes,
+						},
+						runtimeState,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_RESUME_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_FORK, async (msg) => {
+			try {
+				const result = await this.forkSession(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.cwd,
+					{
+						additionalDirectories: msg.data.additionalDirectories,
+						mcpServers: msg.data.mcpServers as never,
+					},
+				);
+				if (result.session.id) {
+					this.rememberSessionClient(
+						msg.data.backend,
+						result.session.id,
+						msg.clientId,
+					);
+				}
+				const runtimeState = this.rememberSessionRuntimeMetadata(
+					msg.data.backend,
+					result.session,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_FORK_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						session: result.session,
+						state: {
+							configOptions: result.response.configOptions ?? undefined,
+							modes: result.response.modes,
+						},
+						runtimeState,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_FORK_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_CLOSE, async (msg) => {
+			try {
+				await this.closeSession(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_CLOSE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						ok: true,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_CLOSE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_GET, async (msg) => {
+			try {
+				const agent = await this.connectSessionAgent(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+				);
+				const session = agent.getSession(msg.data.sessionId);
+				conn.send({
+					type: MsgType.AI_SESSION_GET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { backend: msg.data.backend, session },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_GET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_MESSAGES_LIST, async (msg) => {
+			try {
+				// Paged scroll-back read: served from memory/store only. Must never
+				// spawn an agent runtime — a page read stays a read.
+				if (typeof msg.data.to === "number") {
+					conn.send({
+						type: MsgType.AI_MESSAGES_LIST_RESULT,
+						clientId: msg.clientId,
+						respTo: msg.id,
+						data: this.getMessagesPage(
+							msg.data.backend,
+							msg.data.sessionId,
+							msg.data.to,
+							msg.data.limit ?? SNAPSHOT_TAIL,
+						),
+					});
+					return;
+				}
+				const agent = await this.connectSessionAgent(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+				);
+				conn.send({
+					type: MsgType.AI_MESSAGES_LIST_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						messages: agent.getMessages(msg.data.sessionId),
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_MESSAGES_LIST_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_PROMPT, async (msg) => {
+			try {
+				this.rememberSessionClient(
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.clientId,
+				);
+				const item = this.enqueuePrompt(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.content ?? msg.data.text,
+				);
+				conn.send({
+					type: MsgType.AI_PROMPT_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						ack: true,
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						promptId: item.id,
+						queued: true,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_PROMPT_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_PROMPT_QUEUE_UPDATE, async (msg) => {
+			try {
+				this.updateQueuedPrompt(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.queueId,
+					msg.data.text,
+					msg.data.content,
+				);
+				const response: AiPromptQueueUpdateAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_UPDATE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: this.promptQueueAckData(msg.data.backend, msg.data.sessionId),
+				};
+				conn.send(response);
+			} catch (err) {
+				const response: AiPromptQueueUpdateAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_UPDATE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				};
+				conn.send(response);
+			}
+		});
+
+		conn.on(MsgType.AI_PROMPT_QUEUE_REMOVE, async (msg) => {
+			try {
+				this.removeQueuedPrompt(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.queueId,
+				);
+				const response: AiPromptQueueRemoveAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_REMOVE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: this.promptQueueAckData(msg.data.backend, msg.data.sessionId),
+				};
+				conn.send(response);
+			} catch (err) {
+				const response: AiPromptQueueRemoveAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_REMOVE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				};
+				conn.send(response);
+			}
+		});
+
+		conn.on(MsgType.AI_PROMPT_QUEUE_PAUSE, (msg: AiPromptQueuePauseMsg) => {
+			try {
+				this.setPromptQueuePaused(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.paused,
+				);
+				const response: AiPromptQueuePauseAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_PAUSE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: this.promptQueueAckData(msg.data.backend, msg.data.sessionId),
+				};
+				conn.send(response);
+			} catch (err) {
+				const response: AiPromptQueuePauseAckMsg = {
+					type: MsgType.AI_PROMPT_QUEUE_PAUSE_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				};
+				conn.send(response);
+			}
+		});
+
+		conn.on(MsgType.AI_ATTACHMENT_WRITE, async (msg: AiAttachmentWriteMsg) => {
+			try {
+				const attachment = writeAgentAttachment(msg);
+				const respMsg: AiAttachmentWriteResultMsg = {
+					type: MsgType.AI_ATTACHMENT_WRITE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						...attachment,
+					},
+				};
+				conn.send(respMsg);
+			} catch (err) {
+				const respMsg: AiAttachmentWriteResultMsg = {
+					type: MsgType.AI_ATTACHMENT_WRITE_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				};
+				conn.send(respMsg);
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_CONFIG_SET, async (msg) => {
+			try {
+				const response = await this.setSessionConfigOption(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.configId,
+					msg.data.value,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_CONFIG_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						configOptions: response.configOptions,
+					},
+				});
+				this.emit(msg.clientId, msg.data.backend, {
+					type: "session.status",
+					properties: {
+						sessionId: msg.data.sessionId,
+						status: {
+							sessionUpdate: "config_option_update",
+							configOptions: response.configOptions,
+						},
+						configOptions: response.configOptions,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_CONFIG_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_MODE_SET, async (msg) => {
+			try {
+				await this.setSessionMode(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.modeId,
+				);
+				conn.send({
+					type: MsgType.AI_SESSION_MODE_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: {
+						backend: msg.data.backend,
+						sessionId: msg.data.sessionId,
+						modeId: msg.data.modeId,
+						ok: true,
+					},
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_SESSION_MODE_SET_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_ABORT, async (msg) => {
+			try {
+				await this.cancel(msg.clientId, msg.data.backend, msg.data.sessionId);
+				conn.send({
+					type: MsgType.AI_ABORT_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_ABORT_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_SESSION_OWNER_KILL, async (msg) => {
+			const key = this.sessionKey(msg.data.backend, msg.data.sessionId);
+			const owner = this.sessionOwners.get(key);
+			if (!owner) {
+				conn.send({
+					type: MsgType.AI_SESSION_OWNER_KILL_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: "The owning agent process is no longer known to this CLI",
+				});
+				return;
+			}
+
+			try {
+				const terminated = await terminateAgentProcess(msg.data.backend, {
+					...owner,
+					startedAt: owner.startedAt ?? 0,
+				});
+				if (!terminated) {
+					throw new Error(
+						"The owning agent process did not exit after the termination request",
+					);
+				}
+				this.sessionOwners.delete(key);
+				conn.send({
+					type: MsgType.AI_SESSION_OWNER_KILL_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true, pid: owner.pid },
+				});
+			} catch (error) {
+				conn.send({
+					type: MsgType.AI_SESSION_OWNER_KILL_RESULT,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(error),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_ELICITATION_REPLY, async (msg) => {
+			try {
+				await this.replyElicitation(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.elicitationId,
+					msg.data.action,
+					msg.data.content,
+				);
+				conn.send({
+					type: MsgType.AI_ELICITATION_REPLY_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_ELICITATION_REPLY_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.AI_PERMISSION_REPLY, async (msg) => {
+			try {
+				await this.replyPermission(
+					msg.clientId,
+					msg.data.backend,
+					msg.data.sessionId,
+					msg.data.permissionId,
+					"optionId" in msg.data ? msg.data.optionId : undefined,
+				);
+				this.setSessionRuntimeState(msg.data.backend, msg.data.sessionId, {
+					status: "running",
+					message: "Working",
+				});
+				this.emit(msg.clientId, msg.data.backend, {
+					type: "session.status",
+					properties: {
+						sessionId: msg.data.sessionId,
+						message: "Working",
+					},
+				});
+				conn.send({
+					type: MsgType.AI_PERMISSION_REPLY_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					data: { ok: true },
+				});
+			} catch (err) {
+				conn.send({
+					type: MsgType.AI_PERMISSION_REPLY_ACK,
+					clientId: msg.clientId,
+					respTo: msg.id,
+					error: getErrorMessage(err),
+				});
+			}
+		});
+
+		conn.on(MsgType.SESSION_CLIENT_LEFT, (msg) => {
+			this.knownClients.delete(msg.data.clientId);
+			this.detachClientFromAllSessions(msg.data.clientId);
+			this.removeClientPermissionListeners(msg.data.clientId);
+		});
+
+		conn.on("disconnected", () => {
+			unsubscribe();
+			this.removeAllPermissionListeners();
+		});
+	}
+
+	private async listAllBuiltinSessions(
+		clientId: string,
+		workspace?: string,
+	): Promise<AiSession[]> {
+		const installed = await this.resolveInstalled();
+		const results = await Promise.allSettled(
+			[...this.descriptors.values()].flatMap((descriptor) =>
+				this.isAgentEnabled(descriptor.id) &&
+				installed.get(descriptor.id) === true
+					? [
+							this.connectAgent(clientId, descriptor.id).then(
+								async (agent) => ({
+									agentId: descriptor.id,
+									sessions: await agent.listAiSessions(workspace),
+								}),
+							),
+						]
+					: [],
+			),
+		);
+		return results
+			.flatMap((result) => {
+				if (result.status !== "fulfilled") return [];
+				for (const session of result.value.sessions) {
+					this.rememberSessionRuntimeMetadata(result.value.agentId, session);
+				}
+				return result.value.sessions;
+			})
+			.sort((a, b) => b.updatedAt - a.updatedAt);
+	}
+
+	private emit(clientId: string, backend: AgentId, event: AiEvent) {
+		const state = this.applyEventRuntimeState(backend, event);
+		const sessionId = event.properties.sessionId;
+		const revision =
+			typeof sessionId === "string"
+				? this.nextSessionRevision(backend, sessionId)
+				: undefined;
+		const enrichedEvent = {
+			...event,
+			...(state ? { state } : {}),
+			...(revision !== undefined ? { revision } : {}),
+		};
+		if (typeof sessionId === "string" && event.type === "message") {
+			const message = event.properties.message;
+			if (isRecord(message)) {
+				this.upsertSnapshotMessage(backend, sessionId, message as AcpMessage);
+			}
+		}
+		const targets =
+			typeof sessionId === "string"
+				? this.getEventTargetClientIds(backend, sessionId, clientId)
+				: [clientId];
+		for (const subscriber of this.subscribers) {
+			for (const targetClientId of targets) {
+				subscriber(targetClientId, backend, enrichedEvent);
+			}
+		}
+		if (
+			typeof sessionId === "string" &&
+			state &&
+			!isLiveRuntimeStatus(state.status)
+		) {
+			this.scheduleSessionRuntimeCleanup(backend, sessionId);
+		}
+	}
+
+	private sessionKey(agentId: string, sessionId: string) {
+		return `${agentId}:${sessionId}`;
+	}
+
+	private setSessionSnapshot(
+		agentId: AgentId,
+		sessionId: string,
+		snapshot: AttachedSessionSnapshot,
+	) {
+		this.sessionSnapshots.set(this.sessionKey(agentId, sessionId), snapshot);
+		return snapshot;
+	}
+
+	private upsertSnapshotMessage(
+		agentId: AgentId,
+		sessionId: string,
+		message: AcpMessage,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		const snapshot = this.sessionSnapshots.get(key);
+		if (!snapshot) return;
+		const existingIndex = message.id
+			? snapshot.messages.findIndex((item) => item.id === message.id)
+			: -1;
+		const messages =
+			existingIndex >= 0
+				? snapshot.messages.map((item, index) =>
+						index === existingIndex ? message : item,
+					)
+				: [...snapshot.messages, message];
+		this.sessionSnapshots.set(key, {
+			...snapshot,
+			messages,
+			totalCount: snapshot.baseIdx + messages.length,
+			revision: this.getSessionRevision(agentId, sessionId),
+		});
+	}
+
+	private refreshSessionSnapshot(
+		clientId: string,
+		agentId: AgentId,
+		sessionId: string,
+		cwd: string,
+		options: Partial<
+			Omit<Parameters<ACP["loadSession"]>[0], "sessionId" | "cwd">
+		>,
+		behavior: { emitSnapshot?: boolean } = {},
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		const agent = this.sessionRuntimes.get(key);
+		if (!agent || agent.hasActivePrompt()) return;
+		if (this.sessionLoadTasks.has(key)) return;
+		// A replay takes tens of seconds. If a turn runs during it, the live
+		// transcript is newer than anything the replay can return, so the result
+		// must be discarded rather than overwrite it. Counting turns (rather than
+		// re-checking `hasActivePrompt`) also catches a turn that started and
+		// finished entirely inside the load window.
+		const turnsAtStart = this.sessionTurnCounts.get(key) ?? 0;
+		if (behavior.emitSnapshot) {
+			this.emit(this.sessionClientIds.get(key) ?? "", agentId, {
+				type: "session.status",
+				properties: { sessionId, syncing: "messages" },
+			});
+		}
+		const task = agent
+			.loadSession(
+				{
+					...options,
+					sessionId,
+					cwd,
+					mcpServers: options.mcpServers ?? [],
+				},
+				clientId,
+			)
+			.then((result) => {
+				const session = agent.getSession(sessionId);
+				if (!session) return;
+				// A turn ran while this replay was in flight: its result is a view of
+				// history from before that turn, so committing it would delete the
+				// turn's messages from both memory and the store. Drop it; the
+				// prompt path already persisted the newer transcript.
+				if ((this.sessionTurnCounts.get(key) ?? 0) !== turnsAtStart) {
+					logger.debug(
+						`AI refresh ${key}: discarded stale replay (a turn completed during load)`,
+					);
+					return;
+				}
+				const runtimeState = this.rememberSessionRuntimeMetadata(
+					agentId,
+					session,
+				);
+				const persistedState = this.transcriptStore.getSessionMeta(
+					agentId,
+					sessionId,
+				)?.state;
+				const state = {
+					// ACP implementations may treat set_config_option as runtime-only.
+					// Preserve a config selected through Shellular across a CLI restart;
+					// the per-session transcript metadata is distinct from the agent-wide
+					// draft hint and is applied only to this session.
+					configOptions:
+						persistedState?.configOptions ??
+						result.response.configOptions ??
+						undefined,
+					modes: result.response.modes,
+					availableCommands: latestAvailableCommands(
+						result.updates,
+						agent.getAvailableCommands(sessionId),
+					),
+				};
+				// Full authoritative reload: wholesale-replace memory and store under
+				// a fresh generation so paging clients discard in-flight pages, and
+				// clear any external-writer staleness this replay just absorbed.
+				const generation = this.nextSessionGeneration(agentId, sessionId);
+				this.staleSessions.delete(key);
+				this.setSessionSnapshot(agentId, sessionId, {
+					backend: agentId,
+					session,
+					state,
+					runtimeState,
+					messages: result.messages,
+					baseIdx: 0,
+					totalCount: result.messages.length,
+					generation,
+					revision: this.getSessionRevision(agentId, sessionId),
+				});
+				this.transcriptStore.replaceAll(
+					agentId,
+					sessionId,
+					generation,
+					{ session, state },
+					result.messages,
+				);
+				// A cold attach that waited out this replay is returning the very
+				// same transcript in its reply, so pushing it again would re-send
+				// the whole payload over the relay for nothing.
+				const claimed = this.coldReplayClaims.delete(key);
+				if (behavior.emitSnapshot && !claimed) {
+					this.emitSessionSnapshot(agentId, sessionId, {
+						messages: result.messages,
+						state,
+						runtimeState,
+						totalCount: result.messages.length,
+						generation,
+					});
+				}
+			})
+			.catch((error) => {
+				const message = error instanceof Error ? error.message : String(error);
+				logger.warn(`AI refresh ${key} failed: ${message}`);
+			})
+			.finally(() => {
+				// Belt and braces: a replay that threw never reached the claim check
+				// above, and a stale claim would silence the next session's push.
+				this.coldReplayClaims.delete(key);
+				if (behavior.emitSnapshot) {
+					this.emit(this.sessionClientIds.get(key) ?? "", agentId, {
+						type: "session.status",
+						properties: { sessionId, syncing: false },
+					});
+				}
+				if (this.sessionLoadTasks.get(key) === task) {
+					this.sessionLoadTasks.delete(key);
+				}
+			});
+		this.sessionLoadTasks.set(key, task);
+		return task;
+	}
+
+	private emitSessionSnapshot(
+		agentId: AgentId,
+		sessionId: string,
+		snapshot: {
+			messages: AcpMessage[];
+			state: AiSessionState;
+			runtimeState?: AiSessionRuntimeState;
+			/** Transcript index of `messages[0]`; 0 for a full replay. */
+			baseIdx?: number;
+			totalCount: number;
+			generation: number;
+		},
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		// Tail-size the push only when every attached client can page for the
+		// rest; a single legacy client degrades the whole session to full pushes.
+		const attached = this.attachedSessionClients.get(key);
+		const paging = this.pagingClients.get(key);
+		const allPaging =
+			!!attached?.size && [...attached].every((id) => paging?.has(id));
+		const { messages, from, to } = sliceWindow(
+			snapshot.messages,
+			snapshot.baseIdx ?? 0,
+			allPaging ? { tail: SNAPSHOT_TAIL } : undefined,
+		);
+		this.emit(this.sessionClientIds.get(key) ?? "", agentId, {
+			type: "session.snapshot",
+			properties: {
+				sessionId,
+				messages,
+				state: snapshot.state,
+				runtimeState: snapshot.runtimeState,
+				totalCount: snapshot.totalCount,
+				from,
+				to,
+				hasMoreBefore: from !== undefined && from > 0,
+				generation: snapshot.generation,
+			},
+		});
+	}
+
+	private createManagedRuntime(agentId: AgentId): ACP {
+		const descriptor = this.descriptors.get(agentId);
+		if (!descriptor) {
+			throw new AgentUnavailableError(agentId, "unknown agent");
+		}
+		if (!this.isAgentEnabled(agentId)) {
+			throw new AgentUnavailableError(agentId, "agent is disabled");
+		}
+		const agent = createAgentRuntime(agentId, descriptor);
+		this.runtimeIds.set(agent, `runtime_${++this.nextRuntimeId}`);
+		agent.onSessionUpdate((notification) => {
+			const backend = descriptor.id;
+			// Cache before the client fan-out below: config and slash commands keep
+			// arriving after session/new and session/load resolve (agents send
+			// `available_commands_update` asynchronously, and the user can switch
+			// model or mode mid-session), so those two responses alone capture a
+			// stale picture. This also has to run ahead of the `clientId` guard —
+			// an update with no attached client is still the newest truth about
+			// what this agent offers.
+			cacheSessionConfigFromUpdate(backend, notification, agent);
+			const key = this.sessionKey(descriptor.id, notification.sessionId);
+			const clientId =
+				this.sessionClientIds.get(key) ??
+				this.attachedSessionClients.get(key)?.values().next().value ??
+				"";
+			if (!clientId) return;
+			const status = sessionStatusEvent(notification);
+			if (status) this.emit(clientId, backend, status);
+		});
+		return agent;
+	}
+
+	private attachSessionClient(
+		agentId: AgentId,
+		sessionId: string,
+		clientId: string,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		let clients = this.attachedSessionClients.get(key);
+		if (!clients) {
+			clients = new Set();
+			this.attachedSessionClients.set(key, clients);
+		}
+		clients.add(clientId);
+	}
+
+	private detachSessionClient(
+		agentId: AgentId,
+		sessionId: string,
+		clientId: string,
+	) {
+		const key = this.sessionKey(agentId, sessionId);
+		this.removePagingClient(key, clientId);
+		const clients = this.attachedSessionClients.get(key);
+		if (!clients) return;
+		clients.delete(clientId);
+		if (!clients.size) this.attachedSessionClients.delete(key);
+	}
+
+	private detachClientFromAllSessions(clientId: string) {
+		if (!clientId) return;
+		for (const [key, clients] of this.attachedSessionClients.entries()) {
+			this.removePagingClient(key, clientId);
+			clients.delete(clientId);
+			if (!clients.size) {
+				this.attachedSessionClients.delete(key);
+				const [agentId, sessionId] = this.parseSessionKey(key);
+				if (agentId && sessionId) {
+					this.scheduleSessionRuntimeCleanup(agentId as AgentId, sessionId);
+				}
+			}
+		}
+	}
+
+	private removePagingClient(key: string, clientId: string) {
+		const paging = this.pagingClients.get(key);
+		if (!paging) return;
+		paging.delete(clientId);
+		if (!paging.size) this.pagingClients.delete(key);
+	}
+
+	private parseSessionKey(key: string): [string, string] {
+		const index = key.indexOf(":");
+		return index < 0 ? ["", ""] : [key.slice(0, index), key.slice(index + 1)];
+	}
+
+	private cancelSessionRuntimeCleanup(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		const timer = this.sessionRuntimeCleanupTimers.get(key);
+		if (!timer) return;
+		clearTimeout(timer);
+		this.sessionRuntimeCleanupTimers.delete(key);
+	}
+
+	private scheduleSessionRuntimeCleanup(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		if (!this.sessionRuntimes.has(key)) return;
+		if (this.attachedSessionClients.get(key)?.size) return;
+		const activity = this.getSessionRuntimeState(agentId, sessionId);
+		if (activity && isLiveRuntimeStatus(activity.status)) return;
+		this.cancelSessionRuntimeCleanup(agentId, sessionId);
+		const timer = setTimeout(() => {
+			const current = this.getSessionRuntimeState(agentId, sessionId);
+			if (this.attachedSessionClients.get(key)?.size) return;
+			if (current && isLiveRuntimeStatus(current.status)) return;
+			this.destroySessionRuntime(agentId, sessionId);
+		}, SESSION_RUNTIME_IDLE_MS);
+		this.sessionRuntimeCleanupTimers.set(key, timer);
+	}
+
+	private destroySessionRuntime(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		this.cancelSessionRuntimeCleanup(agentId, sessionId);
+		const agent = this.sessionRuntimes.get(key);
+		if (!agent) return;
+		agent.destroy();
+		this.sessionRuntimes.delete(key);
+	}
+
+	private getEventTargetClientIds(
+		agentId: AgentId,
+		sessionId: string,
+		fallbackClientId: string,
+	): string[] {
+		const attached = this.attachedSessionClients.get(
+			this.sessionKey(agentId, sessionId),
+		);
+		if (attached?.size) return [...attached];
+		return fallbackClientId ? [fallbackClientId] : [];
+	}
+
+	private getSessionRevision(agentId: AgentId, sessionId: string) {
+		return this.sessionRevisions.get(this.sessionKey(agentId, sessionId)) ?? 0;
+	}
+
+	private nextSessionRevision(agentId: AgentId, sessionId: string) {
+		const key = this.sessionKey(agentId, sessionId);
+		const next = (this.sessionRevisions.get(key) ?? 0) + 1;
+		this.sessionRevisions.set(key, next);
+		return next;
+	}
+
+	private permissionListenerKey(agentId: string, clientId: string, agent: ACP) {
+		return `${agentId}\0${clientId}\0${this.runtimeIds.get(agent) ?? "default"}`;
+	}
+
+	private getSessionRuntimeState(agentId: string, sessionId: string) {
+		return this.sessionRuntimeStates.get(this.sessionKey(agentId, sessionId));
+	}
+
+	private setSessionRuntimeState(
+		agentId: AgentId,
+		sessionId: string,
+		patch: RuntimePatch,
+	): AiSessionRuntimeState {
+		const key = this.sessionKey(agentId, sessionId);
+		const previous = this.sessionRuntimeStates.get(key);
+		const next: AiSessionRuntimeState = {
+			status: previous?.status ?? "stopped",
+			...(previous?.title ? { title: previous.title } : {}),
+			...(previous?.workspacePath
+				? { workspacePath: previous.workspacePath }
+				: {}),
+			...(previous?.model ? { model: previous.model } : {}),
+			...(previous?.message ? { message: previous.message } : {}),
+			...(previous?.stopReason ? { stopReason: previous.stopReason } : {}),
+			...(previous?.error ? { error: previous.error } : {}),
+			...(previous?.pendingPermission
+				? { pendingPermission: previous.pendingPermission }
+				: {}),
+			...(previous?.external ? { external: previous.external } : {}),
+			...(previous?.persistent ? { persistent: previous.persistent } : {}),
+			...patch,
+			agentId,
+			sessionId,
+			updatedAt: patch.updatedAt ?? Date.now(),
+		};
+		if (
+			next.status !== "waiting_for_permission" &&
+			patch.pendingPermission === undefined
+		) {
+			delete next.pendingPermission;
+		}
+		if (next.status !== "error" && patch.error === undefined) {
+			delete next.error;
+		}
+		if (
+			next.status !== "finished" &&
+			next.status !== "cancelled" &&
+			patch.stopReason === undefined
+		) {
+			delete next.stopReason;
+		}
+		this.sessionRuntimeStates.set(key, next);
+		return next;
+	}
+
+	private rememberSessionRuntimeMetadata(
+		agentId: AgentId,
+		session: AiSession,
+	): AiSessionRuntimeState | undefined {
+		if (!session.id) return undefined;
+		const patch: RuntimePatch = {
+			updatedAt:
+				this.getSessionRuntimeState(agentId, session.id)?.updatedAt ??
+				session.updatedAt ??
+				Date.now(),
+		};
+		// Don't overwrite a real title (e.g. one the session watcher derived) with
+		// a generic placeholder the ACP adapter injects when it has no title.
+		const existingTitle = this.getSessionRuntimeState(
+			agentId,
+			session.id,
+		)?.title;
+		if (
+			session.title &&
+			(!isPlaceholderTitle(session.title) || !isRealTitle(existingTitle))
+		) {
+			patch.title = session.title;
+		}
+		if (session.workspacePath) patch.workspacePath = session.workspacePath;
+		if (session.model) patch.model = session.model;
+		return this.setSessionRuntimeState(agentId, session.id, patch);
+	}
+
+	private applyEventRuntimeState(
+		agentId: AgentId,
+		event: AiEvent,
+	): AiSessionRuntimeState | undefined {
+		const sessionId = event.properties.sessionId;
+		if (typeof sessionId !== "string") return undefined;
+
+		switch (event.type) {
+			case "token":
+			case "message":
+				return this.setSessionRuntimeState(agentId, sessionId, {
+					status: "running",
+					message: "Working",
+				});
+			case "permission.updated":
+				return this.setSessionRuntimeState(agentId, sessionId, {
+					status: "waiting_for_permission",
+					message: "Waiting for permission",
+					pendingPermission: event.properties,
+				});
+			case "cancelled":
+				return this.setSessionRuntimeState(agentId, sessionId, {
+					status: "cancelled",
+					message: "Cancelled",
+					stopReason: "cancelled",
+				});
+			case "end": {
+				const stopReason = event.properties.stopReason;
+				const status = stopReason === "cancelled" ? "cancelled" : "finished";
+				return this.setSessionRuntimeState(agentId, sessionId, {
+					status,
+					message: status === "cancelled" ? "Cancelled" : "Finished",
+					stopReason: typeof stopReason === "string" ? stopReason : undefined,
+				});
+			}
+			case "error":
+			case "prompt_error": {
+				const error = event.properties.error;
+				return this.setSessionRuntimeState(agentId, sessionId, {
+					status: "error",
+					message: "Error",
+					error: typeof error === "string" ? error : undefined,
+				});
+			}
+			case "session.status": {
+				const metadata = runtimeMetadataFromStatus(event.properties);
+				if (metadata) {
+					return this.setSessionRuntimeState(agentId, sessionId, metadata);
+				}
+				return this.getSessionRuntimeState(agentId, sessionId);
+			}
+			default:
+				return this.getSessionRuntimeState(agentId, sessionId);
+		}
+	}
+
+	private registerPermissionListener(
+		agentId: string,
+		clientId: string,
+		agent: ACP,
+	) {
+		const key = this.permissionListenerKey(agentId, clientId, agent);
+		if (this.permissionListenerCleanups.has(key)) return;
+		const descriptor = this.descriptors.get(agentId);
+		if (!descriptor) return;
+
+		// ACP permission requests are client-side JSON-RPC calls. Convert them
+		// into the existing Shellular event stream so the mobile app can decide.
+		const cleanup = agent.onPermission(clientId, (permission) => {
+			const key = this.sessionKey(agentId, permission.sessionId);
+			const attached = this.attachedSessionClients.get(key);
+			const attachedTargets = attached ? [...attached] : [];
+			if (attachedTargets.length > 0 && attachedTargets[0] !== clientId) {
+				return;
+			}
+			const targetClientId =
+				attachedTargets[0] ?? this.sessionClientIds.get(key);
+			if (targetClientId !== clientId) return;
+			this.emit(targetClientId, descriptor.id, {
+				type: "permission.updated",
+				properties: {
+					id: permission.id,
+					sessionId: permission.sessionId,
+					callId: permission.toolCall.toolCallId,
+					kind: permission.toolCall.kind ?? "other",
+					title: permission.toolCall.title ?? "Permission requested",
+					options: permission.options,
+					metadata: permission.raw,
+				},
+			});
+		});
+		const elicitationCleanup = agent.onElicitation(clientId, (elicitation) => {
+			// Session-less elicitations can't be routed to an attached chat; skip.
+			if (!elicitation.sessionId) return;
+			const sessionKey = this.sessionKey(agentId, elicitation.sessionId);
+			const attached = this.attachedSessionClients.get(sessionKey);
+			const attachedTargets = attached ? [...attached] : [];
+			if (attachedTargets.length > 0 && attachedTargets[0] !== clientId) {
+				return;
+			}
+			const targetClientId =
+				attachedTargets[0] ?? this.sessionClientIds.get(sessionKey);
+			if (targetClientId !== clientId) return;
+			this.emit(targetClientId, descriptor.id, {
+				type: "elicitation.updated",
+				properties: {
+					id: elicitation.id,
+					sessionId: elicitation.sessionId,
+					elicitation: elicitation.raw,
+				},
+			});
+		});
+		const completeCleanup = agent.onElicitationComplete((params) => {
+			// Fan the url-mode completion out to every session client; the app
+			// matches on elicitationId and drops its waiting card.
+			for (const [sessionKey, target] of this.sessionClientIds.entries()) {
+				const [keyAgentId, sessionId] = this.parseSessionKey(sessionKey);
+				if (keyAgentId !== agentId || !sessionId) continue;
+				this.emit(target, descriptor.id, {
+					type: "elicitation.updated",
+					properties: {
+						id: params.elicitationId,
+						sessionId,
+						resolved: true,
+					},
+				});
+			}
+		});
+		this.permissionListenerCleanups.set(key, () => {
+			cleanup();
+			elicitationCleanup();
+			completeCleanup();
+		});
+	}
+
+	private removeClientPermissionListeners(clientId: string) {
+		for (const [key, cleanup] of this.permissionListenerCleanups.entries()) {
+			const [, keyClientId] = key.split("\0");
+			if (keyClientId !== clientId) continue;
+			cleanup();
+			this.permissionListenerCleanups.delete(key);
+		}
+	}
+
+	private removeAllPermissionListeners() {
+		for (const cleanup of this.permissionListenerCleanups.values()) {
+			cleanup();
+		}
+		this.permissionListenerCleanups.clear();
+	}
+
+	private rememberSessionClient(
+		agentId: string,
+		sessionId: string,
+		clientId: string,
+	) {
+		this.sessionClientIds.set(this.sessionKey(agentId, sessionId), clientId);
+		this.sessionAgents.set(sessionId, agentId);
+	}
+}
+
+export type { AgentDescriptor, AgentInfo };
+
+function normalizePromptContent(
+	content: string | unknown[],
+): AcpPromptRequest["prompt"] {
+	if (typeof content === "string") return [{ type: "text", text: content }];
+
+	const parsed = content.flatMap((block) => {
+		const result = AcpContentBlockSchema.safeParse(block);
+		return result.success ? [result.data] : [];
+	});
+
+	return parsed.length ? parsed : [{ type: "text", text: "" }];
+}
+
+function promptContentText(prompt: AcpPromptRequest["prompt"]) {
+	return prompt
+		.map((block) => {
+			if (block.type === "text") return block.text;
+			if (block.type === "resource_link") {
+				return `@${path.basename(filePathFromUriSafe(block.uri) ?? block.uri)}`;
+			}
+			if (block.type === "resource") {
+				const resource = block.resource;
+				const uri =
+					typeof resource === "object" && resource
+						? (resource as { uri?: unknown }).uri
+						: undefined;
+				return typeof uri === "string"
+					? `@${path.basename(filePathFromUriSafe(uri) ?? uri)}`
+					: "@resource";
+			}
+			return "";
+		})
+		.join("")
+		.trim();
+}
+
+function promptContentToMessageParts(
+	prompt: AcpPromptRequest["prompt"],
+): AcpMessage["parts"] {
+	return prompt.flatMap<AcpMessage["parts"][number]>((block) => {
+		if (block.type === "text") {
+			return block.text ? [{ type: "text", text: block.text }] : [];
+		}
+		if (block.type === "resource_link") {
+			const filePath = filePathFromUriSafe(block.uri);
+			return [
+				{
+					type: "file_reference",
+					path: filePath ?? block.uri,
+					name: path.basename(filePath ?? block.uri),
+					title: path.basename(filePath ?? block.uri),
+					rawContent: block,
+				},
+			];
+		}
+		if (block.type === "resource") {
+			const resource = block.resource as {
+				uri?: string;
+				mimeType?: string;
+				text?: string;
+			};
+			const uri = resource.uri ?? "";
+			return [
+				{
+					type: "file_reference",
+					path: filePathFromUriSafe(uri) ?? uri,
+					name: path.basename(uri) || "Resource",
+					title: path.basename(uri) || "Resource",
+					mimeType: resource.mimeType,
+					rawContent: block,
+				},
+			];
+		}
+		return [];
+	});
+}
+
+function filePathFromUriSafe(uri: string) {
+	if (!uri.startsWith("file://")) return null;
+	try {
+		return decodeURIComponent(new URL(uri).pathname);
+	} catch {
+		return uri.slice("file://".length);
+	}
+}
+
+function createAgentRuntime(
+	agentId: AgentId,
+	descriptor: AgentDescriptor,
+): ACP {
+	switch (agentId) {
+		case "codex":
+			return Codex.create();
+		case "claude-code":
+			return ClaudeCode.create();
+		case "copilot":
+			return Copilot.create();
+		case "opencode":
+			return OpenCode.create();
+		case "pi":
+			return Pi.create();
+		case "omp":
+			return Omp.create();
+		case "cursor":
+			return Cursor.create();
+		case "fx":
+			return Fx.create();
+		case "hermes":
+			return Hermes.create();
+		case "grok-build":
+			return GrokBuild.create();
+		default:
+			if (descriptor.source === "custom") {
+				return new ACP(descriptor);
+			}
+			throw new AgentUnavailableError(agentId, "unknown agent");
+	}
+}
+
+/**
+ * Slash commands advertised for a session.
+ *
+ * Prefers a fresh `available_commands_update` seen in `updates`, then falls
+ * back to whatever the connection has tracked. The fallback matters because
+ * agents may send this notification *after* responding to session/load (Claude
+ * Code does), which puts it outside the replay window `updates` covers — so
+ * scanning `updates` alone silently loses the session's commands.
+ */
+function latestAvailableCommands(
+	updates: unknown[],
+	tracked?: unknown[] | undefined,
+) {
+	for (let index = updates.length - 1; index >= 0; index -= 1) {
+		const update = (updates[index] as { update?: unknown }).update as
+			| { sessionUpdate?: unknown; availableCommands?: unknown }
+			| undefined;
+		if (
+			update?.sessionUpdate === "available_commands_update" &&
+			Array.isArray(update.availableCommands)
+		) {
+			return update.availableCommands;
+		}
+	}
+	return tracked;
+}
+
+/**
+ * Persist config/commands carried by a live `session/update`, so a draft chat's
+ * toolbar reflects what the agent offers *now* rather than what it offered when
+ * its last session was created.
+ *
+ * Only the two updates that carry a full replacement list are cacheable.
+ * `current_mode_update` is deliberately ignored: it names the newly-selected
+ * mode id without restating the option list, and the selection belongs to that
+ * one session — a later draft chat starts from the agent's own default, not from
+ * whatever some earlier session happened to be switched to.
+ */
+function cacheSessionConfigFromUpdate(
+	agentId: AgentId,
+	notification: acp.SessionNotification,
+	agent: ACP,
+) {
+	const update = notification.update as {
+		sessionUpdate?: unknown;
+		configOptions?: unknown;
+		availableCommands?: unknown;
+	};
+	if (
+		update.sessionUpdate !== "config_option_update" &&
+		update.sessionUpdate !== "available_commands_update"
+	) {
+		return;
+	}
+	// A partial write here is safe: writeCachedSessionConfig drops empty fields
+	// and merges the rest onto the stored row, so a commands-only update keeps
+	// the previously cached config options.
+	writeCachedSessionConfig(agentId, {
+		configOptions: update.configOptions,
+		availableCommands: update.availableCommands,
+		version: agent.getInfo().version,
+	});
+}
+
+function sessionStatusEvent(
+	notification: acp.SessionNotification,
+): AiEvent | null {
+	const update = notification.update;
+	switch (update.sessionUpdate) {
+		case "available_commands_update":
+			return {
+				type: "session.status",
+				properties: {
+					sessionId: notification.sessionId,
+					status: update,
+					availableCommands: update.availableCommands,
+				},
+			};
+		case "config_option_update":
+			return {
+				type: "session.status",
+				properties: {
+					sessionId: notification.sessionId,
+					status: update,
+					configOptions: update.configOptions,
+				},
+			};
+		case "current_mode_update":
+		case "session_info_update":
+		case "usage_update":
+			return {
+				type: "session.status",
+				properties: {
+					sessionId: notification.sessionId,
+					status: update,
+				},
+			};
+		default:
+			return null;
+	}
+}
+
+function isLiveRuntimeStatus(status: AiSessionRuntimeState["status"]) {
+	return (
+		status === "starting" ||
+		status === "running" ||
+		status === "waiting_for_permission" ||
+		status === "stopping"
+	);
+}
+
+// Generic titles the ACP adapter injects when it has no real title; these must
+// not overwrite a real title (e.g. one derived by the session watcher).
+const PLACEHOLDER_TITLES = new Set(["New Chat", "Untitled Chat"]);
+
+function isPlaceholderTitle(value: string): boolean {
+	return PLACEHOLDER_TITLES.has(value.trim());
+}
+
+function isRealTitle(value: unknown): value is string {
+	return (
+		typeof value === "string" &&
+		value.trim().length > 0 &&
+		!isPlaceholderTitle(value)
+	);
+}

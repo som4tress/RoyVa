@@ -1,0 +1,40 @@
+{
+  "name": "@shellular/protocol",
+  "version": "0.1.0",
+  "description": "Shellular wire protocol — shared Zod schemas and TypeScript types.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "vendor-acp": "node scripts/vendor-acp-schemas.mjs",
+    "build": "pnpm run vendor-acp && tsup",
+    "typecheck": "pnpm run vendor-acp && tsc --noEmit",
+    "prepublishOnly": "pnpm run build",
+    "ci:publish": "pnpm publish --access public"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [],
+  "author": "Shellular <team@shellular.dev>",
+  "license": "AGPL-3.0-only",
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.4.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}

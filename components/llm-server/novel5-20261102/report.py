@@ -1,0 +1,14 @@
+from pathlib import Path
+import json,csv
+r=Path(__file__).parent;b={x['id']:x for x in json.loads((r/'baseline.json').read_text())};a=json.loads((r/'optimized.json').read_text());rows=[]
+for y in a:
+ x=b[y['id']];row={'id':y['id'],'workload':y['name'],'baseline_ok':x['ok'],'optimized_ok':y['ok']}
+ for prefix,z in [('before',x),('after',y)]:
+  u=z['usage'];i=u['fresh']+u['cached'];o=u['output']+u['reasoning'];row.update({prefix+'_input':i,prefix+'_output':o,prefix+'_cached':u['cached'],prefix+'_cache_pct':100*u['cached']/max(1,i),prefix+'_cost':u['cost'],prefix+'_seconds':z['seconds'],prefix+'_calls':u['requests'],prefix+'_uncached_reference_cost':(i*0.30+o*1.20)/1000000})
+ for k in ['input','output','cost','seconds','uncached_reference_cost']:row[k+'_delta']=row['after_'+k]-row['before_'+k]
+ rows.append(row)
+with (r/'comparison.csv').open('w') as f:w=csv.DictWriter(f,fieldnames=rows[0]);w.writeheader();w.writerows(rows)
+(r/'comparison.json').write_text(json.dumps(rows,indent=2));lines=['# Five novel difficult workloads: before/after input optimization','', 'New prompts and inputs, separate initially empty working directories, same five workloads in each phase. Baseline and optimized phases run through the production Telegram diagnostic handler and actual delivery. User instructions, tool schemas, tool-call arguments and cloud output settings are preserved. Shared system/provider KV-cache hits are measured, not assumed absent; a 30-minute wait and new wording do not prove cold cache.','', 'Three workloads inspect real read-only evidence; two use explicitly synthetic forensic fixtures, avoiding any live device action.','', '| Workload | Input before → after (delta) | Output before → after (delta) | Cache before → after | Cost before → after (delta) | Seconds before → after |','|---|---:|---:|---:|---:|---:|']
+for z in rows:lines.append(f"| {z['workload']} | {z['before_input']:,} → {z['after_input']:,} ({z['input_delta']:+,}) | {z['before_output']:,} → {z['after_output']:,} ({z['output_delta']:+,}) | {z['before_cache_pct']:.1f}% → {z['after_cache_pct']:.1f}% | ${z['before_cost']:.5f} → ${z['after_cost']:.5f} ({z['cost_delta']:+.5f}) | {z['before_seconds']:.1f} → {z['after_seconds']:.1f} |")
+lines+=['','Positive deltas mean an increase. Output includes reasoning and tool-call generation. Costs are recorded cloud usage, not guarantees of future pricing. Full CSV also contains an illustrative uncached-equivalent cost using fixed reference rates ($0.30/M input, $1.20/M output), to separate token volume from cache discounts; this is not the billed amount. Model/tool trajectories and live source state can differ. Completion is not a correctness certification.','',f'[Every original/modified request and diff]({r}/payload-review/index.md)',f'[Full CSV]({r}/comparison.csv)']
+(r/'REPORT.md').write_text('\n'.join(lines)+'\n');print('Report saved:',r/'REPORT.md')

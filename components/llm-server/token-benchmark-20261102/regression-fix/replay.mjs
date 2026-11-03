@@ -1,0 +1,7 @@
+import {readFileSync,writeFileSync} from 'node:fs';import {optimizeCloudRequest} from './optimizer.mjs';
+const root='/home/somdutta/llm-server/token-benchmark-20261102',records=readFileSync('/home/somdutta/.local/share/opencode/cloud-context/payloads/index.jsonl','utf8').trim().split('\n').map(JSON.parse),runs=JSON.parse(readFileSync(root+'/input-only.json'));
+for(const l of readFileSync('/home/somdutta/llm-server/api.env','utf8').split('\n')){const i=l.indexOf('=');if(i>0)process.env[l.slice(0,i)]=l.slice(i+1).replace(/^["']|["']$/g,'');}
+const out=[];
+for(const id of [5,6,7,8,10]){const sid=runs.find(t=>t.id===id).sessionId,record=records.filter(d=>d.session===sid).sort((a,b)=>b.originalBytes-a.originalBytes)[0],file='/home/somdutta/.local/share/opencode/cloud-context/payloads/'+record.id+'/original.json',input=JSON.parse(readFileSync(file));
+ const options={session:'fixed-replay-'+id,settings:{enabled:true,minChars:6000,turnBudgetMs:8000}};const start=Date.now(),a=await optimizeCloudRequest(input,options),firstMs=Date.now()-start,t=Date.now(),b=await optimizeCloudRequest(input,options);const result={id,originalBytes:Buffer.byteLength(JSON.stringify(input)),modifiedBytes:Buffer.byteLength(JSON.stringify(a)),firstMs,repeatMs:Date.now()-t,stable:JSON.stringify(a)===JSON.stringify(b),sourceSnapshot:record.id};out.push(result);writeFileSync(root+'/regression-fix/replay.json',JSON.stringify(out,null,2));console.log(JSON.stringify(result));
+}

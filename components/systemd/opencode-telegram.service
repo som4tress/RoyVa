@@ -1,0 +1,27 @@
+[Unit]
+Description=Telegram to OpenCode bridge (roy_has_bot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/home/somdutta/llm-server/ha.env
+EnvironmentFile=/home/somdutta/llm-server/api.env
+EnvironmentFile=/home/somdutta/llm-server/opencode.env
+Type=simple
+WorkingDirectory=/home/somdutta
+Environment=HOME=/home/somdutta
+Environment=PATH=/home/somdutta/.opencode/bin:/home/somdutta/.nvm/versions/node/v24.22.1/bin:/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=OPENCODE_TG_DIR=/home/somdutta
+Environment=OPENCODE_TG_AGENT=telegram
+# Voice notes: local whisper.cpp (CUDA build shipped in the same bin dir)
+Environment=WHISPER_ROOT=/home/somdutta/.local/share/opencode/whisper
+Environment=WHISPER_BIN=/home/somdutta/.local/share/opencode/whisper/bin/whisper-cli
+Environment=WHISPER_MODEL=/home/somdutta/.local/share/opencode/whisper/models/ggml-large-v3-turbo-q5_0.bin
+Environment=WHISPER_LANG=auto
+Environment=LD_LIBRARY_PATH=/home/somdutta/.local/share/opencode/whisper/bin
+ExecStart=/home/somdutta/.nvm/versions/node/v24.22.1/bin/node /home/somdutta/.config/opencode/telegram/bridge.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

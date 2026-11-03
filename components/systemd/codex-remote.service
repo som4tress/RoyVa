@@ -1,0 +1,19 @@
+[Unit]
+Description=Codex CLI remote control
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/somdutta
+Environment=PATH=/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/somdutta/.local/bin/codex app-server daemon start
+KillMode=process
+TimeoutStopSec=1
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target

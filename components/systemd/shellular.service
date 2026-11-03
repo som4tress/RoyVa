@@ -1,0 +1,22 @@
+[Unit]
+Description=Shellular CLI host agent (OpenCode remote access)
+Documentation=https://github.com/shellular-org/packages/tree/main/cli
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=SHELLULAR_MIGRATED_MACHINE_ID=0a20d22f701cbf34cc3f3218bca1f3fa2b6931eaa7cbd7c36145fb7445f047c0
+Type=simple
+WorkingDirectory=/home/somdutta/OpenCode/shellular/packages/cli
+ExecStart=/home/somdutta/.nvm/versions/node/v24.22.1/bin/node dist/main.js --unknown-clients requires-approval
+Environment=NODE_ENV=production
+Environment=HOME=/home/somdutta
+Environment=PATH=/home/somdutta/.opencode/bin:/home/somdutta/.nvm/versions/node/v24.22.1/bin:/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
+Restart=always
+RestartSec=5
+# Give up only on repeated rapid failures, not on ordinary restarts.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

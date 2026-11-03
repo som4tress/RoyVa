@@ -1,0 +1,14 @@
+[Unit]
+Description=OpenCode shared speech-to-text endpoint (remote whisper.cpp)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/.config/opencode/scripts
+Environment=HOME=/home/somdutta
+ExecStart=/home/somdutta/.nvm/versions/node/v24.22.1/bin/node /home/somdutta/.config/opencode/scripts/whisper-http.mjs
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

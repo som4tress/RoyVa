@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';import {homedir}from'node:os';
+const h=homedir();const {cloudDirective,isHAConfiguration}=await import(h+'/.config/opencode/lib/user-scope.mjs');
+for(const t of ['Assign the office entities to upstairs.\n\nRoute it to deepseek','Check this. Route this request to OpenRouter.','Switch this task to cloud'])assert.ok(cloudDirective(t),t);
+assert.equal(cloudDirective('Explain this text: "Route it to deepseek"'),false);
+assert.ok(isHAConfiguration('Assign living room entities to downstairs'));assert.ok(isHAConfiguration('Create a floor for my home'));assert.equal(isHAConfiguration('Turn off living room lights'),false);
+const router=(await import(h+'/.config/opencode/plugins/ha-mcp-routing/index.js')).default;
+for(const explicit of [false,true]){const hooks={};let model={providerID:'evo-agent',id:'qwen36-agent'};await router.setup({options:{phraseStore:'/tmp/config-test-phrases.json',learningStore:'/tmp/config-test-learning.json'},session:{hook:async(n,f)=>hooks[n]=f,get:async()=>({model}),switchModel:async({model:m})=>model=m},permission:{hook:async()=>{}}});const id='test-ha-configuration-'+explicit;await hooks.prompt({sessionID:id,prompt:{text:'Assign office entities to upstairs.'+(explicit?'\n\nRoute it to DeepSeek':'')}});if(explicit)assert.equal(model.providerID,'openrouter');const context={sessionID:id,tools:{shell:{},read:{},'ha-history_get_device_status':{}},system:[]};await hooks.context(context);assert.ok(context.tools.shell&&context.tools.read);}
+console.log('PASS: multiline pronoun provider overrides; quoted instructions ignored; HA configuration retains general tools with local/default or explicit cloud routing.');

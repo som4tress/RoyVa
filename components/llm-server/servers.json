@@ -1,0 +1,41 @@
+{
+  "image": "rocm/vllm@sha256:394194d36edcf9b36bcb563e143b21b80e64e7d04f33a447b448c0c0c00c04a8",
+  "servers": {
+    "agent": {
+      "model": "/models/agent",
+      "dtype": "half",
+      "alias": "qwen36-agent",
+      "port": 8000,
+      "context": 131072,
+      "concurrency": 2,
+      "gpu_fraction": 0.65,
+      "kv_cache_bytes": 25769803776,
+      "host_memory": "16g",
+      "extra_args": [
+        "--enable-auto-tool-choice",
+        "--tool-call-parser",
+        "qwen3_coder",
+        "--language-model-only",
+        "--attention-backend",
+        "TRITON_ATTN"
+      ],
+      "batch_tokens": 2048,
+      "enforce_eager": true
+    },
+    "vision": {
+      "model": "Qwen/Qwen3.5-9B",
+      "alias": "qwen35-vision",
+      "port": 8001,
+      "context": 16384,
+      "concurrency": 1,
+      "gpu_fraction": 0.25,
+      "kv_cache_bytes": 1073741824,
+      "prefix_caching": false,
+      "host_memory": "10g",
+      "extra_args": [
+        "--limit-mm-per-prompt",
+        "{\"image\":8,\"video\":1}"
+      ]
+    }
+  }
+}

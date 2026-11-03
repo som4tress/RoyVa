@@ -1,0 +1,11 @@
+from pathlib import Path
+h=Path.home();p=h/'.config/opencode/lib/procedure-memory.mjs';s=p.read_text().replace('renameSync,mkdirSync,existsSync,statSync','renameSync,mkdirSync,existsSync,statSync,rmdirSync')
+s=s.replace("  if(/bearer\\s|eyJ", "  if(/authorization\\s*[:=]|https?:\\/\\/[^\\s/]+:[^\\s@]+@|bearer\\s|eyJ")
+s=s.replace("  return x.replace(/\\b\\d{4}-\\d{2}-\\d{2}\\b/g,'[date]').slice(0,key==='command'?1200:400);", "  let safe=x;\n  for(const [name,value] of Object.entries(process.env))if(/token|secret|password|api.?key|credential/i.test(name)&&value.length>=6)safe=safe.split(value).join('[sensitive value omitted]');\n  return safe.replace(/\\b\\d{4}-\\d{2}-\\d{2}\\b/g,'[date]').slice(0,key==='command'?1200:400);")
+s=s.replace('if(statSync(p).isFile())files.push', 'if(statSync(p).isFile()&&statSync(p).size<=2*1024*1024)files.push')
+s=s.replace(" const lock=path+'.lock';try{mkdirSync(lock,{mode:0o700})}catch{return false}"," const lock=path+'.lock';try{mkdirSync(lock,{mode:0o700})}catch{try{if(Date.now()-statSync(lock).mtimeMs>30000){rmdirSync(lock);mkdirSync(lock,{mode:0o700})}else return false}catch{return false}}")
+s=s.replace("(awaitlessRemove)(lock)","rmdirSync(lock)").replace("// Synchronous lock release keeps writers in one critical section.\nimport {rmdirSync} from 'node:fs';\nfunction awaitlessRemove(path){rmdirSync(path)}\n",'')
+p.write_text(s)
+p=h/'.config/opencode/plugins/ha-mcp-routing/index.js';s=p.read_text();s="import {procedureHint} from '../../lib/procedure-memory.mjs';\n"+s;s=s.replace("    if(state.learnedIntent)instruction+=", "    if(!state.fastStatus&&!state.reportOnly){const reuse=procedureHint(state.requestText||'',event.sessionID);if(reuse)instruction+='\\n'+reuse;}\n    if(state.learnedIntent)instruction+=");p.write_text(s)
+p=h/'.config/opencode/plugins/ha-mcp-routing/learning.js';s=p.read_text().replace("m.model?.providerID!=='vllm'","!['vllm','evo-agent'].includes(m.model?.providerID)");p.write_text(s)
+print('Automatic procedure capture and selective recall wired into generic and HA paths; migrated HA learning provider check repaired.')

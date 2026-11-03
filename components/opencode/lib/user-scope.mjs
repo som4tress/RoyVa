@@ -1,0 +1,13 @@
+export function instructionText(text){let value=String(text).trim();if(value.length>=2&&((value[0]===String.fromCharCode(34)&&value.at(-1)===String.fromCharCode(34))||(value[0]===String.fromCharCode(39)&&value.at(-1)===String.fromCharCode(39))))value=value.slice(1,-1);return value.replace(/```[\s\S]*?```/g,' ').replace(/"(?:\\.|[^"\\])*"/g,' ').replace(/(?<![a-zA-Z])'(?:\\.|[^'\\])*'(?![a-zA-Z])/g,' ').replace(/“[^”]*”|‘[^’]*’/g,' ').replace(/`[^`]*`/g,' ');}
+const cloudCommand=String.raw`(?:please\s+)?(?:use|route|switch)\s+(?:(?:it|this|that|(?:this\s+)?(?:request|task|query))\s+)?(?:to\s+)?(?:deepseek|cloud|openrouter)\b`;
+export function cloudDirective(text){const s=instructionText(text);return new RegExp('^(?:(?:can you|could you)\\s+)?'+cloudCommand,'i').test(s)||new RegExp('(?:[.!?;,\\-]|\\n)\\s*'+cloudCommand+'[.!?\\s]*$','i').test(s);}
+export function isHAConfiguration(text){const s=instructionText(text).toLowerCase();return /\b(?:assign|reassign|assignment|reassignment)\b/.test(s)&&/\b(?:entities|entity|devices?|areas?|floors?|rooms?)\b/.test(s)||/\b(?:create|edit|modify|configure|rename|delete|remove|add|move|update|design|build)\b/.test(s)&&/\b(?:area|floor|entity|device)\s+(?:registry|assignment)s?\b|\b(?:areas?|floors?|dashboards?|automations?|integrations?)\b/.test(s);}
+export function forbidsTools(text){return /\b(?:do not|don't|never)\s+(?:execute|run|call|use)\s+(?:any\s+)?tools\b|\bwithout\s+(?:using\s+)?tools\b/i.test(instructionText(text));}
+
+export function withoutCloudDirective(text){let s=String(text);if(!cloudDirective(s))return s;return s.replace(new RegExp('^(?:(?:can you|could you)\\s+)?'+cloudCommand+'\\s*[:,\\-]?\\s*','i'),'').replace(new RegExp('(?:[.!?;,\\-]|\\n)\\s*'+cloudCommand+'[.!?\\s]*$','i'),m=>/^[.!?]/.test(m)?m[0]:'').trim();}
+export function isTechnicalRequest(text){const s=instructionText(text);return /\b(?:ssh|filesystem|file system|credentials?|api keys?|access tokens?|venv|virtualenv)\b/i.test(s)||/(?:\/[a-z0-9_.-]+){2,}/i.test(s)||/\b[a-z0-9_-]+@[a-z0-9_.-]+\b/i.test(s);}
+
+export function isSimpleStatusQuery(query){
+ const text=String(query||'').replace(/[.!?;]?\s*(?:do not change anything|make no changes|read[ -]only)[.!?]*$/i,'');
+ return /\b(status|states?|is|are|show|list|which)\b/i.test(text)&&!/\b(turn|switch|toggle|set|change|why|explain|history|yesterday|when|cause|since|last|ago|fix|add|include|assign|reassign|configure|move|create|design|build|investigate|not|except|exclude|excluding|only|on|off|unavailable|diagnostics?|outside|without|brightness|temperature|humidity|battery|power|watts?|energy|consumption|speed|percentage|attributes|measurements|readings)\b/i.test(text);
+}

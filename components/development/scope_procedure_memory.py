@@ -1,0 +1,12 @@
+from pathlib import Path
+h=Path.home();p=h/'.config/opencode/lib/procedure-memory.mjs';s=p.read_text().replace('result={},sessionID},path=INDEX)',"result={},sessionID,workspace},path=INDEX)")
+s=s.replace("const id=digest(JSON.stringify({task:terms(safeTask),tool,args:safeArgs,files}));", "const scope=/^(home[-_]assistant_|ha[-_]history_)/.test(tool)?'*':workspace;\n const id=digest(JSON.stringify({task:terms(safeTask),tool,args:safeArgs,files,workspace:scope}));")
+s=s.replace('files,sessionID,count:1,created:', 'files,workspace:scope,sessionID,count:1,created:')
+s=s.replace('path=INDEX,excludeSession,limit=3}', 'path=INDEX,excludeSession,workspace,limit=3}')
+s=s.replace("e.sessionID!==excludeSession&&e.tokens", "e.sessionID!==excludeSession&&(!workspace||!e.workspace||e.workspace==='*'||e.workspace===workspace)&&e.tokens")
+s=s.replace('export function procedureHint(task,excludeSession){', 'export function procedureHint(task,excludeSession,workspace){').replace('recallProcedures(task,{excludeSession,limit:2})', 'recallProcedures(task,{excludeSession,workspace,limit:2})')
+p.write_text(s)
+p=h/'.config/opencode/plugins/procedure-memory/index.js';s=p.read_text().replace("   tasks.set(event.sessionID,event.prompt?.text||'');", "   let workspace=process.cwd();try{const session=await ctx.session.get({sessionID:event.sessionID});workspace=session.location?.directory||session.directory||workspace}catch{}\n   tasks.set(event.sessionID,{text:event.prompt?.text||'',workspace});")
+s=s.replace("const hint=procedureHint(task,event.sessionID);if(hint)event.system.push({type:'text',text:hint});", "const hint=procedureHint(task.text,event.sessionID,task.workspace);if(hint){event.system.push({type:'text',text:hint});console.log('[procedure-memory] recalled references for '+event.sessionID);}")
+s=s.replace("rememberProcedure({task,tool:","rememberProcedure({task:task.text,workspace:task.workspace,tool:")
+p.write_text(s)

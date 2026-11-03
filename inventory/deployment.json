@@ -1,0 +1,39 @@
+{
+  "opencode": {
+    "version": "opencode v2.2.5",
+    "binary": "/home/somdutta/.opencode/bin/opencode",
+    "sha256": "8d060e1d2fbb9bb44cf09ae6ed1f3f6a7cff070b5227e2f90970132b23a92050",
+    "sourceTag": "v2.2.5",
+    "sourceCommit": "9bbb8ce18c80f099e0e448775f59d965ead40a21",
+    "sourceRelation": "Matching release version; build reproducibility not verified."
+  },
+  "node": "v24.22.1",
+  "python": "Python 3.14.8",
+  "sourceRepositories": [
+    {
+      "path": "/home/somdutta/OpenCode/shellular",
+      "head": "d59f251a65efa9d433ea3d8e2f75a3504707c936",
+      "trackedChanges": ""
+    },
+    {
+      "path": "/home/somdutta/OpenCode/shellular/packages",
+      "head": "54468a8c1c9ff6af75faa54daec96ae0e2e8a23b",
+      "trackedChanges": "M cli/src/agents/index.ts\n M cli/src/config.ts"
+    },
+    {
+      "path": "/home/somdutta/OpenCode/shellular/server",
+      "head": "bd34932e4ab111b39aa10989b8598f905694155d",
+      "trackedChanges": ""
+    },
+    {
+      "path": "/home/somdutta/OpenCode/shellular/app",
+      "head": "e8290eda78bf0fecacd5bea4d7dd96ac335917ec",
+      "trackedChanges": "M src/pages/chat/ChatComposer.tsx\n M src/pages/chat/index.tsx"
+    },
+    {
+      "path": "/home/somdutta/OpenCode/opencode-smart-router",
+      "head": "9fa37b3691a5e0d020cea0bda8beb42a673d64ae",
+      "trackedChanges": ""
+    }
+  ]
+}

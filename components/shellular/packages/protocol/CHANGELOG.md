@@ -1,0 +1,284 @@
+# @shellular/protocol
+
+## 0.1.0
+
+### Minor Changes
+
+- d175255: feat: add Oh My Pi ACP agent support
+
+### Patch Changes
+
+- 77cdb7d: chore: update @agentclientprotocol/sdk to 1.4.0
+
+## 0.0.33
+
+### Patch Changes
+
+- 4915ce6: feat(agent): add Vercel fx
+
+## 0.0.32
+
+### Patch Changes
+
+- ed046de: feat(agents): prompt queueing
+- f43e35a: fix(agents): handle externally owned sessions and defer Codex resume until prompting
+
+## 0.0.31
+
+### Patch Changes
+
+- 579bab0: feat: add "macos" platform to `ClientInfoSchema` in protocol
+
+## 0.0.30
+
+### Patch Changes
+
+- b804aa1: feat: faster chat reopens, paged transcripts, and ACP elicitation support.
+
+  **Transcript cache (SQLite).** Agent chat transcripts are now cached in a shared
+  `~/.shellular/shellular.sqlite`, so reopening a chat renders immediately instead
+  of waiting on ACP's 20–30s full replay. The cache is never a source of truth —
+  the agent's own session storage stays authoritative and rows are replaced
+  wholesale (with a generation bump) after each full replay. SQLite is fail-soft:
+  if it can't be opened, everything degrades to the previous in-memory behavior.
+  Migrations live in `src/db/sql/*.sql` and are append-only, with a generated
+  `schema.sql` and a CI check that catches edits to already-shipped migrations.
+
+  **Paged transcripts.** `ai:session:attach` accepts `tail` or `from`/`to` to
+  request a slice of the transcript, and `ai:messages:list` accepts `to`/`limit`
+  for scroll-back. Both responses report the window actually served (`from`, `to`,
+  `totalCount`, `hasMoreBefore`, `generation`) so clients can page backwards
+  without overlap. `ai:session:load` is removed — `ai:session:attach` covers it.
+
+  **Compressed payloads.** Encrypted envelopes may now carry `enc: "gzip"`,
+  compressing before encryption so the relay still sees only routing fields and
+  opaque ciphertext. Only sent to apps new enough to decode it (inferred from
+  `appVersion`), and only above 4 KB; older apps keep receiving raw UTF-8.
+
+  **ACP elicitation.** Agents can request structured input mid-turn
+  (`ai:elicitation:reply`), covering agent question forms, MCP server
+  elicitations, and sign-in URLs. Tool calls also carry `locations`, and plans
+  carry `entries`.
+
+  **Fixes.**
+
+  - Wait for the ACP dispatcher to settle before reading a loaded transcript — the
+    tail of a replay could previously be dropped.
+  - Honor agent-provided `messageId` as a message boundary, so consecutive
+    same-role messages no longer merge and message ids stay stable across reloads.
+  - Wait 1.5s before redialing a relay that just failed; failover to a different
+    relay is still immediate.
+  - Log timestamps use ISO format (millisecond resolution) instead of
+    second-resolution `toUTCString()`.
+
+## 0.0.29
+
+### Patch Changes
+
+- 9d968fa: various fixes and improvements
+
+  - fix(battery): prevent leaks by stopping battery stream on any disconnect
+  - fix(terminal): restore per-client on connect, keep snapshots clean
+
+    Restore ran at boot for every terminal, firing PTY events at absent clients
+    and stacking a "History restored" divider per restart. Now driven by
+    SESSION_CLIENT_JOINED and idempotent across reconnects.
+
+    Restored scrollback moved out of the headless buffer into
+    entry.restoredHistory, joined at serialize time so the divider never
+    persists. `clear` drops it via an ED2/ED3 handler.
+
+  - fix: make ai agents detection async (it was sync before)
+  - chore: removed old & unused AI_AVAILABILITY related messages from protocol & CLI
+  - fix: add notification for new relay servers in US and EU for lower latency
+
+## 0.0.28
+
+### Patch Changes
+
+- 4d73ef7: feat(multi-region): refactor connection handling to support relay resolution and token management
+
+  - Updated client info types to use AuthedClientInfo.
+  - Introduced DEFAULT_SERVER_URL in config for easier server URL management.
+  - Enhanced connection logic to handle relay URLs and token validation.
+  - Added new error classes for better error handling during connection upgrades.
+  - Implemented relay probing and caching mechanism to optimize connection speed.
+  - Updated main CLI logic to utilize the new server URL configuration.
+  - Introduced relay module for managing relay connections and token fetching.
+  - Added server URL validation to ensure only HTTP/HTTPS protocols are accepted.
+  - Updated user gate checks to use the new AuthedClientInfo type.
+  - Bumped @biomejs/biome dependency.
+
+- 712bb39: chore: upgrade to latest version of ACP SDK
+
+## 0.0.27
+
+- d0fae9c: fix(protocol): auth is now mandatory for new versions
+  - NOTE: THIS VERSION WAS MANUALLY PUBLISHED BY me (github.com/biraj21)
+  - removed user field from ClientInfoSchema
+  - and hence also removed ClientInfoRequestSchema
+  - added ServerCloseCodeAndReason object to use between client, server and CLI
+  - this breaks things in CLI, so the CLI build should fail. CLI will be updated in the next multi-region PR to use this protocol change.
+
+## 0.0.26
+
+### Patch Changes
+
+- a46e941: feat(users): implement account allowlist management and user identity handling
+
+## 0.0.25
+
+### Patch Changes
+
+- 0c27774: feat: add support for Grok Build
+
+## 0.0.24
+
+### Patch Changes
+
+- 8e319ac: refactor: rename AiBackend to AgentId, and add codex shell install method
+
+## 0.0.23
+
+### Patch Changes
+
+- d8770d1: feat(git): push, pull, stage, unstage, commit, pull, push
+
+## 0.0.22
+
+### Patch Changes
+
+- 6067397: feat: show shellular version in app, and update
+  - Add `showSelfUpdateLogs` function to display self-update logs with live streaming of the latest log file.
+  - Introduce `runSelfUpdate` function to handle self-update execution, ensuring proper detachment from the parent process.
+  - Update `pm2` and remove unused dependencies
+  - Add startup and unstartup sub-commands to manage Shellular CLI daemon startup (wrapper over PM2)
+  - Add `--no-qr` option to the CLI to not show QR code
+  - Extend protocol with new message types for host updates and results, including schemas for validation.
+  - Modify session information to include CLI version and update availability status.
+
+## 0.0.21
+
+### Patch Changes
+
+- 025d3a9: feat: monitor active claude code and codex sessions and send it to FE so that they can be shown under active sessions for seamless handoff
+
+## 0.0.20
+
+### Patch Changes
+
+- 7a6d943: Update ACP SDK usage to the latest session configuration API and remove the obsolete session model selector bridge.
+- 87ef273: feat: implement portless URL mapping in ports handler (https://portless.sh/)
+
+## 0.0.19
+
+### Patch Changes
+
+- c18c131: fix: make sure npx spawn for ACP work on windows, and pin ACP sdk version to 0.23.0 since the unstable model setting was removed
+
+## 0.0.18
+
+### Patch Changes
+
+- 1415220: feat: allow users to add custom ACP agents
+
+## 0.0.17
+
+### Patch Changes
+
+- d71b927: feat: implement git commit file diff functionality with message schemas
+
+## 0.0.16
+
+### Patch Changes
+
+- a55f9a3: feat: add git log and commit files functionality with message schemas
+
+## 0.0.15
+
+### Patch Changes
+
+- 150f2c8: feat: a flag to show hidden files
+
+## 0.0.14
+
+### Patch Changes
+
+- abef551: fix: session attach/detach with multi-client support, lazy session snapshots, and runtime cleanup
+  - Add AI_SESSION_ATTACH and AI_SESSION_DETACH for explicit session lifecycle management
+  - Implement session snapshots with revision tracking for efficient state sync
+  - Add runtime cleanup timers to prevent memory leaks from idle sessions
+  - Fix race condition preventing reuse of destroyed ACP runtimes
+  - Fix root path resolution to not inadvertently form double-slash paths
+
+## 0.0.13
+
+### Patch Changes
+
+- f5f5baf: feat: make CLI the source of truth for keep track of agent state, and enable Cursor
+
+## 0.0.12
+
+### Patch Changes
+
+- 7f0ce79: chore: update acp sdk to 0.22.1
+
+## 0.0.11
+
+### Patch Changes
+
+- e223074: feat: add Hermes support in beta
+
+## 0.0.10
+
+### Patch Changes
+
+- 5fc49c9: fix: add some constraints to ClientInfoSchema
+
+## 0.0.9
+
+### Patch Changes
+
+- 23cc546: feat: add msgs for agent chat attachment, and call /host/register endpoint now
+
+## 0.0.8
+
+### Patch Changes
+
+- 08bdf89: feat: add copilot to protocol
+
+## 0.0.7
+
+### Patch Changes
+
+- 117a1d8: feat(acp): add support for Pi agent
+
+## 0.0.6
+
+### Patch Changes
+
+- 0445ef3: fix: remove old shit ai code, and use ACP
+
+## 0.0.5
+
+### Patch Changes
+
+- 68e650e: fix(sysmon): fix sysmon stats
+
+## 0.0.4
+
+### Patch Changes
+
+- 776c3d1: feat: accept device info from client during connection
+
+## 0.0.3
+
+### Patch Changes
+
+- 4409fb6: fix: add username to hostinfo & remove npm_config_prefix from PTY env
+
+## 0.0.2
+
+### Patch Changes
+
+- d6ec5f0: feat: move all protocol in @shellular/protocol package

@@ -1,0 +1,4 @@
+import assert from 'node:assert/strict';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import {join} from 'node:path';
+import {quotaInfo,recordFreeQuota,isFreeCoolingDown} from '/home/somdutta/.config/opencode/lib/free-quota.mjs';
+const dir=mkdtempSync(join(tmpdir(),'free-quota-test-')),path=join(dir,'quota.json');
+try{const err={type:'provider.free-limit',status:429,retryAfterMs:76139000,response:{body:'{"error":{"type":"FreeUsageLimitError","message":"Free usage limit reached"}}'}};assert(quotaInfo(err));assert(!quotaInfo({status:429,message:'Other provider rate limit'}));assert(recordFreeQuota(err,{path,now:1000}));assert(isFreeCoolingDown(path,2000));assert(!isFreeCoolingDown(path,1000+76139001));console.log('PASS: terminal free-limit detection, provider cooldown and expiry; unrelated errors excluded.');}finally{rmSync(dir,{recursive:true,force:true})}

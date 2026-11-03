@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path.home()/'.config/opencode/plugins/ha-mcp-routing/index.js';s=p.read_text();s=s.replace("      const catalog=await ctx.tool.list();", "      const catalog=await ctx.tool.list();\n      if(attempt===0)log({event:'tool-api-probe',methods:Object.keys(ctx.tool),sample:catalog.filter(t=>/^home.assistant/.test(t.id)).slice(0,1).map(t=>({keys:Object.keys(t),id:t.id}))});");p.write_text(s)

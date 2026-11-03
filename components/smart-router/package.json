@@ -1,0 +1,13 @@
+{
+  "name": "opencode-smart-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first smart router for OpenCode: hands long sessions to OpenRouter and frees the local KV cache",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts"
+  }
+}

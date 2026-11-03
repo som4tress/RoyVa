@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';import {readFileSync,writeFileSync,existsSync} from 'node:fs';import {DatabaseSync} from 'node:sqlite';
+const root='/home/somdutta/llm-server/discovery-discard-20261103';
+for(const n of ['api.env','opencode.env','ha.env'])for(const l of readFileSync('/home/somdutta/llm-server/'+n,'utf8').split('\n')){const i=l.indexOf('=');if(i>0)process.env[l.slice(0,i)]=l.slice(i+1).replace(/^["']|["']$/g,'');}
+process.env.OPENCODE_TG_STATE_FILE=root+'/discard-state.json';process.env.OPENCODE_TG_BIN='/home/somdutta/.opencode/bin/opencode';delete process.env.OPENCODE_TG_MODEL;
+const old=JSON.parse(readFileSync(root+'/codemode-fix-results.json'));const weather=old.find(x=>x.id==='weather'),registry=old.find(x=>x.id==='registry');
+writeFileSync(process.env.OPENCODE_TG_STATE_FILE,JSON.stringify({sessions:{6064019420:weather.sessionId},haContext:{6064019420:{obsolete:true}}}),{mode:0o600});
+const {runTelegramControlSelfTest,sendTelegramTestReport}=await import('/home/somdutta/.config/opencode/telegram/bridge.mjs');
+const {nativeSessionRequest}=await import('/home/somdutta/.config/opencode/lib/discard-session.mjs');
+const {telegramTarget,status}=await import('/home/somdutta/Projects/agent-learning/src/feedback.mjs');
+const chat=6064019420;const message=text=>({message_id:Date.now(),chat:{id:chat,type:'private'},from:{id:chat},text,reply_to_message:{message_id:weather.delivered.at(-1)}});
+const counts=id=>{const db=new DatabaseSync('/home/somdutta/.local/share/opencode/opencode.db',{readOnly:true});const out={session:db.prepare('select count(*) n from session_v2 where id=?').get(id).n,messages:db.prepare('select count(*) n from session_message where session_id=?').get(id).n,parts:db.prepare('select count(*) n from session_part where session_id=?').get(id).n,kv:db.prepare('select count(*) n from kv where instr(key,?)>0').get(id).n};db.close();return out;};
+await sendTelegramTestReport(chat,'Focused discard test: rejecting our earlier diagnostic weather response. These are disposable test sessions, not your production chat.');
+const before=(await(await fetch('http://127.0.0.1:8011/metrics')).json()).upstream;
+assert.ok(counts(weather.sessionId).session);const r=await runTelegramControlSelfTest(message('👎'));assert.equal(r.ok,true);assert.match(r.result.text,/discarded/);assert.deepEqual(counts(weather.sessionId),{session:0,messages:0,parts:0,kv:0});assert.ok(counts(registry.sessionId).session);
+const target=telegramTarget(chat,weather.delivered.at(-1));assert.equal(status(target).buildAllowed,false);
+const positive=await runTelegramControlSelfTest(message('/feedback accept'));assert.match(positive.result.text,/discarded|fresh approval/);
+await runTelegramControlSelfTest(message('👎'));
+const after=(await(await fetch('http://127.0.0.1:8011/metrics')).json()).upstream;assert.equal(before,after);
+const state=JSON.parse(readFileSync(process.env.OPENCODE_TG_STATE_FILE));assert.ok(!state.sessions['6064019420']);assert.ok(!state.haContext['6064019420']);
+await sendTelegramTestReport(chat,'Discard verified: session/messages/context state removed; repeat 👎 is safe; later 👍 cannot revive it; zero model calls. Now checking the same /feedback reject command used by browser and Shellular.');
+const command=await nativeSessionRequest(registry.sessionId,'command','POST',{name:'feedback',text:'reject'});assert.ok(command.ok,'Native feedback command admission failed');
+for(let i=0;i<100&&counts(registry.sessionId).session;i++)await new Promise(r=>setTimeout(r,100));assert.equal(counts(registry.sessionId).session,0,'Native /feedback reject did not remove the session');
+writeFileSync(root+'/discard-live-result.json',JSON.stringify({telegramDeleted:true,nativeCommandDeleted:true,repeatedRejectSafe:true,lateAcceptBlocked:true,feedbackModelCalls:after-before,telegramCounts:counts(weather.sessionId),nativeCounts:counts(registry.sessionId)},null,2),{mode:0o600});
+console.log('DISCARD_BOTH_FRONTEND_PATHS_VERIFIED');

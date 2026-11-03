@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path('/tmp/test_procedure_live.py');s=p.read_text().replace('Create /home/somdutta/OpenCodeRunner/procedure-memory-smoke.py with a square(x) function that returns x*x. Use the write tool; do not execute it.','Reuse existing procedure-memory-smoke.py; inspect it and confirm square(x) returns x*x. Do not modify or execute it.').replace("['create','recall']","['reuse-existing']");Path('/tmp/test_procedure_reuse.py').write_text(s)

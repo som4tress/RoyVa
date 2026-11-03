@@ -1,0 +1,36 @@
+{
+  "enabled": true,
+  "contextTokens": 32000,
+  "reasoningLoops": 25,
+  "fallback": {
+    "providerID": "openrouter",
+    "modelID": "auto"
+  },
+  "evictionScope": "session",
+  "returnToLocal": "never",
+  "announce": true,
+  "dryRun": false,
+  "log": true,
+  "local": [
+    {
+      "providerID": "ollama",
+      "backend": { "kind": "ollama", "baseURL": "http://127.0.0.1:11434" }
+    },
+    {
+      "providerID": "llamacpp",
+      "backend": { "kind": "llamacpp", "baseURL": "http://127.0.0.1:8080", "slots": "all" }
+    },
+    {
+      "providerID": "vllm",
+      "backend": { "kind": "vllm", "baseURL": "http://127.0.0.1:8000" }
+    },
+    {
+      "providerID": "sglang",
+      "backend": { "kind": "sglang", "baseURL": "http://127.0.0.1:30000" }
+    },
+    {
+      "providerID": "tensorrt",
+      "backend": { "kind": "tensorrt", "baseURL": "http://127.0.0.1:8001" }
+    }
+  ]
+}

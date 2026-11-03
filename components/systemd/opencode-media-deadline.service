@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenCode media request deadlines (local Qwen and cloud fallback)
+After=network-online.target
+
+[Service]
+EnvironmentFile=/home/somdutta/llm-server/ha.env
+EnvironmentFile=/home/somdutta/llm-server/api.env
+EnvironmentFile=/home/somdutta/llm-server/opencode.env
+ExecStart=/home/somdutta/.nvm/versions/node/v24.22.1/bin/node /home/somdutta/.config/opencode/lib/media-deadline-proxy.mjs
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

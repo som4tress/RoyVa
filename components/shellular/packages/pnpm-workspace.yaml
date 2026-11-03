@@ -1,0 +1,11 @@
+packages:
+  - 'cli'
+  - 'protocol'
+allowBuilds:
+  better-sqlite3: true
+  bufferutil: true
+  esbuild: true
+  node-pty: true
+minimumReleaseAgeExclude:
+  - '@pm2/js-api@0.8.1'
+  - pm2@7.0.3

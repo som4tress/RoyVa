@@ -1,0 +1,259 @@
+import { z } from "zod";
+
+export const MsgType = {
+	/** CLI sends this to register itself as a host with the server */
+	SESSION_HOST: "session:host",
+	/** Server response confirming CLI is registered as a host */
+	SESSION_HOSTED: "session:hosted",
+	/** Used by app side after joining a session */
+	SESSION_JOINED: "session:joined",
+	/** Error response during session establishment */
+	SESSION_ERROR: "session:error",
+	/** Server notifies CLI when a client (app) joins the session */
+	SESSION_CLIENT_JOINED: "session:client-joined",
+	/** Server notifies CLI when a client (app) leaves the session */
+	SESSION_CLIENT_LEFT: "session:client-left",
+	/** Server notifies CLI of a pending client connection awaiting approval */
+	SESSION_CLIENT_JOIN: "session:client-join",
+	/** CLI sends this to report whether a pending client was approved */
+	SESSION_CLIENT_JOIN_RESULT: "session:client-join:result",
+	/** App asks the host CLI to update itself to the latest version and restart */
+	HOST_UPDATE: "host:update",
+	/** CLI reports progress/result of a self-update triggered by the app */
+	HOST_UPDATE_RESULT: "host:update:result",
+	/** Request to list directory contents */
+	FS_LIST: "fs:list",
+	/** Response with directory listing entries */
+	FS_LIST_RESULT: "fs:list:result",
+	/** Request to read a file */
+	FS_READ: "fs:read",
+	/** Response with file content */
+	FS_READ_RESULT: "fs:read:result",
+	/** Request to write to a file */
+	FS_WRITE: "fs:write",
+	/** Response after file write completes */
+	FS_WRITE_RESULT: "fs:write:result",
+	/** Request to create a directory */
+	FS_MKDIR: "fs:mkdir",
+	/** Request to delete a file or directory */
+	FS_DELETE: "fs:delete",
+	/** Request to rename a file or directory */
+	FS_RENAME: "fs:rename",
+	/** Request to get file/directory stats */
+	FS_STAT: "fs:stat",
+	/** Response with file/directory stats */
+	FS_STAT_RESULT: "fs:stat:result",
+	/** Generic response for mkdir/delete/rename operations */
+	FS_RESULT: "fs:result",
+	/** Request to create a new terminal session */
+	TERMINAL_CREATE: "terminal:create",
+	/** Response confirming terminal creation with terminal ID */
+	TERMINAL_CREATE_RESULT: "terminal:create:result",
+	/** Request to list all active terminals */
+	TERMINAL_LIST: "terminal:list",
+	/** Response with list of active terminals */
+	TERMINAL_LIST_RESULT: "terminal:list:result",
+	/** Request to attach to an existing terminal */
+	TERMINAL_ATTACH: "terminal:attach",
+	/** Response confirming attachment with buffer content */
+	TERMINAL_ATTACH_RESULT: "terminal:attach:result",
+	/** Terminal output data streamed from CLI to client / input from client to CLI */
+	TERMINAL_DATA: "terminal:data",
+	/** Request to resize terminal dimensions */
+	TERMINAL_RESIZE: "terminal:resize",
+	/** Terminal title change notification */
+	TERMINAL_TITLE: "terminal:title",
+	/** Request to close a terminal session */
+	TERMINAL_CLOSE: "terminal:close",
+	/** Response confirming terminal is closed */
+	TERMINAL_CLOSED: "terminal:closed",
+	/** Request to fetch system info */
+	SYSMON_GET: "sysmon:get",
+	/** Response with system info */
+	SYSMON_RESULT: "sysmon:result",
+	/** Streamed battery percentage update */
+	BATTERY_UPDATE: "battery:update",
+	HTTP_REQUEST: "http:request",
+	HTTP_RESPONSE_START: "http:response:start",
+	HTTP_RESPONSE_DATA: "http:response:data",
+	HTTP_RESPONSE_END: "http:response:end",
+	WS_OPEN: "ws:open",
+	WS_OPENED: "ws:opened",
+	WS_DATA: "ws:data",
+	WS_CLOSE: "ws:close",
+	WS_CLOSED: "ws:closed",
+	PING: "ping",
+	PONG: "pong",
+	PORTS_LIST: "ports:list",
+	PORTS_LIST_RESULT: "ports:list:result",
+	PORTS_KILL: "ports:kill",
+	PORTS_KILL_RESULT: "ports:kill:result",
+	/** Request to get git info for a project directory */
+	PROJECT_INFO: "project:info",
+	/** Response with git info for a project directory */
+	PROJECT_INFO_RESULT: "project:info:result",
+	/** Request to search project files */
+	PROJECT_FILE_SEARCH: "project:file-search",
+	/** Response with project file search results */
+	PROJECT_FILE_SEARCH_RESULT: "project:file-search:result",
+	/** Request to read original file content from git */
+	GIT_READ: "git:read",
+	/** Response with original file content from git */
+	GIT_READ_RESULT: "git:read:result",
+	/** Request for a paginated git commit log */
+	GIT_LOG: "git:log",
+	/** Response with a page of git commits */
+	GIT_LOG_RESULT: "git:log:result",
+	/** Request for the files changed in a specific commit */
+	GIT_COMMIT_FILES: "git:commit-files",
+	/** Response with the files changed in a specific commit */
+	GIT_COMMIT_FILES_RESULT: "git:commit-files:result",
+	/** Request for a single file's before/after contents in a commit */
+	GIT_COMMIT_FILE_DIFF: "git:commit-file-diff",
+	/** Response with a single file's before/after contents in a commit */
+	GIT_COMMIT_FILE_DIFF_RESULT: "git:commit-file-diff:result",
+	/** Request for working tree git operations */
+	GIT_OPERATION: "git:operation",
+	/** Response with working tree git operation results */
+	GIT_OPERATION_RESULT: "git:operation:result",
+	AI_SESSION_LIST: "ai:session:list",
+	AI_SESSION_LIST_RESULT: "ai:session:list:result",
+	AI_SESSION_CREATE: "ai:session:create",
+	AI_SESSION_CREATE_RESULT: "ai:session:create:result",
+	AI_SESSION_ATTACH: "ai:session:attach",
+	AI_SESSION_ATTACH_RESULT: "ai:session:attach:result",
+	AI_SESSION_DETACH: "ai:session:detach",
+	AI_SESSION_DETACH_RESULT: "ai:session:detach:result",
+	AI_SESSION_RESUME: "ai:session:resume",
+	AI_SESSION_RESUME_RESULT: "ai:session:resume:result",
+	AI_SESSION_FORK: "ai:session:fork",
+	AI_SESSION_FORK_RESULT: "ai:session:fork:result",
+	AI_SESSION_CLOSE: "ai:session:close",
+	AI_SESSION_CLOSE_RESULT: "ai:session:close:result",
+	AI_SESSION_MODE_SET: "ai:session:mode:set",
+	AI_SESSION_MODE_SET_RESULT: "ai:session:mode:set:result",
+	AI_SESSION_GET: "ai:session:get",
+	AI_SESSION_GET_RESULT: "ai:session:get:result",
+	AI_SESSION_DELETE: "ai:session:delete",
+	AI_SESSION_DELETED: "ai:session:deleted",
+	AI_MESSAGES_LIST: "ai:messages:list",
+	AI_MESSAGES_LIST_RESULT: "ai:messages:list:result",
+	AI_PROMPT: "ai:prompt",
+	AI_PROMPT_ACK: "ai:prompt:ack",
+	AI_PROMPT_QUEUE_UPDATE: "ai:prompt-queue:update",
+	AI_PROMPT_QUEUE_UPDATE_ACK: "ai:prompt-queue:update:ack",
+	AI_PROMPT_QUEUE_REMOVE: "ai:prompt-queue:remove",
+	AI_PROMPT_QUEUE_REMOVE_ACK: "ai:prompt-queue:remove:ack",
+	AI_PROMPT_QUEUE_PAUSE: "ai:prompt-queue:pause",
+	AI_PROMPT_QUEUE_PAUSE_ACK: "ai:prompt-queue:pause:ack",
+	/** Request to write an agent chat attachment into CLI-owned storage */
+	AI_ATTACHMENT_WRITE: "ai:attachment:write",
+	/** Response after agent chat attachment write completes */
+	AI_ATTACHMENT_WRITE_RESULT: "ai:attachment:write:result",
+	AI_SESSION_CONFIG_SET: "ai:session:config:set",
+	AI_SESSION_CONFIG_SET_RESULT: "ai:session:config:set:result",
+	AI_ABORT: "ai:abort",
+	AI_ABORT_ACK: "ai:abort:ack",
+	AI_SESSION_OWNER_KILL: "ai:session-owner:kill",
+	AI_SESSION_OWNER_KILL_RESULT: "ai:session-owner:kill:result",
+	AI_EVENT: "ai:event",
+	AI_AGENTS_LIST: "ai:agents:list",
+	AI_AGENTS_LIST_RESULT: "ai:agents:list:result",
+	AI_AGENTS_MANAGE_LIST: "ai:agents:manage:list",
+	AI_AGENTS_MANAGE_LIST_RESULT: "ai:agents:manage:list:result",
+	AI_AGENTS_ENABLE_SET: "ai:agents:enable:set",
+	AI_AGENTS_ENABLE_SET_RESULT: "ai:agents:enable:set:result",
+	AI_AGENTS_CUSTOM_ADD: "ai:agents:custom:add",
+	AI_AGENTS_CUSTOM_ADD_RESULT: "ai:agents:custom:add:result",
+	AI_AGENTS_CUSTOM_UPDATE: "ai:agents:custom:update",
+	AI_AGENTS_CUSTOM_UPDATE_RESULT: "ai:agents:custom:update:result",
+	AI_AGENTS_CUSTOM_REMOVE: "ai:agents:custom:remove",
+	AI_AGENTS_CUSTOM_REMOVE_RESULT: "ai:agents:custom:remove:result",
+	AI_ACTIVITY_LIST: "ai:activity:list",
+	AI_ACTIVITY_LIST_RESULT: "ai:activity:list:result",
+	AI_ACTIVITY_DISMISS: "ai:activity:dismiss",
+	AI_ACTIVITY_DISMISS_RESULT: "ai:activity:dismiss:result",
+	AI_PROVIDERS_LIST: "ai:providers:list",
+	AI_PROVIDERS_LIST_RESULT: "ai:providers:list:result",
+	AI_AUTH_SET: "ai:auth:set",
+	AI_AUTH_SET_ACK: "ai:auth:set:ack",
+	AI_COMMAND: "ai:command",
+	AI_COMMAND_RESULT: "ai:command:result",
+	AI_REVERT: "ai:revert",
+	AI_REVERT_ACK: "ai:revert:ack",
+	AI_UNREVERT: "ai:unrevert",
+	AI_UNREVERT_ACK: "ai:unrevert:ack",
+	AI_SHARE: "ai:share",
+	AI_SHARE_RESULT: "ai:share:result",
+	AI_PERMISSION_REPLY: "ai:permission:reply",
+	AI_PERMISSION_REPLY_ACK: "ai:permission:reply:ack",
+	// ACP elicitation (agent asks the user for structured input mid-turn).
+	// Requests arrive as `elicitation.updated` AI events; this is the reply leg.
+	AI_ELICITATION_REPLY: "ai:elicitation:reply",
+	AI_ELICITATION_REPLY_ACK: "ai:elicitation:reply:ack",
+	AI_QUESTION_REPLY: "ai:question:reply",
+	AI_QUESTION_REPLY_ACK: "ai:question:reply:ack",
+	AI_QUESTION_REJECT: "ai:question:reject",
+	AI_QUESTION_REJECT_ACK: "ai:question:reject:ack",
+	ENCRYPTED: "encrypted",
+} as const;
+
+export type MsgType = (typeof MsgType)[keyof typeof MsgType];
+
+export const PLAINTEXT_TYPES: ReadonlySet<string> = new Set([
+	MsgType.SESSION_HOST,
+	MsgType.SESSION_HOSTED,
+	MsgType.SESSION_JOINED,
+	MsgType.SESSION_ERROR,
+	MsgType.SESSION_CLIENT_JOINED,
+	MsgType.SESSION_CLIENT_LEFT,
+	MsgType.SESSION_CLIENT_JOIN,
+	MsgType.SESSION_CLIENT_JOIN_RESULT,
+	MsgType.PING,
+	MsgType.PONG,
+]);
+
+export const BaseMsgSchema = z
+	.object({
+		id: z.string().optional(),
+		type: z.string(),
+	})
+	.catchall(z.unknown());
+
+// ─── Ping / Pong ─────────────────────────────────────────────────────────────
+
+export const PingMsgSchema = z.object({
+	id: z.string().optional(),
+	type: z.literal(MsgType.PING),
+});
+export type PingMsg = z.infer<typeof PingMsgSchema>;
+
+export const PongMsgSchema = z.object({
+	id: z.string(),
+	type: z.literal(MsgType.PONG),
+	respTo: z.string().optional(),
+});
+export type PongMsg = z.infer<typeof PongMsgSchema>;
+
+// ─── Encrypted ───────────────────────────────────────────────────────────────
+
+/**
+ * Encoding applied to the plaintext BEFORE encryption, so the relay still only
+ * ever sees the routing fields and an opaque `ciphertext`. Absent means raw
+ * UTF-8 JSON, which is what older peers send and understand — never make this
+ * required, or a version-skewed peer's messages become undecryptable.
+ */
+export const EncryptedPayloadEncodingSchema = z.literal("gzip");
+export type EncryptedPayloadEncoding = z.infer<
+	typeof EncryptedPayloadEncodingSchema
+>;
+
+export const EncryptedMsgSchema = z.object({
+	id: z.string().optional(),
+	type: z.literal(MsgType.ENCRYPTED),
+	clientId: z.string(),
+	nonce: z.string(),
+	ciphertext: z.string(),
+	enc: EncryptedPayloadEncodingSchema.optional(),
+});
+export type EncryptedMsg = z.infer<typeof EncryptedMsgSchema>;

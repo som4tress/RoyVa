@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenCode EVO runner
+StartLimitIntervalSec=300
+StartLimitBurst=3
+
+[Service]
+EnvironmentFile=/home/somdutta/llm-server/ha.env
+Type=simple
+WorkingDirectory=/home/somdutta
+Environment=PATH=/home/somdutta/.opencode/bin:/home/somdutta/.nvm/versions/node/v24.22.1/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/somdutta/llm-server/api.env
+EnvironmentFile=/home/somdutta/llm-server/opencode.env
+ExecStart=/home/somdutta/.opencode/bin/opencode serve --hostname 0.0.0.0 --port 49374
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,10 @@
+from pathlib import Path
+h=Path.home();p=h/'.config/opencode/lib/execution-templates.mjs';s=p.read_text()
+s=s.replace('export function currentTurn(body){','export function currentTurn(body,userQuery){')
+s=s.replace(" if(typeof content!=='string'||content.length>600)return null;", " if(typeof userQuery==='string'&&userQuery.length)content=userQuery;\n if(typeof content!=='string'||content.length>600)return null;")
+s=s.replace('export function candidateFromTurn(body){\n const turn=currentTurn(body);', 'export function candidateFromTurn(body,userQuery){\n const turn=currentTurn(body,userQuery);')
+s=s.replace('now=Date.now()}={}){\n const turn=currentTurn(body);', 'now=Date.now(),userQuery}={}){\n const turn=currentTurn(body,userQuery);')
+s=s.replace('now=Date.now()}={}){\n const candidate=candidateFromTurn(body);', 'now=Date.now(),userQuery}={}){\n const candidate=candidateFromTurn(body,userQuery);')
+p.write_text(s)
+p=h/'.config/opencode/lib/media-deadline-proxy.mjs';s=p.read_text().replace("   let direct=null;\n   try{direct=await tryExecutionTemplate(incoming);if(!direct)direct=await learnExecutionTemplate(incoming)}", "   let direct=null,userQuery;try{userQuery=decodeURIComponent(req.headers['x-ha-request-task']||'')}catch{}\n   try{direct=await tryExecutionTemplate(incoming,{userQuery});if(!direct)direct=await learnExecutionTemplate(incoming,{userQuery})}")
+p.write_text(s)

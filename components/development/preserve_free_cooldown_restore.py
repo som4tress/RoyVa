@@ -1,0 +1,2 @@
+from pathlib import Path
+p=Path.home()/'.config/opencode/plugins/ha-mcp-routing/index.js';s=p.read_text().replace("if(prior?.previous)await ctx.session.switchModel({sessionID:event.sessionID,model:prior.previous});", "if(prior?.previous)await ctx.session.switchModel({sessionID:event.sessionID,model:prior.previous.providerID==='opencode'&&isFreeCoolingDown()?CLOUD:prior.previous});");p.write_text(s)

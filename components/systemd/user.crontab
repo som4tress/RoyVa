@@ -1,0 +1,1 @@
+0 10 * * * /home/somdutta/.config/opencode/scripts/breaking-news-10am.sh >/dev/null 2>&1

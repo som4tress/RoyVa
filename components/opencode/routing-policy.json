@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "local": {
+    "providerID": "evo-agent",
+    "id": "qwen36-agent"
+  },
+  "vision": {
+    "providerID": "evo-vision",
+    "id": "qwen35-vision"
+  },
+  "cloud": {
+    "providerID": "openrouter",
+    "id": "deepseek/deepseek-v4.1-flash-1017"
+  },
+  "budgets": {
+    "generalLocalMs": 60000,
+    "haTotalMs": 45000,
+    "haLocalMs": 42000,
+    "mediaLocalMs": 60000,
+    "cloudMs": 120000
+  }
+}

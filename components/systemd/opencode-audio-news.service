@@ -1,0 +1,8 @@
+[Unit]
+Description=OpenCode news audio files
+After=network-online.target
+[Service]
+ExecStart=/usr/bin/python3 -m http.server 8765 --bind 0.0.0.0 --directory /home/somdutta/media/news
+Restart=on-failure
+[Install]
+WantedBy=default.target

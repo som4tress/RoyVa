@@ -1,0 +1,21 @@
+[Unit]
+After=evo-vllm-vision.service
+Wants=evo-vllm-vision.service
+Description=EVO vLLM agent endpoint
+StartLimitIntervalSec=600
+StartLimitBurst=2
+
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/llm-server
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/somdutta/llm-server/launch.py agent
+ExecStop=-/usr/bin/docker stop -t 30 evo-vllm-agent
+ExecStartPost=/usr/bin/python3 /home/somdutta/llm-server/wait_ready.py 8000
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

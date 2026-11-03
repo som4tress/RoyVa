@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {isCurrentLocationQuery,isLocationExplanation} from '/home/somdutta/.config/opencode/lib/location-query.mjs';
+import {classify} from '/home/somdutta/.config/opencode/plugins/ha-mcp-routing/index.js';
+import {isStatusReport} from '/home/somdutta/.config/opencode/lib/ha-reports.mjs';
+const people={shobha:'Shobha',shivangsh:'Shivangsh',somdutta:'Somdutta'};
+for(const q of ['Where is Shobha',"Where's Shivangsh now",'Show me the current location of Shobha'])assert(isCurrentLocationQuery(q,people));
+for(const q of ['Show me all location history for Shobha in the last hour',"I want Shobha’s location history in the last hour - route to deepseek",'Shobha location history in the last one hour',"When I am asking for shobha’s location history why am I getting her last location only",'Where was Shobha yesterday','Where is Shobha - route to DeepSeek'])assert(!isCurrentLocationQuery(q,people),q);
+const correction='When I am asking for shobha’s location history why am I getting her last location only';assert(isLocationExplanation(correction));assert.equal(classify(correction),null);
+assert.equal(classify('What switches and devices are on right now'),'devices');assert(isStatusReport('What switches and devices are on right now'));assert.equal(classify('Shobha location history in the last one hour'),'history');
+console.log('PASS: current/history/correction/model-override separation and plural current-device reports.');

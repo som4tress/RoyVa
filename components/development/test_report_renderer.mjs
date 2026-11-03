@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {isStatusReport,reportFromRequest,renderReport,reportWire,REPORT_TOOL} from '/home/somdutta/.config/opencode/lib/ha-reports.mjs';
+const report={kind:'ha_status_report',version:1,read_only:true,domains:['light','switch'],columns:['Device','Type','State'],rows:[['Example | light\nname','light','off']],total:1,truncated:false};
+const request={model:'qwen36-agent',messages:[{role:'user',content:'Show device status as a table'},{role:'assistant',tool_calls:[{id:'call-1',type:'function',function:{name:REPORT_TOOL,arguments:'{}'}}]},{role:'tool',tool_call_id:'call-1',content:JSON.stringify(report)}]};
+assert(isStatusReport('Show me the status of all lights and devices in my home in a nice tabular format'));
+for(const q of ['Turn all lights off and show a table','Show yesterday light history in a table','Explain why all lights are on','Compare device states before and after'])assert(!isStatusReport(q));
+const rendered=reportFromRequest(request);assert(rendered.includes('Example \\| light name'));assert(rendered.includes('| off |')===false);assert(rendered.includes('light | off'));
+assert.equal(reportFromRequest({...request,messages:[...request.messages,{role:'user',content:'Explain that'}]}),null);
+const wrong=structuredClone(request);wrong.messages[1].tool_calls[0].function.name='other_tool';assert.equal(reportFromRequest(wrong),null);
+assert.equal(renderReport({...report,read_only:false}),null);assert.equal(renderReport({...report,rows:[[1,2,3]]}),null);
+assert.equal(renderReport({...report,rows:[],total:0}).includes('No devices matched'),true);
+assert.equal(renderReport({...report,truncated:true,total:2}).includes('truncated'),true);
+assert.equal(JSON.parse(reportWire(request,rendered).body).choices[0].message.content,rendered);
+assert(reportWire({...request,stream:true},rendered).body.endsWith('data: [DONE]\n\n'));
+console.log('PASS: generic report detection, trusted tool association, malformed/error rejection, escaping, empty/truncated scope and JSON/SSE completion.');

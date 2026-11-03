@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {phraseKindForTool} from '/home/somdutta/.config/opencode/plugins/ha-mcp-routing/phrases.js';
+assert.equal(phraseKindForTool('ha-history_get_visited_locations'),'history');
+for(const tool of ['ha-history_get_device_status','ha-history_get_device_status_report','ha-history_get_on_entities_with_context','home-assistant_homeassistant__GetLiveContext'])assert.equal(phraseKindForTool(tool),'devices');
+assert.equal(phraseKindForTool('ha-history_get_device_status',{output:'{"error":"missing"}'}),null);
+assert.equal(phraseKindForTool('ha-history_get_visited_locations',{isError:true}),null);
+assert.equal(phraseKindForTool('unregistered'),null);
+import fallback from '/home/somdutta/.config/opencode/plugins/free-model-fallback/index.js';
+const hooks={},switches=[];await fallback.setup({session:{hook:async(n,f)=>hooks[n]=f,switchModel:async x=>switches.push(x.model)}});
+const event={sessionID:'test-free',model:{providerID:'opencode'}};await hooks.retry(event);assert.equal(switches[0].providerID,'openrouter');assert(event.decision.retry);
+const second={...event};await hooks.retry(second);assert(!second.decision.retry);
+const local={sessionID:'local',model:{providerID:'evo-agent'}};await hooks.retry(local);assert(!local.decision);
+console.log('PASS: tool-specific phrase categories, failed-result rejection and free-to-paid fallback without changing local routing.');
