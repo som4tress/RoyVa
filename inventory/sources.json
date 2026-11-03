@@ -3,7 +3,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/AGENTS.md",
-    "sha256": "81a32fc1352bfe06d358f63b25307d1f14e3d2253af579e191eff7b26fe024ec",
+    "sha256": "fc4723b23c2880dd69b9e666a79bc754339827946687c2356ecbcdf1a79086f6",
     "source": "/home/somdutta/.config/opencode/AGENTS.md"
   },
   {
@@ -38,7 +38,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/agents/ha.md",
-    "sha256": "76565ee28cfc647c54d3e4001c6b2c4f2132cce25513f4a33bfa7cd627278db0",
+    "sha256": "a5e231c6460847742c37654bab9ab43e61c28147a366fab115220d09b958a1d0",
     "source": "/home/somdutta/.config/opencode/agents/ha.md"
   },
   {
@@ -52,7 +52,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/agents/telegram.md",
-    "sha256": "acf031fa8f3a41775903a57d366b6419f9e8fe10bebed3bfc995abcf83dbaca4",
+    "sha256": "be463acf05d3f6034a954410f1aa364a6f5881216b9126d75c24cfca0d6e8caa",
     "source": "/home/somdutta/.config/opencode/agents/telegram.md"
   },
   {
@@ -73,7 +73,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/ha-compact.md",
-    "sha256": "6a862a50c57c2e8288654e6e6500fc3960fb25b437063eb9048e995623d1d798",
+    "sha256": "6f001dbf74d57d67d14ab9359e86ebb71cc7ac7f3833103439255431b7f8571c",
     "source": "/home/somdutta/.config/opencode/instructions/ha-compact.md"
   },
   {
@@ -87,7 +87,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/identity.md",
-    "sha256": "bbc7f21c077555be9d2534bc6304758d9dda2da1330813452d8ecf6de26cf2de",
+    "sha256": "99725f93cbc79ac83914f3000c8eda3b199fcdcfa0af6116d1700740e8f17628",
     "source": "/home/somdutta/.config/opencode/instructions/identity.md"
   },
   {
@@ -577,7 +577,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/bridge.mjs",
-    "sha256": "91a026b6aa432eefbcbd3edbaa003955f8f36de7001d40697656aefb75281323",
+    "sha256": "9bc6c6fb453656194c742cc681af36a10bed3e480423b9703eba596833378377",
     "source": "/home/somdutta/.config/opencode/telegram/bridge.mjs"
   },
   {
@@ -675,7 +675,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/agent-learning/test/feedback.test.mjs",
-    "sha256": "9eede21b0b20bc91608e4f865c3b18aec630d1e5a8f17f5fca52fdabbab93496",
+    "sha256": "3c4c654b1f40886d3e32d9ade6115ac89118baab408e75cf4c9707c0fc260dae",
     "source": "/home/somdutta/Projects/agent-learning/test/feedback.test.mjs"
   },
   {
@@ -6765,7 +6765,7 @@
     "executable": false,
     "redacted": false,
     "repository": "inventory/workspace-AGENTS.md",
-    "sha256": "6c709436084334b132a5991fe55e465416daed585918c00ca9befbf1c801ce71",
+    "sha256": "c3e6958da254c2af99707e320f77ae3cd5d3ecc59c6cf743c472ad8500793d2f",
     "source": "/home/somdutta/Documents/Codex/AGENTS.md"
   }
 ]

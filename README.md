@@ -1,4 +1,4 @@
-# Jarvis runtime baseline
+# Royva runtime baseline
 
 This local repository records the current EVO deployment. It is an **as-is
 baseline with known bugs**, not a certified working release.
@@ -22,7 +22,7 @@ parent Projects repository are untouched.
 ## Workflow
 
 ```sh
-cd /home/somdutta/Documents/Codex/jarvis-runtime
+cd /home/somdutta/Documents/Codex/royva
 python3 tools/capture.py --check
 # Inspect existing drift; make one logical change and run focused checks.
 python3 tools/capture.py

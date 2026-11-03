@@ -1,6 +1,6 @@
 # Required change workflow
 
-This repository versions Jarvis's deployed custom code, configuration templates,
+This repository versions Royva's deployed custom code, configuration templates,
 service definitions, tests, and the pinned upstream OpenCode source.
 
 Before changing deployed files, run `python3 tools/capture.py --check` and inspect

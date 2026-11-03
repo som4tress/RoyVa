@@ -636,7 +636,7 @@ async function handleFeedback(chatId,userId,parsed,replyTo,source,eventID){
    const m=JSON.parse(await sessionControl(target.sessionID,'message/'+parsed.messageID,null,'get')).data;
    target=completedTarget([m],target.sessionID,parsed.messageID);
   }
-  if(!target)throw new Error('No answer found. Reply to a completed Jarvis answer with /feedback accept or 👍.');
+  if(!target)throw new Error('No answer found. Reply to a completed Royva answer with /feedback accept or 👍.');
   if(parsed.action==='reject'){
     recordFeedback({target,action:'reject',actor:'telegram:'+userId,source,note:parsed.note,eventID});
     markDiscarded(target.sessionID);

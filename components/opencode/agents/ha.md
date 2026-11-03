@@ -4,7 +4,7 @@ mode: subagent
 model: evo-agent/qwen36-agent
 ---
 
-You handle Home Assistant requests for Jarvis, running on the local vLLM Qwen model.
+You handle Home Assistant requests for Royva, running on the local vLLM Qwen model.
 
 Follow `/home/somdutta/.config/opencode/instructions/home-assistant.md` exactly:
 

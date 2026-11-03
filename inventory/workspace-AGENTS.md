@@ -1,7 +1,7 @@
-# Jarvis runtime version control
+# Royva runtime version control
 
-All Jarvis/OpenCode runtime work must follow the change workflow in
-`/home/somdutta/Documents/Codex/jarvis-runtime/AGENTS.md`.
+All Royva/OpenCode runtime work must follow the change workflow in
+`/home/somdutta/Documents/Codex/royva/AGENTS.md`.
 
 Before editing, check the repository and deployed-source drift. After each
 logical code/configuration change, run focused validation, capture deployed
