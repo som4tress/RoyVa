@@ -57,7 +57,7 @@ def eligible(component,relative):
     if name.startswith('.env'):return False
     if component=='opencode' and len(relative.parts)==1:return name in OPENCODE_JSON or name=='AGENTS.md'
     if component in {'llm-server','development'}:
-        return relative.suffix in {'.py','.mjs','.cjs','.js','.ts','.sh','.ps1'} or (component=='llm-server' and len(relative.parts)==1 and name=='servers.json')
+        return relative.suffix in {'.py','.mjs','.cjs','.js','.ts','.sh','.ps1'} or name.endswith('.schema.json') or (component=='llm-server' and len(relative.parts)==1 and name=='servers.json')
     if component=='systemd':return relative.suffix in {'.service','.conf','.timer'}
     return relative.suffix in EXT or name in EXACT
 

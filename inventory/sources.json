@@ -5224,6 +5224,20 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/llm-server/mode-comparison-20261103/compare.py",
+    "sha256": "71ef6b57e08d2079b9bd7e959f53d3de3d0a6acb04c206a1cf1af27d00a441c3",
+    "source": "/home/somdutta/llm-server/mode-comparison-20261103/compare.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/mode-comparison-20261103/web-tools.schema.json",
+    "sha256": "7eca0ab4f8857b2e7ae31ac9f57692a63d1c7d30e9c9a89432cb6b384da9b672",
+    "source": "/home/somdutta/llm-server/mode-comparison-20261103/web-tools.schema.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/llm-server/novel5-20261102/controller.py",
     "sha256": "34e63dec685336de3878c38a52d12278f66ed1c465bbd55443664b029f058e7c",
     "source": "/home/somdutta/llm-server/novel5-20261102/controller.py"
