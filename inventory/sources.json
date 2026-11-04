@@ -353,7 +353,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/mcp/ha_device_status.py",
-    "sha256": "005e4d3b5126a28158d7f65730d2816cee7599ed822cef16b5865a9c1a6f811a",
+    "sha256": "04dc250722cee127d15fa4b6515613eb0eb70d0aa94c86498697e1c629001dd4",
     "source": "/home/somdutta/.config/opencode/mcp/ha_device_status.py"
   },
   {
