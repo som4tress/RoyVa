@@ -118,7 +118,23 @@ export async function countInput(body,{signal,vision=false}={}){
  const r=await fetch('http://127.0.0.1:'+(vision?'8001':'8000')+'/tokenize',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+process.env.VLLM_API_KEY},
   body:JSON.stringify({model:vision?'qwen35-vision':'qwen36-agent',messages,tools:body.tools,chat_template_kwargs:body.chat_template_kwargs}),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(5000)]):AbortSignal.timeout(5000)});
  if(!r.ok)throw new ContextLimitError('Input tokenizer unavailable; oversized requests will not be submitted unchecked.');
- const j=await r.json();if(!Number.isFinite(j.count))throw new ContextLimitError('Invalid input token count.');return j.count;
+ const j=await r.json();if(Number.isFinite(j.count))return j.count;
+ // llama.cpp tokenizes rendered content rather than vLLM chat messages.
+ // Render with the server's actual template so tool schemas and control tokens
+ // are counted too; never treat its empty messages-only tokens as a valid count.
+ if(!vision&&Array.isArray(j.tokens)){
+  const base='http://127.0.0.1:8000';
+  const post=async(path,payload)=>{
+   const response=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+process.env.VLLM_API_KEY},body:JSON.stringify(payload),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(5000)]):AbortSignal.timeout(5000)});
+   if(!response.ok)throw new ContextLimitError('Input tokenizer unavailable; oversized requests will not be submitted unchecked.');
+   return response.json();
+  };
+  const rendered=await post('/apply-template',{...body,messages});
+  if(typeof rendered.prompt!=='string')throw new ContextLimitError('Invalid rendered input for tokenizer.');
+  const tokenized=await post('/tokenize',{content:rendered.prompt,add_special:false,parse_special:true});
+  if(Array.isArray(tokenized.tokens)&&tokenized.tokens.every(Number.isInteger))return tokenized.tokens.length;
+ }
+ throw new ContextLimitError('Invalid input token count.');
 }
 
 export async function sanitizeContext(input,{session,signal,vision=false,now=Date.now(),timeMap,count=countInput,audit=count===countInput}={}){

@@ -1,0 +1,16 @@
+[Unit]
+Description=EVO llama.cpp Vulkan Qwen3.6 agent endpoint
+Conflicts=evo-vllm-agent.service evo-vllm-vision.service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/llm-server
+EnvironmentFile=/home/somdutta/llm-server/api.env
+ExecStart=/usr/bin/python3 /home/somdutta/llm-server/launch_llamacpp.py
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=60
+
+[Install]
+WantedBy=default.target

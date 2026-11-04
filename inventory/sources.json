@@ -136,7 +136,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/context-hygiene.mjs",
-    "sha256": "7d9a08755c2a2a93bb661f4165831d6f11276bf18eb547441ada44f18662b5f4",
+    "sha256": "3f0622817da43e74ed4822486fda5796f008e1c34b33a99e74b52a562293f110",
     "source": "/home/somdutta/.config/opencode/lib/context-hygiene.mjs"
   },
   {
@@ -4447,6 +4447,13 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/llm-server/launch_llamacpp.py",
+    "sha256": "1b84e67a37ca0028e99b610546ce544aefbc47e997580b7a6106b5b97673f56b",
+    "source": "/home/somdutta/llm-server/launch_llamacpp.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/llm-server/normalize_int8_config.py",
     "sha256": "768f46795d68f78312a1acd2cc6a605ccdfec96a7364cc70e45702d293187b7c",
     "source": "/home/somdutta/llm-server/normalize_int8_config.py"
@@ -5213,6 +5220,41 @@
     "repository": "components/llm-server/lean-instructions-20261103/usage.py",
     "sha256": "ffbe502987ac66192675140279517eb5aa0994ccaffd54fc0e2a56f69f408dad",
     "source": "/home/somdutta/llm-server/lean-instructions-20261103/usage.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/llamacpp/download.py",
+    "sha256": "e4d3b6b873116d95d04eebbe83372d0ec7ed6866a271a5637b5ee550a7f0f9bf",
+    "source": "/home/somdutta/llm-server/llamacpp/download.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/llamacpp/remote-download.py",
+    "sha256": "5109deffd2a8507a0b52f30f94de6f058c009b903d0441a6b0450d22cd81e77a",
+    "source": "/home/somdutta/llm-server/llamacpp/remote-download.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/llamacpp-benchmark-20261103/run.mjs",
+    "sha256": "b4b33c1834e4cce3846b6bc62fff29c0d216854d3efca43a89de49be7dfedc65",
+    "source": "/home/somdutta/llm-server/llamacpp-benchmark-20261103/run.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/llamacpp-benchmark-20261103/tokenizer.test.mjs",
+    "sha256": "7ebe99c9c47abbf4cf83eeedcefee791ba3124439a85fe70f03c60c246ec06f8",
+    "source": "/home/somdutta/llm-server/llamacpp-benchmark-20261103/tokenizer.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/llamacpp-benchmark-20261103/tool-smoke.mjs",
+    "sha256": "1c04de8f52f085bf5756622b892824029f2d57daae0f71e7b7b56ca60a1829d6",
+    "source": "/home/somdutta/llm-server/llamacpp-benchmark-20261103/tool-smoke.mjs"
   },
   {
     "executable": false,
@@ -6704,6 +6746,13 @@
     "repository": "components/systemd/codex-remote.service",
     "sha256": "511b4c3f9f352bdd07f972e30db39a2de1ec40c9c619bce102e12743fb094ad4",
     "source": "/home/somdutta/.config/systemd/user/codex-remote.service"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/systemd/evo-llamacpp-agent.service",
+    "sha256": "4ea8422d07843626c37a784a88613edec4b87bfdbd29056cd9fa7f5590399d49",
+    "source": "/home/somdutta/.config/systemd/user/evo-llamacpp-agent.service"
   },
   {
     "executable": false,

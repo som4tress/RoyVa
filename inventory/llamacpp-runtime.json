@@ -1,0 +1,27 @@
+{
+  "runtime": "llama.cpp",
+  "release": "b12084",
+  "version": "0.8.0-dev",
+  "sourceCommit": "f9448cddc48c129a4abc7ff9c2a84c2b4c101c61",
+  "backend": "Vulkan",
+  "binary": "/home/somdutta/llm-server/llamacpp/llama-b12084/llama-server",
+  "binarySha256": "01e6b9ea23c64b98076627037649c6ce0b09bcbce6088b56cbb6d7474f2d9561",
+  "releaseUrl": "https://github.com/ggml-org/llama.cpp/releases/download/b12084/llama-b12084-bin-ubuntu-vulkan-x64.tar.gz",
+  "model": {
+    "repo": "unsloth/Qwen3.6-35B-A3B-GGUF",
+    "revision": "a483e9e6cbd595906af30beda3187c2663a1118c",
+    "file": {
+      "rfilename": "Qwen3.6-35B-A3B-Q8_0.gguf",
+      "blobId": "482eec4f0764b9374d4239af0e3cb61d85b25949",
+      "size": 36903140320,
+      "lfs": {
+        "sha256": "d1a395809f65a43a13ad119eb4e7acdef1ac6d68120f39902c8ab96e72794a59",
+        "size": 36903140320,
+        "pointerSize": 136
+      }
+    }
+  },
+  "vllm": "Retained without modification; stopped for evaluation",
+  "startup": "Evaluation service started manually; original vLLM boot configuration retained",
+  "releaseArchiveDigest": "sha256:692bdad8c7743779ed89615472e2863005a12feabbe0b2d8225f5b4b38b12afd"
+}
