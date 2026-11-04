@@ -3,16 +3,19 @@ import json,sys,datetime
 import ha_registry,ha_history
 
 ATTRS={'unit_of_measurement','device_class','supported_features','brightness','percentage','temperature','current_temperature','humidity','latitude','longitude','gps_accuracy','radius','condition'}
+def device_identity(device):
+    return {'device_name':device.get('name_by_user') or device.get('name'),'device_original_name':device.get('name'),'manufacturer':device.get('manufacturer'),'model':device.get('model'),'model_id':device.get('model_id')}
+
 def inspect(args):
     r=ha_registry.snapshot();states={s['entity_id']:s for s in ha_history.read_api('/api/states')}
     kind=args.get('resource','entities');rows=[]
     if kind=='entities':
         for eid in sorted(set(r['entities'])|set(states)):
             e=r['entities'].get(eid,{});s=states.get(eid,{});d=r['devices'].get(e.get('device_id'),{});aid=e.get('area_id') or d.get('area_id');a=r['areas'].get(aid,{});fid=a.get('floor_id');attrs=s.get('attributes',{})
-            rows.append({'id':eid,'registry_id':e.get('id'),'name':attrs.get('friendly_name') or e.get('name') or e.get('original_name') or eid,'aliases':e.get('aliases',[]),'domain':eid.split('.')[0],'device_id':e.get('device_id'),'device_name':d.get('name_by_user') or d.get('name'),'entity_area_id':e.get('area_id'),'device_area_id':d.get('area_id'),'area_id':aid,'area':a.get('name'),'floor_id':fid,'floor':r['floors'].get(fid,{}).get('name'),'category':e.get('entity_category'),'disabled_by':e.get('disabled_by'),'state':s.get('state'),'has_state':bool(s),'attributes':{k:v for k,v in attrs.items() if k in ATTRS}})
+            rows.append({'id':eid,'registry_id':e.get('id'),'name':attrs.get('friendly_name') or e.get('name') or e.get('original_name') or eid,'original_name':e.get('original_name'),'registry_name':e.get('name'),'aliases':e.get('aliases',[]),'platform':e.get('platform'),'domain':eid.split('.')[0],'device_id':e.get('device_id'),**device_identity(d),'entity_area_id':e.get('area_id'),'device_area_id':d.get('area_id'),'area_id':aid,'area':a.get('name'),'floor_id':fid,'floor':r['floors'].get(fid,{}).get('name'),'category':e.get('entity_category'),'disabled_by':e.get('disabled_by'),'state':s.get('state'),'has_state':bool(s),'attributes':{k:v for k,v in attrs.items() if k in ATTRS}})
     elif kind=='devices':
         for did,d in r['devices'].items():
-            aid=d.get('area_id');fid=r['areas'].get(aid,{}).get('floor_id');rows.append({'id':did,'name':d.get('name_by_user') or d.get('name'),'area_id':aid,'area':r['areas'].get(aid,{}).get('name'),'floor_id':fid,'floor':r['floors'].get(fid,{}).get('name'),'entities':[eid for eid,e in r['entities'].items() if e.get('device_id')==did]})
+            aid=d.get('area_id');fid=r['areas'].get(aid,{}).get('floor_id');rows.append({'id':did,'name':d.get('name_by_user') or d.get('name'),**device_identity(d),'area_id':aid,'area':r['areas'].get(aid,{}).get('name'),'floor_id':fid,'floor':r['floors'].get(fid,{}).get('name'),'entities':[eid for eid,e in r['entities'].items() if e.get('device_id')==did]})
     elif kind=='areas':rows=[{'id':aid,'name':a.get('name'),'aliases':a.get('aliases',[]),'floor_id':a.get('floor_id'),'floor':r['floors'].get(a.get('floor_id'),{}).get('name')} for aid,a in r['areas'].items()]
     elif kind=='floors':rows=[{'id':fid,'name':f.get('name'),'aliases':f.get('aliases',[]),'level':f.get('level')} for fid,f in r['floors'].items()]
     else:raise ValueError('Unsupported resource type')
@@ -22,7 +25,7 @@ def inspect(args):
     if args.get('query'):
         needle=args['query'].casefold()
         def matches(row):
-            values=[row.get(k) for k in ['id','registry_id','name','device_id','device_name','area_id','area','floor_id','floor']]+row.get('aliases',[])
+            values=[row.get(k) for k in ['id','registry_id','name','original_name','registry_name','platform','device_id','device_name','device_original_name','manufacturer','model','model_id','area_id','area','floor_id','floor']]+row.get('aliases',[])
             return any(needle in str(value).casefold() for value in values if value is not None)
         rows=[x for x in rows if matches(x)]
     if kind=='devices':

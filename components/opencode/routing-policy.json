@@ -14,8 +14,8 @@
   },
   "budgets": {
     "generalLocalMs": 60000,
-    "haTotalMs": 45000,
-    "haLocalMs": 42000,
+    "haTotalMs": 60000,
+    "haLocalMs": 60000,
     "mediaLocalMs": 60000,
     "cloudMs": 120000
   }

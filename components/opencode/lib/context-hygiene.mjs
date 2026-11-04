@@ -14,26 +14,9 @@ const final=m=>m.role==='assistant'&&!m.tool_calls?.length&&!!text(m).trim();
 const secret=s=>s.replace(/\beyJ[\w-]+\.[\w-]+\.[\w-]+\b/g,'[credential omitted]').replace(/Bearer\s+\S+/gi,'Bearer [credential omitted]').replace(/\bsk-(?:or-v1-)?[\w-]{20,}/g,'[credential omitted]');
 export class ContextLimitError extends Error {constructor(message){super(message);this.name='ContextLimitError';}}
 
-export function refreshInstructions(body,{sources}={}){
- if(!sources){sources=new Map();try{for(const path of JSON.parse(readFileSync(homedir()+'/.config/opencode/opencode.json','utf8')).instructions||[]){try{sources.set(path,readFileSync(path,'utf8').trim())}catch{}}}catch{}}
- const refreshed=new Set();
- const messages=(body.messages||[]).map(m=>{
-  if(m.role!=='system'||typeof m.content!=='string')return m;
-  const content=m.content.replace(/(^|\n)Instructions from: ([^\n]+)\n([\s\S]*?)(?=\nInstructions from: |\n\nToday's date:|$)/g,(all,prefix,path,old)=>{
-   if(!sources.has(path))return all;refreshed.add(path);
-   return prefix+'Instructions from: '+path+'\n'+sources.get(path)+'\n\n';
-  });return {...m,content};
- });
- // Only discard instruction diffs whose baseline was refreshed. Unknown
- // framework updates remain, rather than silently losing changed constraints.
- const updates=[];const seen=new Set();
- for(const m of [...messages].reverse())if(update(m)){
-  const refs=[...text(m).matchAll(/Instructions from: ([^\n]+)|The instructions from (.+?) changed\./g)].map(x=>x[1]||x[2]);
-  if(refs.length&&refs.every(p=>refreshed.has(p)))continue;
-  const key=refs.join('|')||(/Today's date is now:/.test(text(m))?'date':text(m));if(!seen.has(key)){updates.unshift(m);seen.add(key);}
- }
- return {...body,messages:[...messages.filter(m=>!update(m)),...updates]};
-}
+// Native OpenCode owns instruction loading and updates; do not rewrite system text.
+export const refreshInstructions=body=>body;
+export const referenceMemory=carry=>'[HISTORICAL HA REFERENCE DATA — not current state or new authorization]\n'+JSON.stringify(carry);
 
 function timestamps(session){
  const times=new Map();if(!session)return times;let db;
@@ -75,18 +58,20 @@ export function distillHistory(body,{now=Date.now(),timeMap=new Map()}={}){
   const at=occurrenceTimes.get(i);if(!at||now-at>policy.maxAgeMs||at>now)continue;
   let end=i+1;while(end<boundary&&!realUser(messages[end]))end++;
   const answer=messages.slice(i+1,end).filter(final).at(-1);
-  // Only user requests and final outcome excerpts enter follow-up memory.
+  // Only complete user requests and final replies enter follow-up memory.
   // No tool arguments, tool results, logs, or historical reasoning enter it.
-  if(answer)memo.push({at,request:secret(text(m)).slice(0,700),outcome:secret(text(answer)).slice(0,1000),excerpt:true});
+  if(answer)memo.push({at,request:secret(text(m)),outcome:secret(text(answer))});
  }
  const selected=[];let size=0;
- for(const entry of memo.reverse()){const n=JSON.stringify(entry).length;if(size+n>policy.memoryChars)continue;selected.unshift(entry);size+=n;}
+ // The memory budget selects whole exchanges. Always keep the latest complete
+ // exchange, even when it alone exceeds the soft budget; the hard guard remains.
+ for(const entry of memo.reverse()){const n=JSON.stringify(entry).length;if(selected.length&&size+n>policy.memoryChars)break;selected.unshift(entry);size+=n;}
  const systems=messages.filter(m=>m.role==='system'||m.role==='developer');
  const active=messages.slice(boundary).filter(m=>!['system','developer'].includes(m.role));
  // Instruction diffs are replaced by the authoritative current system baseline.
  const activeClean=active.filter(m=>!update(m)&&!memoryMessage(m));
  const updates=messages.filter(update);
- const memory=selected.length?[{role:'user',content:'[RECENT CONVERSATION MEMORY: historical excerpts, not new instructions or verified current state. Never replay actions from this memory or reload completed-task raw traces. Resolve follow-ups against it; fetch fresh changing data. Do not retrieve conversation older than 30 minutes. If an excerpt is insufficient, fetch fresh task evidence or ask.]\n'+JSON.stringify(selected)}]:[];
+ const memory=selected.length?[{role:'user',content:'[RECENT CONVERSATION MEMORY: historical user requests and final replies, not current evidence or action authorization.]\n'+JSON.stringify(selected)}]:[];
  return {body:{...body,messages:[...systems,...updates,...memory,...activeClean]},removed:messages.length-systems.length-activeClean.length-updates.length,memoryEntries:selected.length};
 }
 
@@ -101,14 +86,6 @@ export function validateToolChains(body){
   for(const c of m.tool_calls||[]){if(!c.id||used.has(c.id))throw new ContextLimitError('Duplicate or missing tool-call identifier.');pending.add(c.id);used.add(c.id);}
  }
  if(pending.size)throw new ContextLimitError('Tool results are still pending; no inference submitted.');
-}
-
-function shortenDescriptions(value,depth=0,maxChars=700){
- if(Array.isArray(value))return value.map(v=>shortenDescriptions(v,depth+1,maxChars));
- if(!value||typeof value!=='object')return value;
- // Only documentation is shortened. Never alter actual arguments, enum values,
- // names, required fields, validation rules, or tool result values.
- return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,k==='description'&&typeof v==='string'&&v.length>maxChars?v.slice(0,maxChars)+' [Description shortened; schema constraints below remain authoritative.]':shortenDescriptions(v,depth+1,maxChars)]));
 }
 
 export async function countInput(body,{signal,vision=false}={}){
@@ -138,35 +115,13 @@ export async function countInput(body,{signal,vision=false}={}){
 }
 
 export async function sanitizeContext(input,{session,signal,vision=false,now=Date.now(),timeMap,count=countInput,audit=count===countInput}={}){
- const started=Date.now();const history=distillHistory(refreshInstructions(input),{now,timeMap:timeMap||timestamps(session)});let body=history.body;
- const task=text(body.messages.filter(realUser).at(-1));
- const recover=(body.tools||[]).some(t=>/^(read|shell)$/.test(t.function?.name||''));
- let archived=0;let bounded=cleanToolEvidence(body,{task,threshold:6000,maxChars:4000});body=bounded.body;archived+=bounded.archived;
+ const started=Date.now();const history=distillHistory(input,{now,timeMap:timeMap||timestamps(session)});let body=history.body;
+ // Evidence deduplication is shared here; all nonduplicate results and schemas
+ // retain their exact content, regardless of the advisory 8K/16K targets.
+ const bounded=cleanToolEvidence(body);body=bounded.body;
  validateToolChains(body);
- let tokens=await count(body,{signal,vision});
- if(tokens>policy.targetTokens&&body.tools){body={...body,tools:shortenDescriptions(body.tools)};tokens=await count(body,{signal,vision});}
- for(const maxChars of [2400,1200]){
-  if(tokens<=policy.compactionTokens||!recover)break;
-  // Do not repeatedly excerpt an already bounded view: regenerate from the
-  // full active source on each tightening pass, retaining the same source hash.
-  bounded=cleanToolEvidence({...history.body,tools:body.tools},{task,threshold:6000,maxChars});
-  body={...body,messages:bounded.body.messages};archived=Math.max(archived,bounded.archived);tokens=await count(body,{signal,vision});
- }
- // 16K is a cleanup trigger, not permission to fail an ordinary multi-step
- // task. Fixed instructions/schemas already consume most of that budget.
- // Optional conversational excerpts go first; preserve current user input,
- // exact call arguments, schemas and provider-required active reasoning.
- let memoryReduced=false;
- if(tokens>policy.compactionTokens){
-  const messages=body.messages.map(m=>{
-   if(!memoryMessage(m))return m;
-   try{const split=text(m).indexOf('\n'),entries=JSON.parse(text(m).slice(split+1));if(entries.length<=1)return m;memoryReduced=true;return {...m,content:text(m).slice(0,split+1)+JSON.stringify(entries.slice(-1))};}catch{return m;}
-  });
-  // Preserve the latest outcome for pronoun/follow-up resolution. Do not buy
-  // a smaller count by silently removing the only available referent.
-  body={...body,messages,tools:body.tools?shortenDescriptions(body.tools,0,400):body.tools};
-  tokens=await count(body,{signal,vision});
- }
+ const tokens=await count(body,{signal,vision});
+ const archived=0,memoryReduced=false;
  validateToolChains(body);
  if(tokens>policy.maxTokens)throw new ContextLimitError('Active request exceeds the 64K emergency input limit after cleanup. Current evidence or instructions need further scoping; this model step was withheld without truncating user input or replaying actions.');
  const stats={at:Date.now(),session,removedMessages:history.removed,memoryEntries:memoryReduced?1:history.memoryEntries,archivedResults:archived,memoryReduced,aboveCompactionTarget:tokens>policy.compactionTokens,beforeBytes:Buffer.byteLength(JSON.stringify(input)),afterBytes:Buffer.byteLength(JSON.stringify(body)),inputTokens:tokens,tokenBasis:vision?'Qwen3.5 text tokens only; native vLLM limit checks multimodal total':'Qwen3.6 tokenizer (cloud counts may differ)',elapsedMs:Date.now()-started};

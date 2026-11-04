@@ -10,7 +10,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/cloud-context.json",
-    "sha256": "8e888789834f9f8c517be7ef03960b2216bfc1af27b3541714bf5b0a57130abe",
+    "sha256": "e18f4297e9fbbee2e570eb404d7a4465f48a8c9ec6d7e6d4f114722c22c86888",
     "source": "/home/somdutta/.config/opencode/cloud-context.json"
   },
   {
@@ -24,35 +24,35 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/opencode.json",
-    "sha256": "85d192c57ab26eab85a05067eb80834fab6b1089eed86589b95e5e000a2779f0",
+    "sha256": "6bc20609b285da205d3df698834eaff4e7d182e994b678250b823a5cef8f0e20",
     "source": "/home/somdutta/.config/opencode/opencode.json"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/routing-policy.json",
-    "sha256": "c1d2cc8610a8c2b3e339d9862c3f950a23970e12db67084af74199bbb2bd0586",
+    "sha256": "fb04041790f60e47db08696b8286e79cac66bcc9b8c6360f60b05f479027c8b5",
     "source": "/home/somdutta/.config/opencode/routing-policy.json"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/agents/ha.md",
-    "sha256": "a5e231c6460847742c37654bab9ab43e61c28147a366fab115220d09b958a1d0",
+    "sha256": "8fd9f265dc27f6998a3c0c1b69f43a5792b9b85385cbbc4e19e490798a8d840a",
     "source": "/home/somdutta/.config/opencode/agents/ha.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/agents/telegram-vision.md",
-    "sha256": "e2cae44099220717c443f5ea3f9795dd110feef7f0d7515f031a623e9ff644bc",
+    "sha256": "af639541e421d929dfc4fc7a38a4d220a2c899c930fea86089522ae45bf70724",
     "source": "/home/somdutta/.config/opencode/agents/telegram-vision.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/agents/telegram.md",
-    "sha256": "be463acf05d3f6034a954410f1aa364a6f5881216b9126d75c24cfca0d6e8caa",
+    "sha256": "6f75b08f83c304ff5a31e39d15b4f22de174a72ca0ee5e31df45c1db4909891e",
     "source": "/home/somdutta/.config/opencode/agents/telegram.md"
   },
   {
@@ -66,56 +66,63 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/formatting.md",
-    "sha256": "4ae87fb20a592cc7879531e4dd50fc10fcf7d7d5fefc6c9e0d09fc12a4fd44f8",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/formatting.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/ha-compact.md",
-    "sha256": "6f001dbf74d57d67d14ab9359e86ebb71cc7ac7f3833103439255431b7f8571c",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/ha-compact.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/home-assistant.md",
-    "sha256": "a5154b182a810d7daa0ff2f9653875f3b4c42fa4c37650eeb8ff31b25872ccfc",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/home-assistant.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/identity.md",
-    "sha256": "99725f93cbc79ac83914f3000c8eda3b199fcdcfa0af6116d1700740e8f17628",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/identity.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/routing.md",
-    "sha256": "7772cc04d8f0e2b71bb7ddd776e4ae30b912f385187229fcb185781b9600b1d7",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/routing.md"
   },
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/opencode/instructions/shared-policy.md",
+    "sha256": "0fa132a3758201a39396710681961ffea63bab522b1ee0fba0519e5aefbce3b6",
+    "source": "/home/somdutta/.config/opencode/instructions/shared-policy.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/opencode/instructions/usage-footer.md",
-    "sha256": "57eb582be61f1f9d8b852736f76531b80a1997bdf5824cb249617a073531ed1f",
+    "sha256": "20a3b5668f8064b1243a9f77449ec335ead7ca7e2cba5aa82115435f577986d5",
     "source": "/home/somdutta/.config/opencode/instructions/usage-footer.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/capability-discovery.mjs",
-    "sha256": "3c350944abbf5f7415c5f33cf4b1d6843187c53861709bba45d3847e932f4517",
+    "sha256": "5bed7ba0c83db47e3eefc4ee77b0ca2c44b5acf6fe72db803a46cba898c2a071",
     "source": "/home/somdutta/.config/opencode/lib/capability-discovery.mjs"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/cloud-context-optimizer.mjs",
-    "sha256": "e32b169f34e4cfdc7d0e44ecacddeaea4edd56c204016bbb5ea169136898ab13",
+    "sha256": "92d82bc0119a735efe0a6fde2ebc7ede588b6b43ce6b7a41d7c8f52f477d3dde",
     "source": "/home/somdutta/.config/opencode/lib/cloud-context-optimizer.mjs"
   },
   {
@@ -136,7 +143,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/context-hygiene.mjs",
-    "sha256": "3f0622817da43e74ed4822486fda5796f008e1c34b33a99e74b52a562293f110",
+    "sha256": "6f70c197e8e8d8db7ef5caf5d56bdbc0a35336daf253c8f1c4496c27a5c7ae6d",
     "source": "/home/somdutta/.config/opencode/lib/context-hygiene.mjs"
   },
   {
@@ -150,7 +157,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/evidence-window.mjs",
-    "sha256": "9df87b6556e07f2b1d69622580a24429d7dd07cce71ddc294014bb41d2d6fdfb",
+    "sha256": "ef092ef8cbf7c37bac121486cab902b13134f715daf1d7c851d821742ed91f52",
     "source": "/home/somdutta/.config/opencode/lib/evidence-window.mjs"
   },
   {
@@ -227,7 +234,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/local-progress-budget.mjs",
-    "sha256": "f4666a2f7397288b7ff4d2c42277ed6ea4fd2cd7891694080161c3b55ab84e2b",
+    "sha256": "3cda07bd82a482e1a722bbaf52bcec9b3a3b87c881b7c92531db780779a69dce",
     "source": "/home/somdutta/.config/opencode/lib/local-progress-budget.mjs"
   },
   {
@@ -241,7 +248,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/media-deadline-proxy.mjs",
-    "sha256": "eb5fe6bb62904cf0ef40ee8cda585010e70d444a7bf47c4819c8c33e118830d0",
+    "sha256": "bf6a66df2effd6acff4e22ac38020b445083caee616698c6a2de1bcbe80db8c7",
     "source": "/home/somdutta/.config/opencode/lib/media-deadline-proxy.mjs"
   },
   {
@@ -269,7 +276,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/read-context.mjs",
-    "sha256": "40fb9c442df5f063d7d3b934d32ae0e676ad3d3527ac3bbc3e913e72c558c560",
+    "sha256": "05bcc4fec2e82d284715d771095f08d61e11c012fdd667f14726fef9f8cefc34",
     "source": "/home/somdutta/.config/opencode/lib/read-context.mjs"
   },
   {
@@ -374,7 +381,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/mcp/ha_status_report.py",
-    "sha256": "ff808104a37e34514bdc6bc83b8f9bdc828446446a8b401d791c5e757ed5dd51",
+    "sha256": "87db496ab3c9ca9ed529fec236d45718c8aa60504d18191d3f297482172f25c8",
     "source": "/home/somdutta/.config/opencode/mcp/ha_status_report.py"
   },
   {
@@ -402,14 +409,14 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/mcp/resource_catalog.py",
-    "sha256": "d5720ca221baa94d8516b7feb4254b3a13fd9077a7fefc3abaabdfe32b7b64e0",
+    "sha256": "6c42657e237f14fd65d811983fb580d6ebd8af4cb3ee1cd5c3eec60cb1f1f145",
     "source": "/home/somdutta/.config/opencode/mcp/resource_catalog.py"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/capability-discovery/index.js",
-    "sha256": "a84dc4a16856a207bea09267a296249358c7b8c8403ae71739f7058712803c98",
+    "sha256": "9eb255c571f16f57f2d0ba47248d57f270444e5f8ce3fd04adbd6649aefbd48b",
     "source": "/home/somdutta/.config/opencode/plugins/capability-discovery/index.js"
   },
   {
@@ -430,7 +437,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/ha-mcp-routing/index.js",
-    "sha256": "bd511c4686f4f182abdd08952e5d49d72980c4ff8be78200677f13964b8edd06",
+    "sha256": "b3931e0a6749614942137245834e480ffb0ad9a0dc08868d802c1c9dcfe005c9",
     "source": "/home/somdutta/.config/opencode/plugins/ha-mcp-routing/index.js"
   },
   {
@@ -444,7 +451,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/ha-mcp-routing/media-routing.js",
-    "sha256": "79100f58e5be916f236ac20c184455f51e8abf82d5a15cb4332de051a8f3aff9",
+    "sha256": "3dd801094246967708daf50c9145d7a8bb0d308cf6a57ab68ed8774e873b6050",
     "source": "/home/somdutta/.config/opencode/plugins/ha-mcp-routing/media-routing.js"
   },
   {
@@ -479,7 +486,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/procedure-memory/index.js",
-    "sha256": "6d30816c2f55eeecf00c27d0f42e4e54e32ddbd6d9d2bd858ea5451dfeaf7dcd",
+    "sha256": "d25eebbd2d94419c5cf2d2ac775ebc2fb47d168c26a224f3ac78da9e490ca88c",
     "source": "/home/somdutta/.config/opencode/plugins/procedure-memory/index.js"
   },
   {
@@ -584,14 +591,14 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/bridge.mjs",
-    "sha256": "9bc6c6fb453656194c742cc681af36a10bed3e480423b9703eba596833378377",
+    "sha256": "5973fa8b898889a82f93c30dd8073878bb096b44585c191cc879d0f586ded184",
     "source": "/home/somdutta/.config/opencode/telegram/bridge.mjs"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/ha-context.mjs",
-    "sha256": "c26b95c82dffadc03266638e51210732d9dda60f8efc38517d3f0f211434ef1c",
+    "sha256": "f9cd2d6e066f171a44b979a8d343ac23d7c49ccf1f7f7dd0bd61e42ea958c0e1",
     "source": "/home/somdutta/.config/opencode/telegram/ha-context.mjs"
   },
   {
@@ -5042,9 +5049,30 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/llm-server/compaction-fixes-20261103/live-five.mjs",
+    "sha256": "380dae3f28d9bb7fc8954889cab478bfe305aef8e5e193ad66783f8184b3c0c1",
+    "source": "/home/somdutta/llm-server/compaction-fixes-20261103/live-five.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/compaction-fixes-20261103/preservation.test.mjs",
+    "sha256": "d061aa59b1b2ee069cef8ac162e1d4bcac42554f4cc7f030d6d8508b056a90cd",
+    "source": "/home/somdutta/llm-server/compaction-fixes-20261103/preservation.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/llm-server/concise-output-20261103/check.mjs",
     "sha256": "6fb7740f144bb17f1bf5f0158c1de6862982921367e269b71732beecfb6c8e87",
     "source": "/home/somdutta/llm-server/concise-output-20261103/check.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/consolidated-policy-tests-20261103/telegram-two.mjs",
+    "sha256": "ff7b75db27f6d49386bba8272b5197367114ba83d8b369717c5f937c5b19e3d6",
+    "source": "/home/somdutta/llm-server/consolidated-policy-tests-20261103/telegram-two.mjs"
   },
   {
     "executable": false,
@@ -5057,7 +5085,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/llm-server/context-hygiene-20261103/context-hygiene.test.mjs",
-    "sha256": "3ad72801be5009c12ddab566a5c6f9a73bc6b2f01e116f7708bfc9a0cc25c1bb",
+    "sha256": "79da7965443333b955334093b156ee04b07507017b3d5e5ff148cd780b609e88",
     "source": "/home/somdutta/llm-server/context-hygiene-20261103/context-hygiene.test.mjs"
   },
   {
@@ -5133,6 +5161,20 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/llm-server/entity-query-schema-20261103/telegram-test.mjs",
+    "sha256": "8a51ed2615e43f8db51ecce55d11e51218f33615fc777c56c6b3652b35d7f834",
+    "source": "/home/somdutta/llm-server/entity-query-schema-20261103/telegram-test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/entity-single-fix-20261103/telegram-test.mjs",
+    "sha256": "22004309e4c9710e6f5908b5da7d4ba6e24256c6a42e02e8e27913c922e5badf",
+    "source": "/home/somdutta/llm-server/entity-single-fix-20261103/telegram-test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/llm-server/feedback-20261103/check-command.py",
     "sha256": "300578e3be203b75994747db6cb13afe57627225261338a1d341472eda9f27b5",
     "source": "/home/somdutta/llm-server/feedback-20261103/check-command.py"
@@ -5178,6 +5220,20 @@
     "repository": "components/llm-server/final5-localfirst-20261102/usage.py",
     "sha256": "ffbe502987ac66192675140279517eb5aa0994ccaffd54fc0e2a56f69f408dad",
     "source": "/home/somdutta/llm-server/final5-localfirst-20261102/usage.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/ford-name-contract-20261103/telegram-test.mjs",
+    "sha256": "ee6e37d15a7b5ee297b97846b49a2e71757147027a55538e402266bf9a733690",
+    "source": "/home/somdutta/llm-server/ford-name-contract-20261103/telegram-test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/ford-query-schema-20261103/telegram-test.mjs",
+    "sha256": "f01e226b35df01f8e1edb339e71430b4afaf1cad353fb5318a3f5840869a197b",
+    "source": "/home/somdutta/llm-server/ford-query-schema-20261103/telegram-test.mjs"
   },
   {
     "executable": false,
@@ -5360,6 +5416,20 @@
     "repository": "components/llm-server/shellular-migration-20261103/make-qr.py",
     "sha256": "5a54c90583342d0347efebd456a24e55f57e33c1025308abad2227edfb97403e",
     "source": "/home/somdutta/llm-server/shellular-migration-20261103/make-qr.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/steering-removals-20261103/removals.test.mjs",
+    "sha256": "732173ac1862661b4a0244826111953be3e369ee1d1ba15f2f49e473b6f14cc7",
+    "source": "/home/somdutta/llm-server/steering-removals-20261103/removals.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/steering-removals-20261103/telegram-five.mjs",
+    "sha256": "f091aa2a85dcb1b9fbdbdec7d8e4082c83357c6a4abf22add10aa9c647af671d",
+    "source": "/home/somdutta/llm-server/steering-removals-20261103/telegram-five.mjs"
   },
   {
     "executable": false,
@@ -6757,20 +6827,6 @@
   {
     "executable": false,
     "redacted": false,
-    "repository": "components/systemd/evo-vllm-agent.service",
-    "sha256": "99c24e8b657a04f79b64754d0d63c1f4e085e50bb35095a3db5341a0c7aafa1a",
-    "source": "/home/somdutta/.config/systemd/user/evo-vllm-agent.service"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/systemd/evo-vllm-vision.service",
-    "sha256": "74b39ed05488736f48e14e9f68dd1eb4ad0bdc305734f003754385f9767cbee3",
-    "source": "/home/somdutta/.config/systemd/user/evo-vllm-vision.service"
-  },
-  {
-    "executable": false,
-    "redacted": false,
     "repository": "components/systemd/opencode-audio-news.service",
     "sha256": "d6b2b041f22eb7040fe6c4fa59185fc7e2264e8de89d908c5861a2704250ef1f",
     "source": "/home/somdutta/.config/systemd/user/opencode-audio-news.service"
@@ -6821,7 +6877,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/systemd/opencode-evo.service.d/readiness.conf",
-    "sha256": "d35d8a83a944bd119b356d921afdef72f29da18efec22ff9f22994d785c1f70f",
+    "sha256": "2d6dacd8bcfda8188c9aad5e4093aec34ecc268484d932a17ee8d3c5eff847b9",
     "source": "/home/somdutta/.config/systemd/user/opencode-evo.service.d/readiness.conf"
   },
   {

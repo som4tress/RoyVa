@@ -12,7 +12,6 @@ import {pollBackoffMs} from '../lib/telegram-poll-backoff.mjs';
 import {formatExecutionError} from '../lib/execution-errors.mjs';
 import {resolvedTargets} from '../lib/ha-focus.mjs';
 import {completeTask} from '../lib/task-learning.mjs';
-import {inferHAIntent} from '../lib/ha-intent.mjs';
 import {phraseKindForTool} from '../plugins/ha-mcp-routing/phrases.js';
 import {quotaInfo,recordFreeQuota,isFreeCoolingDown,freeQuotaState,cloudModelID} from '../lib/free-quota.mjs';
 /**
@@ -238,7 +237,7 @@ function stripUsageFooter(text){
 
 /** Run one prompt through OpenCode and return the assistant's text. */
 function runOpenCode(sessionId, prompt, options = {}) {
- if(!options.files?.length)return runNativeText(sessionId,prompt,{...options,model:options.model||getModel(),agent:options.agent||AGENT,directory:WORKDIR,timeout:options.timeout||RUN_TIMEOUT_MS,collectReferences:tools=>tools.filter(p=>p.state?.status==='completed'&&phraseKindForTool(p.name||'',p.state)).slice(-6).map(p=>({tool:p.name,input:JSON.stringify(p.state.input||{}).slice(0,300),targets:resolvedTargets(p.name,p.state)}))}).then(reply=>{
+ if(!options.files?.length)return runNativeText(sessionId,prompt,{...options,model:options.model||getModel(),agent:options.agent||AGENT,directory:WORKDIR,timeout:options.timeout||RUN_TIMEOUT_MS,collectReferences:tools=>tools.filter(p=>p.state?.status==='completed'&&phraseKindForTool(p.name||'',p.state)).slice(-6).map(p=>({tool:p.name,input:JSON.stringify(p.state.input||{}),targets:resolvedTargets(p.name,p.state)}))}).then(reply=>{
   if(reply.ok&&completionProblem({messages:[{role:'user',content:prompt}]},reply.text))return {...reply,ok:false,text:'OpenCode returned an incomplete answer. Completion was not confirmed.'};
   if(reply.ok)completeTask(sessionId,true);else if(!reply.stopped)reply.text=formatExecutionError(reply.text,{toolActivity:reply.toolActivity});return reply;
  });
@@ -542,9 +541,7 @@ async function handleMessage(msg,diagnostic={}) {
   const finishIndicator=active.workingId?workingHourglass(chatId,active.workingId,active):null;
   try {
   state.haContext ||= {};
-  const semanticKind=!media?await inferHAIntent(text):null;
-  let haPlan=!media&&!['configuration','investigation'].includes(semanticKind)?planHA(text,state.haContext[String(chatId)]):null;
-  if(!media&&!haPlan&&['devices','history'].includes(semanticKind))haPlan={kind:semanticKind,carry:null};
+  let haPlan=!media?planHA(text,state.haContext[String(chatId)]):null;
   const sessionId=haPlan?newSessionId(chatId)+'_ha':sessionFor(chatId);
   active.sessionId=sessionId;
   if(active.stopped)return {ok:false,stopped:true,text:'Stopped.',sessionId};

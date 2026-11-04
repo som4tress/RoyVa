@@ -21,7 +21,7 @@
       }
     }
   },
-  "vllm": "Retained without modification; stopped for evaluation",
-  "startup": "Evaluation service started manually; original vLLM boot configuration retained",
+  "vllm": "Installed, stopped; user systemd units removed (backups in private maintenance state)",
+  "startup": "evo-llamacpp-agent.service enabled at user boot; OpenCode depends on llama.cpp and gateway",
   "releaseArchiveDigest": "sha256:692bdad8c7743779ed89615472e2863005a12feabbe0b2d8225f5b4b38b12afd"
 }

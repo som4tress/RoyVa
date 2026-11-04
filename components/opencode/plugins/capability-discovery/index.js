@@ -1,8 +1,7 @@
 import {spawn} from 'node:child_process';
-import {catalogPage,captureTools,clearDiscovery,availableCapabilities,DISCOVERY_RULE,EVIDENCE_RULE} from '../../lib/capability-discovery.mjs';
+import {catalogPage,captureTools,clearDiscovery,availableCapabilities} from '../../lib/capability-discovery.mjs';
 import {assertDiscoveryPermission} from '../../lib/tool-permissions.mjs';
-import {readCompletionCheck,clearCompletionCheck} from '../../lib/completion-check.mjs';
-import {cloudModel} from '../../lib/routing-policy.mjs';
+import {clearCompletionCheck} from '../../lib/completion-check.mjs';
 export default {id:'capability-discovery',async setup(ctx){
  await ctx.tool.transform(editor=>{
   editor.add({options:{codemode:false},name:'discover_capabilities',description:'Discover live registered tools, supported operations and exact input schemas. Use before capability refusals, API guesses or crossing a narrow task profile. Optionally enable named tools from the current agent context for the next step; this executes no operation and does not bypass permissions.',input:{type:'object',properties:{query:{type:'string',maxLength:200},names:{type:'array',items:{type:'string'},maxItems:10},enable:{type:'array',items:{type:'string'},maxItems:10},schemas:{type:'boolean'},offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:30}},additionalProperties:false},execute:async(input,context)=>{
@@ -11,12 +10,10 @@ export default {id:'capability-discovery',async setup(ctx){
    const catalog=await ctx.tool.list();captureTools(context.sessionID,{});
    const available=availableCapabilities(context.sessionID);
    const page=catalogPage(catalog.filter(t=>available.includes(t.id||t.name)),{...input,available});
-   const repair=readCompletionCheck(context.sessionID);
-   if(repair){page.completionRecovery={reason:repair.reason,attempt:repair.attempts,policyInitiated:true,instruction:'The previous response did not complete the original request. Continue that existing request using supported tools, or ask a necessary clarification. Do not repeat completed actions.'};if(repair.route==='cloud')await ctx.session.switchModel({sessionID:context.sessionID,model:cloudModel()});}
    if(input.enable?.length)page.selection=selectCapabilities(context.sessionID,input.enable);
    return {content:JSON.stringify(page)};
   }});
-  editor.add({options:{codemode:false},name:'inspect_resources',description:'Discover current resource names, stable IDs, state and relationships using a registered read-only adapter. Supports entities/devices/areas/floors with explicit scope and pagination. Use discovery rather than inventing aliases, assuming missing capabilities, or guessing ownership. No configuration or device changes.',input:{type:'object',properties:{adapter:{type:'string',enum:['home-assistant']},resource:{type:'string',enum:['entities','devices','areas','floors']},query:{type:'string',maxLength:200},domains:{type:'array',items:{type:'string'},maxItems:20},device_id:{type:'string'},area_id:{type:'string'},floor_id:{type:'string'},offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:50}},required:['adapter'],additionalProperties:false},execute:async(input,context)=>new Promise((resolve,reject)=>{
+  editor.add({options:{codemode:false},name:'inspect_resources',description:'Discover current resource names, stable IDs, state and relationships using a registered read-only adapter. Supports entities/devices/areas/floors with explicit scope and pagination. Use discovery rather than inventing aliases, assuming missing capabilities, or guessing ownership. No configuration or device changes.',input:{type:'object',properties:{adapter:{type:'string',enum:['home-assistant']},resource:{type:'string',enum:['entities','devices','areas','floors']},query:{type:'string',maxLength:200,description:'Case-insensitive substring search of identity and location fields: IDs, current/original names, aliases, integration platforms, device names, manufacturers, models/model IDs, areas and floors. Does not filter current entity state.'},domains:{type:'array',items:{type:'string'},maxItems:20},device_id:{type:'string'},area_id:{type:'string'},floor_id:{type:'string'},offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:50}},required:['adapter'],additionalProperties:false},execute:async(input,context)=>new Promise((resolve,reject)=>{
    assertDiscoveryPermission(ctx,'inspect_resources',input,context).then(()=>{
    const child=spawn('/usr/bin/python3',['/home/somdutta/.config/opencode/mcp/resource_catalog.py'],{stdio:['pipe','pipe','pipe'],signal:context.signal});let out='';
    const timer=setTimeout(()=>child.kill('SIGKILL'),12000);child.stdin.end(JSON.stringify(input));
@@ -26,13 +23,8 @@ export default {id:'capability-discovery',async setup(ctx){
  });
  await ctx.session.hook('prompt',event=>{clearDiscovery(event.sessionID);clearCompletionCheck(event.sessionID);});
  await ctx.session.hook('context',event=>{
-  event.system.push({type:'text',text:EVIDENCE_RULE});
   if(event.model?.providerID==='evo-vision'){delete event.tools.discover_capabilities;delete event.tools.inspect_resources;return;}
-  const s=captureTools(event.sessionID,event.tools);
-  const names=Object.keys(s.baseline).filter(x=>!/^(home[-_]assistant_|ha[-_]history_)/.test(x));
-  event.system.push({type:'text',text:DISCOVERY_RULE+' General tools observed in this agent context: '+names.join(', ').slice(0,700)+'.'});
-  const repair=readCompletionCheck(event.sessionID);
-  if(repair)event.system.push({type:'text',text:'Completion check: the previous response was '+repair.reason+'. Continue the ORIGINAL task using the available capabilities and actual source evidence; a necessary clarification is valid. Retrieve missing task evidence before attributing results to a source. Do not repeat the question, invent a capability limit, or replay completed actions.'});
+  captureTools(event.sessionID,event.tools);
+
  });
- await ctx.session.hook('retry',event=>{if((readCompletionCheck(event.sessionID)?.attempts||0)>2)event.decision={retry:false};});
 }};

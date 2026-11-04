@@ -2,18 +2,11 @@ import {beginProcessing,endProcessing} from './processing-trace.mjs';
 import {sanitizeContext,ContextLimitError} from './context-hygiene.mjs';
 import {isDiscarded} from './discard-session.mjs';
 import {snapshotCloudRequest,snapshotCloudResponse} from './cloud-payload-audit.mjs';
-import {optimizeCloudRequest,forgetCloudSession} from './cloud-context-optimizer.mjs';
 import {clearEvidenceMemo} from './evidence-window.mjs';
-import {completionProblem,currentRequest,wireSummary,noteCompletionFailure,discoveryContinuation} from './completion-check.mjs';
-import {formatNativeStatus,isSimpleStatusQuery} from './ha-native-status.mjs';
-import {executeNamedRoutine} from './ha-routines.mjs';
-import {cloudDirective} from './user-scope.mjs';
-import {tryCalculation} from './execution-adapters/local-calculator.mjs';
+import {currentTurn} from './execution-templates.mjs';
 import {randomUUID} from 'node:crypto';
 import {completeTask,recordCloudCall} from './task-learning.mjs';
-import {isCurrentLocationQuery} from './location-query.mjs';
-import {tryExecutionTemplate,learnExecutionTemplate,currentTurn,saveTemplate,runProcedure} from './execution-templates.mjs';
-import {reportFromRequest,reportWire} from './ha-reports.mjs';
+import {reportWire} from './ha-reports.mjs';
 import http from 'node:http';
 import fsmod from 'node:fs';
 import {once} from 'node:events';
@@ -62,39 +55,6 @@ function withLocalFooter(body,type){
 }
 
 
-const HA_BASE='https://som4tress.duckdns.org:8123';
-const PEOPLE={somdutta:'Somdutta',shobha:'Shobha',shubha:'Shobha',shivangsh:'Shivangsh',shivi:'Shivangsh'};
-function haToken(){
- if(process.env.HA_TOKEN)return process.env.HA_TOKEN.trim();
- for(const f of ['/home/somdutta/.config/environment.d/90-ha-token.conf','/home/somdutta/.zshrc']){
-  try{const m=fsmod.readFileSync(f,'utf8').match(/eyJ[A-Za-z0-9._-]{20,}/);if(m)return m[0];}catch{}
- }
- return null;
-}
-/** Deterministic "where is <person>" answer that always carries a Maps link. */
-async function personLocationAnswer(query){
- try{
-  const q=String(query||'').toLowerCase();
-  if(!isCurrentLocationQuery(query,PEOPLE))return null;
-  const who=Object.keys(PEOPLE).find(k=>new RegExp('\\b'+k+'\\b').test(q));
-  if(!who)return null;
-  const tok=haToken();if(!tok)return null;
-  const r=await fetch(HA_BASE+'/api/states/person.'+who,{headers:{authorization:'Bearer '+tok},signal:AbortSignal.timeout(6000)});
-  if(!r.ok)return null;
-  const j=await r.json(),a=j.attributes||{};
-  const name=a.friendly_name||PEOPLE[who];
-  const known=j.state&&!['not_home','unknown','unavailable'].includes(j.state);
-  let text=known?name+' is at '+j.state+'.':name+' is not in a named zone right now.';
-  if(a.latitude!=null&&a.longitude!=null){
-   const lat=Number(a.latitude).toFixed(6),lon=Number(a.longitude).toFixed(6);
-   const acc=a.gps_accuracy!=null?' (\u00b1'+Math.round(a.gps_accuracy)+' m)':'';
-   text+='\n\nMap'+acc+': https://maps.google.com/?q='+lat+','+lon;
-  }else text+='\n\nCoordinates are unavailable for this person right now.';
-  return text;
- }catch{return null}
-}
-
-
 function observeCompletedWire(wire,session,kind,request){
  if(!session||kind!=='primary')return;
  let finished=false,hasText=false;
@@ -103,7 +63,6 @@ function observeCompletedWire(wire,session,kind,request){
  if(finished&&hasText)completeTask(session,true,undefined,{finalComplete:true,toolsUsed:currentTurn(request||{})?.calls.length||0});return finished&&hasText;
 }
 
-const ZERO_FOOTER='\n\nUsage (local): 0 tokens \u00b7 certified replay, no inference';
 const PORT=Number(process.env.MEDIA_PROXY_PORT||8011);
 const metrics={upstream:0,cloud:0,local:0,templateHits:0,formattedResults:0,titles:0};
 const activeControls=new Map();
@@ -114,7 +73,7 @@ const server=http.createServer(async(req,res)=>{
   let id;try{id=JSON.parse(raw).sessionID}catch{}
   if(typeof id!=='string'||!/^ses_[a-zA-Z0-9_-]+$/.test(id)){res.writeHead(400);res.end();return;}
   for(const ctl of activeControls.get(id)||[])ctl.abort(new Error('Rejected session discarded'));
-  activeControls.delete(id);forgetCloudSession(id);clearEvidenceMemo();res.end('discarded');return;
+  activeControls.delete(id);clearEvidenceMemo();res.end('discarded');return;
  }
  if(req.url==='/health'){res.end('ok');return;}
  if(req.url==='/metrics'&&req.method==='GET'){res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(metrics));return;}
@@ -154,42 +113,12 @@ const server=http.createServer(async(req,res)=>{
   if(ha&&kind==='primary'&&req.headers['x-ha-needs-target']==='true'){
    const wire=reportWire(incoming,'Which device or devices do you mean?\n\nUsage (local): 0 tokens · clarification needed, no inference');res.writeHead(200,{'content-type':wire.type});res.end(wire.body);return;
   }
-  // "where is <person>" is answered in code, with a Google Maps link.
-  if(!cloud&&!generic&&kind==='primary'&&userQuery){
-   const located=await personLocationAnswer(userQuery);
-   if(located){
-    const wire=reportWire(incoming,located+'\n\nUsage (local): 0 tokens \u00b7 deterministic lookup, no inference');
-    res.writeHead(200,{'content-type':wire.type});res.end(wire.body);
-    console.log(JSON.stringify({at:new Date().toISOString(),route:'person-location',status:200,zeroLLM:true,session}));return;
-   }
-  }
-  if(ha&&kind==='primary'&&userQuery&&!currentTurn(incoming,userQuery)?.calls.length){
-   const users=(incoming.messages||[]).filter(m=>m.role==='user');
-   const routine=await executeNamedRoutine(userQuery,{session:session||'',turn:String(users.length)+':'+JSON.stringify(users.at(-1)||{}).slice(-500)});
-   if(routine){const wire=reportWire(incoming,routine.text+'\n\nUsage (local): 0 tokens · HA routine invocation, no inference');res.writeHead(200,{'content-type':wire.type});res.end(wire.body);console.log(JSON.stringify({at:new Date().toISOString(),route:'ha-named-routine',session,status:200,ok:routine.ok,uncertain:routine.uncertain,entity_id:routine.entity_id}));return;}
-  }
   const machineFormat=/\b(json|csv|xml|yaml)\b|\b(?:number|value|answer)\s+only\b|\bonly\s+(?:a\s+)?(?:number|value|answer)\b/i.test(userQuery||'');
-  // Auxiliary requests (including compaction) must never replay user actions.
-  if((ha||generic)&&kind==='primary'&&!machineFormat&&!(cloud&&cloudDirective(userQuery||'')&&!currentTurn(incoming,userQuery)?.calls.length)){
-   let direct=null;
-   try{direct=await tryExecutionTemplate(incoming,{userQuery});if(!direct)direct=await learnExecutionTemplate(incoming,{userQuery,sessionID:session,run:request=>runProcedure(request,{timeoutMs:2000})})}catch(error){console.log(JSON.stringify({at:new Date().toISOString(),route:'template-fallback',error:error?.name||'Error'}))}
-   if(!direct&&generic&&userQuery&&!currentTurn(incoming,userQuery)?.calls.length){const calc=await tryCalculation(userQuery);if(calc&&!isDiscarded(session)){saveTemplate(userQuery,calc.recipe);direct={text:calc.text,source:'verified-local-calculation',zeroLLM:true};}}
-   if(direct){
-    if(direct.source==='verified-local-calculation')metrics.calculations=(metrics.calculations||0)+1;else if(direct.zeroLLM)metrics.templateHits++;else metrics.formattedResults++;
-    const wire=reportWire(incoming,kind==='primary'&&direct.zeroLLM?direct.text+(direct.source==='verified-local-calculation'?'\n\nUsage (local): 0 tokens · deterministic calculation, no inference':ZERO_FOOTER):direct.text);res.writeHead(200,{'content-type':wire.type});res.end(wire.body);
-    console.log(JSON.stringify({at:new Date().toISOString(),route:direct.source,status:200,zeroLLM:direct.zeroLLM,session,chars:direct.text.length}));return;
-   }
-  }
-  const report=ha&&kind==='primary'&&!machineFormat&&isSimpleStatusQuery(userQuery)?(reportFromRequest(incoming)||formatNativeStatus(incoming,userQuery)):null;
-  if(report!==null){
-   const wire=reportWire(incoming,report);res.writeHead(200,{'content-type':wire.type});res.end(wire.body);
-   console.log(JSON.stringify({at:new Date().toISOString(),route:'ha-report-renderer',status:200,session,chars:report.length}));return;
-  }
   const agent=ha||genericAgent;
   // Shared provider boundary: every frontend and both model tiers get the same
   // completed-task cleanup and bounded active evidence before any inference.
   const hygienic=await sanitizeContext(incoming,{signal:control.signal,session,vision:!cloud&&!agent});
-  const optimized=cloud?await optimizeCloudRequest(hygienic.body,{signal:control.signal,session}):hygienic.body;
+  const optimized=hygienic.body;
   let capture=false;try{capture=JSON.parse(fsmod.readFileSync('/home/somdutta/.local/state/opencode/completion-check/trace-sessions.json','utf8')).sessions?.includes(session)}catch{}
   const snapshot=cloud||capture?snapshotCloudRequest(incoming,optimized,{session,kind}):null;
   const payload=JSON.stringify(cloud?optimized:{...optimized,model:agent?'qwen36-agent':'qwen35-vision'});
@@ -203,19 +132,6 @@ const server=http.createServer(async(req,res)=>{
    // Validate a final answer before publishing it. Native tool continuations
    // preserve the existing request and receipts; no user prompt is resubmitted.
    let result=await upstream.text();if(snapshot)snapshotCloudResponse(snapshot,result,upstream.status);if(res.destroyed)return;
-   if(upstream.ok&&kind==='primary'&&(cloud||agent)&&session){
-    const summary=wireSummary(result);
-    const problem=summary.finished&&!summary.toolCalls?completionProblem(optimized,summary.answer):null;
-    if(problem){
-     const repair=noteCompletionFailure(session,currentRequest(optimized),problem,cloud?'cloud':'local');
-     if(repair.attempts<=2&&optimized.tools?.some(t=>t.function?.name==='discover_capabilities')){
-      result=discoveryContinuation(result,optimized.model);
-      console.log(JSON.stringify({at:new Date().toISOString(),route:'completion-recovery',session,reason:problem,attempt:repair.attempts,next:repair.route||'discovery'}));
-     }else{
-      res.writeHead(422,{'content-type':'application/json'});res.end(JSON.stringify({error:{type:'incomplete_response',message:'The model did not complete the request after bounded recovery. No successful completion was recorded; completed actions were not replayed.'}}));return;
-     }
-    }
-   }
    // Local answers carry their own token footer, so the cloud model never has to
    // report local usage. Handles both JSON and SSE responses; only for a final
    // answer (no tool calls pending).
