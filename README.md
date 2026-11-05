@@ -33,4 +33,4 @@ node --test components/telegram-vanilla/bridge.test.mjs
 node --check components/telegram-vanilla/bridge.mjs
 ```
 
-Current instruction files include identity, MCP access policy, structured-data/source-selection guidance, and the goodnight shortcut. HA MCP lite descriptions are enabled. The one-line installed skill-description patch in `inventory/ha-mcp-guide-scope.patch` narrows guide loading to configuration work; it must be reviewed/reapplied after HA MCP upgrades. Tool-output limits remain at the vanilla defaults.
+Current instruction files include identity, MCP access policy, structured-data/source-selection guidance, and the goodnight shortcut. HA MCP lite descriptions are enabled. The maintained patches in [components/ha-mcp](components/ha-mcp/README.md) narrow guide loading and enforce attribute-free history without enabling HA's record-compacting mode. Review/reapply these patches after HA MCP upgrades. Tool-output limits remain at the vanilla defaults.
