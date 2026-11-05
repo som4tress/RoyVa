@@ -4,7 +4,7 @@ RoyVa is the Roy family's personal AI assistant, built on vanilla OpenCode.
 The name can be read as **Roy Virtual Assistant**.
 
 This repository starts fresh with the Telegram integration. It contains no
-legacy Royva history, routing plugins, household policies or learning engine.
+legacy Royva history, routing plugins or learning engine.
 
 Current features:
 
@@ -13,7 +13,9 @@ Current features:
 - Live progress and token statistics, with approximate streaming counts labeled.
 - Accept & learn / Incorrect buttons recording answer-specific feedback and consent.
 - A minimal assistant identity: RoyVa, the Roy family's personal AI assistant.
-- Local Qwen3.8 27B Q8_0 with reasoning off and MTP draft length 6.
+- Local Qwen3.8-Flash-Next UD-IQ4_XS with reasoning off and MTP draft length 6.
+- Maintained HA MCP tools for device control, automation editing, entity/device
+  assignments, areas/floors, state and history queries.
 
 See [integration documentation](components/telegram-vanilla/README.md) for deployment,
 validation, feedback semantics and limitations. Services and configuration snapshots
@@ -30,3 +32,5 @@ Run focused checks with Node 24:
 node --test components/telegram-vanilla/bridge.test.mjs
 node --check components/telegram-vanilla/bridge.mjs
 ```
+
+Current instruction files include identity, MCP access policy, structured-data/source-selection guidance, and the goodnight shortcut. HA MCP lite descriptions are enabled. The one-line installed skill-description patch in `inventory/ha-mcp-guide-scope.patch` narrows guide loading to configuration work; it must be reviewed/reapplied after HA MCP upgrades. Tool-output limits remain at the vanilla defaults.

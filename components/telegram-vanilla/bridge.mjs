@@ -10,6 +10,7 @@ import { tokenUsage, formatUsage, streamingTokens } from './usage.mjs';
 
 export async function main() {
   const token = process.env.TELEGRAM_BOT_TOKEN;
+  const modelLabel = process.env.OPENCODE_TG_MODEL_LABEL || 'Qwen3.8 27B Q8_0 · reasoning off · MTP 6';
   const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
   if (!token || !allowed.size) throw new Error('Telegram token and explicit allowed user IDs are required.');
   const stateFile = process.env.OPENCODE_TG_STATE_FILE;
@@ -49,7 +50,7 @@ export async function main() {
     const linked = replySession(state, message);
     const text = message.text || '';
     if (text === '/start' || text === '/help') return send(message, 'Send text or a voice note to OpenCode. Each standalone message starts a new session; reply to a message to continue it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.');
-    if (text === '/status') return send(message, 'Vanilla OpenCode v2.2.5. Qwen3.8 27B Q8_0; reasoning off; MTP 6. Text and voice notes enabled. No legacy prompts, plugins or model routing.');
+    if (text === '/status') return send(message, `Vanilla OpenCode v2.2.5. ${modelLabel}. Text and voice notes enabled. Home Assistant MCP connected. No model routing.`);
     if (text === '/stop') {
       const runs = linked ? [active.get(linked)] : [...active.values()].filter(run => run.chat === message.chat.id && run.user === message.from.id);
       runs.filter(Boolean).forEach(run => run.controller.abort());
@@ -71,7 +72,7 @@ export async function main() {
       const typing = () => tg('sendChatAction', { chat_id: message.chat.id, action: 'typing' }).catch(() => {});
       const timer = setInterval(typing, 4000); void typing();
       const started = Date.now();
-      const status = await tg('sendMessage', { chat_id: message.chat.id, text: '⏳ Processing · 0s elapsed\nQwen3.8 Q8_0 · MTP 6\nTokens: awaiting provider usage', reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true } });
+      const status = await tg('sendMessage', { chat_id: message.chat.id, text: `⏳ Processing · 0s elapsed\n${modelLabel}\nTokens: awaiting provider usage`, reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true } });
       state.messages[`${message.chat.id}:${status.message_id}`] = sessionID; save();
       let lastUpdate = 0;
       let rows = [];
@@ -83,9 +84,16 @@ export async function main() {
         const partial = pending.flatMap(row => (row.content || []).filter(part => part.type === 'text' || part.type === 'reasoning').map(part => part.text || '')).join('');
         const live = finished ? null : await streamingTokens(partial).catch(() => null);
         const tool = rows.flatMap(row => row.content || []).filter(part => part.type === 'tool').at(-1);
+        const elapsed = Math.round((Date.now() - started) / 1000);
+        const blocks = Math.max(1, Math.ceil(elapsed / 3));
+        const localBar = '▰'.repeat(blocks);
+        const hourglass = Math.floor(elapsed / 3) % 2 ? '⌛' : '⏳';
         const lines = [
-          `${finished ? '✓ Finished' : '⏳ Processing'} · ${Math.round((Date.now() - started) / 1000)}s elapsed`,
-          'Qwen3.8 27B Q8_0 · reasoning off · MTP 6',
+          `${finished ? '✓ Finished' : `${hourglass} Processing`} · ${Math.round((Date.now() - started) / 1000)}s elapsed`,
+          modelLabel,
+          `Local ${localBar} · ${elapsed}s`,
+          'Remote ▱ · idle',
+          'Each block ≈ 3s',
           usage.passes ? formatUsage(usage) : 'Tokens: awaiting provider usage',
           ...(!finished && pending.length ? [`Current pass: ${live === null ? 'output usage pending' : `~${live} streamed output tokens`} · input usage pending`] : []),
           ...(!finished && tool ? [`Tool: ${tool.name} · ${tool.state?.status || 'running'}`] : []),

@@ -1,5 +1,5 @@
 [Unit]
-Description=EVO llama.cpp Vulkan Qwen3.8 Q8_0 MTP6 agent endpoint
+Description=EVO llama.cpp Vulkan Qwen3.8 Flash Next MTP6 endpoint
 Conflicts=evo-vllm-agent.service evo-vllm-vision.service
 After=network-online.target
 
@@ -7,7 +7,7 @@ After=network-online.target
 Type=simple
 WorkingDirectory=/home/somdutta/llm-server
 EnvironmentFile=/home/somdutta/llm-server/api.env
-ExecStart=/usr/bin/python3 /home/somdutta/llm-server/launch_llamacpp.py
+ExecStart=/usr/bin/python3 /home/somdutta/llm-server/launch_flash.py
 Restart=on-failure
 RestartSec=15
 TimeoutStopSec=60

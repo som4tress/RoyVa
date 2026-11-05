@@ -1,8 +1,8 @@
 {
-  "model": "local/qwen38-27b",
+  "model": "local/qwen38-flash-next",
   "providers": {
     "local": {
-      "name": "Local Qwen3.8 Q8_0 MTP6",
+      "name": "Local Qwen3.8 Flash Next",
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": {
         "baseURL": "http://127.0.0.1:8000/v1",
@@ -35,11 +35,61 @@
               "enable_thinking": false
             }
           }
+        },
+        "qwen38-flash-next": {
+          "name": "Qwen3.8-Flash-Next UD-IQ4_XS",
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          },
+          "body": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "presence_penalty": 1.5,
+            "repetition_penalty": 1.0,
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
         }
       }
     }
   },
   "instructions": [
-    "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/identity.md"
-  ]
+    "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/identity.md",
+    "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/ha-tools.md",
+    "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/data-analysis.md",
+    "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/goodnight.md"
+  ],
+  "permissions": [
+    {
+      "action": "*",
+      "resource": "*",
+      "effect": "allow"
+    }
+  ],
+  "websearch": {
+    "provider": "random"
+  },
+  "mcp": {
+    "servers": {
+      "home-assistant": {
+        "type": "remote",
+        "url": "http://127.0.0.1:9584/mcp",
+        "oauth": false,
+        "codemode": true
+      }
+    }
+  }
 }

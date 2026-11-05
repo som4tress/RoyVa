@@ -1,7 +1,7 @@
 [Unit]
 Description=Vanilla OpenCode v2.2.5 isolated runtime
-After=network-online.target evo-llamacpp-agent.service
-Wants=evo-llamacpp-agent.service
+After=network-online.target evo-llamacpp-agent.service royva-ha-mcp.service
+Wants=evo-llamacpp-agent.service royva-ha-mcp.service
 [Service]
 Type=simple
 WorkingDirectory=/home/somdutta/.local/share/opencode-vanilla/workspace
