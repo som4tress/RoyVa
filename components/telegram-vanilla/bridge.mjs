@@ -1,0 +1,162 @@
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { pathToFileURL } from 'node:url';
+import { setTimeout } from 'node:timers/promises';
+import { createTranscriber } from './whisper.mjs';
+import { openCodeAPI, runText, replySession } from './opencode.mjs';
+import { tokenUsage, formatUsage, streamingTokens } from './usage.mjs';
+
+export async function main() {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
+  if (!token || !allowed.size) throw new Error('Telegram token and explicit allowed user IDs are required.');
+  const stateFile = process.env.OPENCODE_TG_STATE_FILE;
+  let state;
+  try { state = JSON.parse(readFileSync(stateFile, 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; state = { offset: 0, messages: {} }; }
+  state.answers ||= {};
+  const save = () => writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
+  const active = new Map();
+  const queues = new Map();
+  const transcribe = createTranscriber();
+  async function tg(method, payload) {
+    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(65000),
+    });
+    const result = await response.json();
+    if (!result.ok) throw new Error(`Telegram ${method}: ${result.error_code}`);
+    return result.result;
+  }
+  async function send(message, text, sessionID, feedback = false) {
+    const points = Array.from(text);
+    for (let offset = 0; offset < points.length; offset += 3900) {
+      const result = await tg('sendMessage', {
+        chat_id: message.chat.id, text: points.slice(offset, offset + 3900).join(''),
+        reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
+        ...(feedback && offset + 3900 >= points.length ? { reply_markup: { inline_keyboard: [[
+          { text: '👍 Accept & learn', callback_data: 'feedback:accept' },
+          { text: '👎 Incorrect', callback_data: 'feedback:reject' },
+        ]] } } : {}),
+      });
+      if (sessionID && feedback) state.answers[`${message.chat.id}:${result.message_id}`] = { sessionID, assistantIDs: feedback.assistantIDs };
+      if (sessionID) { state.messages[`${message.chat.id}:${result.message_id}`] = sessionID; save(); }
+    }
+  }
+  async function handle(message) {
+    if (!allowed.has(String(message.from?.id)) || message.from?.is_bot) return;
+    const linked = replySession(state, message);
+    const text = message.text || '';
+    if (text === '/start' || text === '/help') return send(message, 'Send text or a voice note to OpenCode. Each standalone message starts a new session; reply to a message to continue it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.');
+    if (text === '/status') return send(message, 'Vanilla OpenCode v2.2.5. Qwen3.8 27B Q8_0; reasoning off; MTP 6. Text and voice notes enabled. No legacy prompts, plugins or model routing.');
+    if (text === '/stop') {
+      const runs = linked ? [active.get(linked)] : [...active.values()].filter(run => run.chat === message.chat.id && run.user === message.from.id);
+      runs.filter(Boolean).forEach(run => run.controller.abort());
+      return send(message, runs.filter(Boolean).length ? 'Stop requested.' : 'No matching request is running.', linked);
+    }
+    if (text === '/approve' || text === '/deny') {
+      if (!linked) return send(message, 'Reply to a permission request with /approve or /deny.');
+      const pending = await openCodeAPI(`/api/session/${linked}/permission`);
+      if (!pending.length) return send(message, 'No pending permission request.', linked);
+      await openCodeAPI(`/api/session/${linked}/permission/${pending[0].id}/reply`, 'POST', { reply: text === '/approve' ? 'once' : 'reject' });
+      return send(message, text === '/approve' ? 'Approved once.' : 'Denied.', linked);
+    }
+    const sessionID = linked || (await openCodeAPI('/api/session', 'POST', { location: { directory: process.env.OPENCODE_TG_DIR } })).id;
+    state.messages[`${message.chat.id}:${message.message_id}`] = sessionID; save();
+    const prior = queues.get(sessionID) || Promise.resolve();
+    const job = prior.catch(() => {}).then(async () => {
+      const controller = new AbortController();
+      active.set(sessionID, { controller, chat: message.chat.id, user: message.from.id });
+      const typing = () => tg('sendChatAction', { chat_id: message.chat.id, action: 'typing' }).catch(() => {});
+      const timer = setInterval(typing, 4000); void typing();
+      const started = Date.now();
+      const status = await tg('sendMessage', { chat_id: message.chat.id, text: '⏳ Processing · 0s elapsed\nQwen3.8 Q8_0 · MTP 6\nTokens: awaiting provider usage', reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true } });
+      state.messages[`${message.chat.id}:${status.message_id}`] = sessionID; save();
+      let lastUpdate = 0;
+      let rows = [];
+      async function updateStatus(finished = false) {
+        if (!finished && Date.now() - lastUpdate < 3000) return;
+        lastUpdate = Date.now();
+        const usage = tokenUsage(rows);
+        const pending = rows.filter(row => row.type === 'assistant' && !row.time.completed);
+        const partial = pending.flatMap(row => (row.content || []).filter(part => part.type === 'text' || part.type === 'reasoning').map(part => part.text || '')).join('');
+        const live = finished ? null : await streamingTokens(partial).catch(() => null);
+        const tool = rows.flatMap(row => row.content || []).filter(part => part.type === 'tool').at(-1);
+        const lines = [
+          `${finished ? '✓ Finished' : '⏳ Processing'} · ${Math.round((Date.now() - started) / 1000)}s elapsed`,
+          'Qwen3.8 27B Q8_0 · reasoning off · MTP 6',
+          usage.passes ? formatUsage(usage) : 'Tokens: awaiting provider usage',
+          ...(!finished && pending.length ? [`Current pass: ${live === null ? 'output usage pending' : `~${live} streamed output tokens`} · input usage pending`] : []),
+          ...(!finished && tool ? [`Tool: ${tool.name} · ${tool.state?.status || 'running'}`] : []),
+          ...(!finished ? ['Reply to continue · /stop'] : []),
+        ];
+        await tg('editMessageText', { chat_id: message.chat.id, message_id: status.message_id, text: lines.join('\n') }).catch(() => {});
+      }
+      const statusTimer = setInterval(() => { void updateStatus().catch(() => {}); }, 3000);
+      try {
+        let prompt = text;
+        const audio = message.voice || message.audio || message.video_note;
+        if (audio) {
+          if (audio.file_size > 20 * 1024 * 1024 || audio.duration > 600) return await send(message, 'Voice limit: 20 MB and 10 minutes.', sessionID);
+          const directory = await mkdtemp(join(tmpdir(), 'opencode-voice-'));
+          try {
+            const file = await tg('getFile', { file_id: audio.file_id });
+            const response = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(60000) });
+            if (!response.ok) throw new Error('Audio download failed.');
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (bytes.length > 20 * 1024 * 1024) throw new Error('Audio exceeds 20 MB.');
+            const source = join(directory, 'audio'); await writeFile(source, bytes, { mode: 0o600 });
+            const result = await transcribe(source, directory.split('/').at(-1));
+            if (!result.ok) throw new Error('Speech transcription failed.');
+            prompt = result.text;
+            await send(message, `Heard: ${prompt}`, sessionID);
+          } finally { await rm(directory, { recursive: true, force: true }); }
+        }
+        if (!prompt.trim()) return await send(message, 'Send text or a voice note.', sessionID);
+        if (controller.signal.aborted) return;
+        const answer = await runText(sessionID, prompt, {
+          signal: controller.signal,
+          onProgress: async progress => { rows = progress; },
+          onPermission: permission => send(message, `Permission requested: ${permission.action}\n${permission.resources.join('\n')}\nReply /approve or /deny.`, sessionID),
+        });
+        await updateStatus(true);
+        await send(message, answer, sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+      } catch (error) {
+        console.error('Request failed:', error.name);
+        await send(message, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
+      } finally { clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
+    });
+    queues.set(sessionID, job);
+    void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});
+  }
+  async function feedback(callback) {
+    if (!allowed.has(String(callback.from?.id))) return;
+    const message = callback.message;
+    const target = message && state.answers[`${message.chat.id}:${message.message_id}`];
+    if (!target || !['feedback:accept', 'feedback:reject'].includes(callback.data)) return;
+    const action = callback.data.split(':')[1];
+    appendFileSync(join(process.env.XDG_STATE_HOME, 'feedback.jsonl'), JSON.stringify({ at: new Date().toISOString(), userID: callback.from.id, chatID: message.chat.id, telegramMessageID: message.message_id, ...target, action, learningConsent: action === 'accept' }) + '\n', { mode: 0o600 });
+    await tg('answerCallbackQuery', { callback_query_id: callback.id, text: action === 'accept' ? 'Acceptance and learning consent recorded. No automatic model or prompt changes.' : 'Marked incorrect. No automatic retry or device changes.' });
+    await tg('editMessageReplyMarkup', { chat_id: message.chat.id, message_id: message.message_id, reply_markup: { inline_keyboard: [[
+      { text: `${action === 'accept' ? '✓ ' : ''}👍 Accept & learn`, callback_data: 'feedback:accept' },
+      { text: `${action === 'reject' ? '✓ ' : ''}👎 Incorrect`, callback_data: 'feedback:reject' },
+    ]] } }).catch(() => {});
+  }
+  await tg('deleteWebhook' , { drop_pending_updates: false });
+  const me = await tg('getMe', {});
+  console.log(`Telegram connected as @${me.username}; standalone messages create native sessions.`);
+  while (true) {
+    try {
+      const updates = await tg('getUpdates', { offset: state.offset + 1, timeout: 30, allowed_updates: ['message', 'callback_query'] });
+      for (const update of updates) {
+        // Record admission before execution; never automatically replay household actions after restart.
+        state.offset = update.update_id; save();
+        if (update.callback_query) void feedback(update.callback_query).catch(error => console.error('Feedback failed:', error.name));
+        if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
+      }
+    } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();

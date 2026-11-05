@@ -15,6 +15,8 @@ EXACT = {'LICENSE','Dockerfile','Makefile','.gitignore','.gitattributes',
          'bun.lockb','openrouter-usage','AGENTS.md'}
 SOURCES = {
  'opencode': HOME/'.config/opencode',
+ 'telegram-vanilla': HOME/'Documents/Codex/opencode-clean/integrations/telegram',
+ 'opencode-vanilla-config': HOME/'.local/share/opencode-vanilla/config',
  'agent-learning': HOME/'Projects/agent-learning',
  'smart-router': HOME/'OpenCode/opencode-smart-router',
  'shellular': HOME/'OpenCode/shellular',
