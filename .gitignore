@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.env
+*.db
+*.db-*
+*.log
+*.jsonl
+state.json
+auth.json
+*.gguf
+__pycache__/
