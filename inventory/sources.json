@@ -661,14 +661,14 @@
     "executable": false,
     "redacted": false,
     "repository": "components/telegram-vanilla/README.md",
-    "sha256": "c8ac12f9a8c9a5a23d01f0f81e6bceede30aa5c02ec931b31c6a9bcd14e9af37",
+    "sha256": "1896a6cea196ee0e7692e29f51c9e1a86cc5e634fbc3cfa4ee47b2cebcad492a",
     "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/README.md"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/telegram-vanilla/bridge.mjs",
-    "sha256": "dd6e5463d7e6d402a11e2250ad2b99e857c79231fb8c139cbdf001b5db6badac",
+    "sha256": "cbaa8625030d0e9ac7aaaa71cd51cf6f428dd83766d4398a43e68f5b1ae43b1e",
     "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs"
   },
   {
@@ -7502,89 +7502,5 @@
     "repository": "inventory/workspace-AGENTS.md",
     "sha256": "273d103ecde2736df156125260330d20e6a61f0b544def2591bcf8bf65ee1d48",
     "source": "/home/somdutta/Documents/Codex/AGENTS.md"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/README.md",
-    "sha256": "d9565a05dcf7b54a332f314d48289a025b04c15d9f74409dd2e01f68b786a3c0",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/README.md"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/bridge.mjs",
-    "sha256": "dd6e5463d7e6d402a11e2250ad2b99e857c79231fb8c139cbdf001b5db6badac",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/bridge.test.mjs",
-    "sha256": "e3cfb3832b0bc6bd44b222f914e67bbdf403d48f955de50046d01674af38072f",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.test.mjs"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/identity.md",
-    "sha256": "5a5607bbee78309f5d39bed8caef2796d74f7a50f827c1221cd7182e22ca68dd",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/identity.md"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/opencode.mjs",
-    "sha256": "1cd92e9bf9cd3c56d59181666e4eaed7dca70300f5f2d001ead5a107d2b55077",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/opencode.mjs"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/usage.mjs",
-    "sha256": "94ab4e1bd074ffddd73f5e33b6ff222d912630f08be5d37f175a383bff013a3f",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/usage.mjs"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/telegram-vanilla/whisper.mjs",
-    "sha256": "eba6cca790b18c47985a9343a74eecf4cbec9bc5e1d6fb0504093351ac824ef0",
-    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/whisper.mjs"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/opencode-vanilla-config/opencode.json",
-    "sha256": "70efd796c6240e2fd7fa766ed25be0534e7dd3a898a674cdded9aaf7bc745b68",
-    "source": "/home/somdutta/.local/share/opencode-vanilla/config/opencode.json"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/llm-server/launch_llamacpp.py",
-    "sha256": "cdea552d94be2adc8c6c3e38964b38bbf1926413a43bccb4d65664608e693272",
-    "source": "/home/somdutta/llm-server/launch_llamacpp.py"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/systemd/evo-llamacpp-agent.service",
-    "sha256": "cc4933ba3913f97b964eee4fb2db5196fa7faa77e2d9058fc8542d564457cf01",
-    "source": "/home/somdutta/.config/systemd/user/evo-llamacpp-agent.service"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/systemd/opencode-telegram-vanilla.service",
-    "sha256": "14f21e31571483f3fe6b89e4a1b3f57ac32accd0c21535ef143b7b4d11a05951",
-    "source": "/home/somdutta/.config/systemd/user/opencode-telegram-vanilla.service"
-  },
-  {
-    "executable": false,
-    "redacted": false,
-    "repository": "components/systemd/opencode-vanilla.service",
-    "sha256": "cf5cf5c0ac1cc424555de59c1fdc26181de34712654f2351d840c2849d396b15",
-    "source": "/home/somdutta/.config/systemd/user/opencode-vanilla.service"
   }
 ]

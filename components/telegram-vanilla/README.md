@@ -2,7 +2,7 @@
 
 Selective port from the existing Royva Telegram bridge: Bot API polling, text,
 message chunking, whisper.cpp speech transcription, native session API, interruption,
-permission replies and token display. No legacy agents, prompts,
+permission replies, feedback buttons and token display. No legacy agents, prompts,
 model routing, Home Assistant rules, learning execution or history transformations
 are imported. The upstream OpenCode packages remain unchanged.
 
@@ -20,6 +20,17 @@ Progress edits show elapsed time, native completed-pass token usage, cached inpu
 peak input and tool activity. While streaming, output is retokenized using the
 active model's `/tokenize` endpoint and marked approximate; provider input totals
 are pending until the pass reports usage. No invented live input counts or costs.
+
+The `Accept & learn` and `Incorrect` buttons append answer-specific feedback to
+private `feedback.jsonl`. Acceptance records consent; it does not save a guide yet.
+Incorrect sends a versioned, redacted bundle to DeepSeek through OpenRouter and
+returns a validated `steer_only`, `build`, or `insufficient_evidence` classification.
+The key is read at request time from `~/OpenRouter.txt` (or
+`OPENROUTER_API_KEY_FILE`) and is never copied into the repository or logged.
+This step does not yet execute recovery, build a capability, or save an accepted
+guide. Tool schemas are captured privately from session context; a missing schema
+is marked unavailable. A later vote supersedes the earlier vote for that answer
+when consumers fold the ledger.
 
 ## Local deployment
 
