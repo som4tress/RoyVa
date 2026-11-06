@@ -668,7 +668,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/telegram-vanilla/bridge.mjs",
-    "sha256": "1cca930c532b42d3d4900de25989975dea85d3f7021b339c250199b6d1e2ae28",
+    "sha256": "dd6e5463d7e6d402a11e2250ad2b99e857c79231fb8c139cbdf001b5db6badac",
     "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs"
   },
   {
@@ -7514,7 +7514,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/telegram-vanilla/bridge.mjs",
-    "sha256": "14a0096aa654578a125a41c585e592cf5ef67dd1d33d9f6467b3985b127cc35b",
+    "sha256": "dd6e5463d7e6d402a11e2250ad2b99e857c79231fb8c139cbdf001b5db6badac",
     "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs"
   },
   {
