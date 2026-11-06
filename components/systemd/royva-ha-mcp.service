@@ -1,0 +1,16 @@
+[Unit]
+Description=RoyVa Home Assistant configuration MCP (ha-mcp 9.1.0)
+After=network-online.target
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/.local/share/royva-ha-mcp
+EnvironmentFile=/home/somdutta/.local/share/royva-ha-mcp/connection.env
+Environment=MCP_HOST=127.0.0.1
+Environment=MCP_PORT=9584
+Environment=XDG_DATA_HOME=/home/somdutta/.local/share/royva-ha-mcp/data
+ExecStart=/home/somdutta/.local/share/royva-ha-mcp/venv/bin/ha-mcp-web
+Restart=on-failure
+RestartSec=5
+UMask=0077
+[Install]
+WantedBy=default.target

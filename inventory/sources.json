@@ -101,7 +101,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/instructions/shared-policy.md",
-    "sha256": "0fa132a3758201a39396710681961ffea63bab522b1ee0fba0519e5aefbce3b6",
+    "sha256": "1c5f125aca49b0e2716a3ac5c72c783f886f3a142dc6f6ea807116be641ec7b8",
     "source": "/home/somdutta/.config/opencode/instructions/shared-policy.md"
   },
   {
@@ -192,7 +192,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/ha-focus.mjs",
-    "sha256": "db3528e574e57de5850ca495c3d772e6d6e59be663483bb94c21e78a9619ed69",
+    "sha256": "dc6de2e7f908681f367bb828affbf3ce98ad9c2750f35025e39c0faa90ce24c5",
     "source": "/home/somdutta/.config/opencode/lib/ha-focus.mjs"
   },
   {
@@ -311,7 +311,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/lib/tool-permissions.mjs",
-    "sha256": "1b146f326dff670b0478947a0d8a7bc146151e35506e9064c607fc35374fae31",
+    "sha256": "d390cdcf4c11adcd4d2ae236b2a36ae919f24ed1638dacfd0fe58979f52d74aa",
     "source": "/home/somdutta/.config/opencode/lib/tool-permissions.mjs"
   },
   {
@@ -381,7 +381,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/mcp/ha_status_report.py",
-    "sha256": "87db496ab3c9ca9ed529fec236d45718c8aa60504d18191d3f297482172f25c8",
+    "sha256": "0ae593d24b938b3c6da08adf327add24a30acebf5723b052caf6c88402681fa4",
     "source": "/home/somdutta/.config/opencode/mcp/ha_status_report.py"
   },
   {
@@ -409,14 +409,14 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/mcp/resource_catalog.py",
-    "sha256": "6c42657e237f14fd65d811983fb580d6ebd8af4cb3ee1cd5c3eec60cb1f1f145",
+    "sha256": "b2b844d28dcd1e417c66f4f5af5fe88e4030d95e5838521daa806bdcc4ded157",
     "source": "/home/somdutta/.config/opencode/mcp/resource_catalog.py"
   },
   {
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/capability-discovery/index.js",
-    "sha256": "9eb255c571f16f57f2d0ba47248d57f270444e5f8ce3fd04adbd6649aefbd48b",
+    "sha256": "f4a7bdc0e814a4aca5e98ae29f8294ea0610b42da1cc88fa6f7b1b66f8d12822",
     "source": "/home/somdutta/.config/opencode/plugins/capability-discovery/index.js"
   },
   {
@@ -437,7 +437,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/plugins/ha-mcp-routing/index.js",
-    "sha256": "b3931e0a6749614942137245834e480ffb0ad9a0dc08868d802c1c9dcfe005c9",
+    "sha256": "5fadc49e0272846ce68a26a42c885af1f26fbde2b05c1f99869e6d2a4419ad85",
     "source": "/home/somdutta/.config/opencode/plugins/ha-mcp-routing/index.js"
   },
   {
@@ -591,7 +591,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/opencode/telegram/bridge.mjs",
-    "sha256": "5973fa8b898889a82f93c30dd8073878bb096b44585c191cc879d0f586ded184",
+    "sha256": "66434bcc6dfb79c80b6f068755c4811590da2d6f33674c597eb4c5edb2163dcb",
     "source": "/home/somdutta/.config/opencode/telegram/bridge.mjs"
   },
   {
@@ -656,6 +656,566 @@
     "repository": "components/opencode/whatsapp/package.json",
     "sha256": "3f96fb556e3742c606cedbed26891d05d836757d1a87f27a84fdccec1208525a",
     "source": "/home/somdutta/.config/opencode/whatsapp/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/README.md",
+    "sha256": "c8ac12f9a8c9a5a23d01f0f81e6bceede30aa5c02ec931b31c6a9bcd14e9af37",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/bridge.mjs",
+    "sha256": "1cca930c532b42d3d4900de25989975dea85d3f7021b339c250199b6d1e2ae28",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/bridge.test.mjs",
+    "sha256": "3a6d0d1691956c155f4590999ec51583d6859d18f3a34cfaa281f473ed52fff8",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/data-analysis.md",
+    "sha256": "4d6b10aef9820312ade6582b64b0941344fc0b6f7bfcb3f71a3ba256ebe2eaaf",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/data-analysis.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/goodnight.md",
+    "sha256": "aa34159a21cac895cd275c4ad81e7546a76debf6df7f1eec84b314122b695ecd",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/goodnight.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/ha-guide.md",
+    "sha256": "85deb186003ad61cc455a1b7a8e187e237344660a993cb2af5f1a09bf04eaed0",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/ha-guide.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/ha-tools.md",
+    "sha256": "61034a78ab68b0f0c7a55e7f74469b714fb6c525edd30b8e92cf9602e4438175",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/ha-tools.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/identity.md",
+    "sha256": "eb2c30d0bd16b9a0f1e905dbc82159749d558e02463f6db186e0551821fb63a1",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/identity.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/media-routing.fixture.mjs",
+    "sha256": "81837588749fca8e82ac848b66f635e389f02a2038c8a6e1ecb6097eaee15ce2",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/media-routing.fixture.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/media.mjs",
+    "sha256": "109943500ceba32ec836f3aa602bdb5b46ba9e37d30729c771420729c9de900e",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/media.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/opencode.mjs",
+    "sha256": "9e0506695b193576bd065b28b6d751d9eedb0c7bc343885a82fcd72eaed3bb50",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/opencode.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/permission-routing.fixture.mjs",
+    "sha256": "02b1a73282c612e501f54161c0f2190962b1b16bebb8203ce71386857f8b51ec",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/permission-routing.fixture.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/permissions.mjs",
+    "sha256": "0849ef10c2579b83db89c54db484e3b68ee7af6d582577d7189432cddc0f68dd",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/permissions.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/permissions.test.mjs",
+    "sha256": "2bcd9addcd270e7348e222d9b1ae0021f03e75202acef31101fae1b54706543b",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/permissions.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/usage.mjs",
+    "sha256": "94ab4e1bd074ffddd73f5e33b6ff222d912630f08be5d37f175a383bff013a3f",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/usage.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/voice-routing.fixture.mjs",
+    "sha256": "7d923d513ac000b14831a4c54017fe73a8393af43528b3df69a40709a1f40ea8",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/voice-routing.fixture.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/telegram-vanilla/whisper.mjs",
+    "sha256": "eba6cca790b18c47985a9343a74eecf4cbec9bc5e1d6fb0504093351ac824ef0",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/whisper.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/README.md",
+    "sha256": "8dbaa40881bf21a1a29efdd809023b0647d659e7106c418216c454cd7fbc6f87",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_context.py",
+    "sha256": "952f7f1eba3f489373f35561b22d42e35861827b1510e95867f495d66c6f7017",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_context.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_device_status.py",
+    "sha256": "04dc250722cee127d15fa4b6515613eb0eb70d0aa94c86498697e1c629001dd4",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_device_status.py"
+  },
+  {
+    "executable": true,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_history.py",
+    "sha256": "5e707a39bde3596c40eb285ec41dfae92b0afa7b8b949ef354e6956d72595762",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_history.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_mcp_transport.py",
+    "sha256": "207c5baea936ecb4d135501f16f4b7a8d39d187b31f5ed4ca1e78a119541442c",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_mcp_transport.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_registry.py",
+    "sha256": "f34c5e4fe5f21d3a16c363f4560c0206e506a48f70ff2b376802be71df4bec1b",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_registry.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_status_report.py",
+    "sha256": "0ae593d24b938b3c6da08adf327add24a30acebf5723b052caf6c88402681fa4",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_status_report.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-legacy/ha_ws.py",
+    "sha256": "37d738a277c32dc03d38c38533355d07f4e83da694a7d573e45b903c34059203",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_ws.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/skill-catalog/README.md",
+    "sha256": "2fcb36b870ab292654bb9292ed48e2811692751ec6f0783dbe0c9a1ac65bd36d",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/skill-catalog/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/skill-catalog/index.js",
+    "sha256": "76d7fb033fb9b1fd1d2320ae4a4751a28824e62f2fbb9611610e9067842b5bde",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/skill-catalog/index.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/skill-catalog/index.test.mjs",
+    "sha256": "4001bdc7044e901be36d28d138fbaafb7043a8ae88e912856a7f0bb7d8c71076",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/skill-catalog/index.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/skill-catalog/package.json",
+    "sha256": "beee17c3a977f4664e24676c9f02a633f712112e42bc13966c93200f5388232a",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/skill-catalog/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/time-context/index.js",
+    "sha256": "3616e8c31c8abdd1f9b0fd7c8d5ecffcf74a6069cc168f4533ce35cbb13cab73",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/time-context/index.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/time-context/index.test.js",
+    "sha256": "47532208af8a505dbac233c6355064834ec8d727fa4e8cf930a633d551dd442f",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/time-context/index.test.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/time-context/package.json",
+    "sha256": "256bd9c3e064613c8e1376bba915a2129631bfc8612924393023498949d54937",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/time-context/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/media-input/README.md",
+    "sha256": "1ada982a86edd70232239ffd02592a682c1e027e3c88ccb4b3bed8ac2284ca5c",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/media-input/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/media-input/index.js",
+    "sha256": "038fdaa00e7ef51af1b57e1a787fcf72bc2b62de7b0724593bdda692157df34b",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/media-input/index.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/media-input/index.test.js",
+    "sha256": "5d07cae0e73da9eb6720f9e258e06653d1cff5f3834cbd7e173a465d8f6f2b5a",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/media-input/index.test.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/media-input/package.json",
+    "sha256": "402cfae76805987d741d458f305b153f44ac1f0b51512daa217b39b59d3bab79",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/media-input/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-config-access/index.js",
+    "sha256": "4b7057d37cabaa65acfd9d4cff71d2c174f61d3d76689fc5f6865b857d491084",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-config-access/index.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-config-access/index.test.js",
+    "sha256": "d3284f63c6553590b1c69b448de735c7b8a1fbb080ddc38a4578dea82e05fce7",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-config-access/index.test.js"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/ha-config-access/package.json",
+    "sha256": "12d0c2cfa6525d4add7009fbc757189cafc92014cdd676578237a9894fa04c00",
+    "source": "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-config-access/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/opencode-vanilla-config/opencode.json",
+    "sha256": "ec8fecb4f2b16afea22120c198712213ec2e54b96c8788734b7e7930a2ec6717",
+    "source": "/home/somdutta/.local/share/opencode-vanilla/config/opencode.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.gitignore",
+    "sha256": "ddb330d23c7a93957b039e36d68bd60363755bccb41fa32278bdb883670581a1",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.gitignore"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/README.md",
+    "sha256": "08084a7322857b17b94615baf0cd8f3f3ce84407b46eae6d415a99ccf677a822",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/ROYVA-SETUP.md",
+    "sha256": "26eb1b46d54aaf6bc342cdc5561affdc8a9aad35cfe367a7d6d86da797e38343",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/ROYVA-SETUP.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/package-lock.json",
+    "sha256": "63c99aeb01d2d42cad3438a354ad568aaf4e190f1b909ec156a19887a8b2c98b",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/package-lock.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/package.json",
+    "sha256": "3f055cd3b3c3a79d97c88626c6279405405169665b52b0b09448d7b0df91db3b",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/tsconfig.json",
+    "sha256": "97312f3a82ab3d5229e45696a37b5ef72a63b32bb4e5c080bba639365a1924b1",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/tsconfig.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/PDR.md",
+    "sha256": "ce531e5bd0a6b5c0e20d92bf1b07504d22bc5927244c0012174272451c3f4cf9",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/PDR.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/PROJECT.md",
+    "sha256": "351034697116d82e544434020db7d9f19b76203ee7d055f8da7be037cece15fa",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/PROJECT.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/REQUIREMENTS.md",
+    "sha256": "4561837dc515904e8e31316ce84714b898aceddac916b4f35a86a5809c2b7cfc",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/REQUIREMENTS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/ROADMAP.md",
+    "sha256": "425a62e6348c3a86576fcafeca1d7930c4b138ac9e5c84da0bfdaa108b200b62",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/ROADMAP.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/STATE.md",
+    "sha256": "ab8d9e8f320f64377808bc0b69ba51b6f8ca9310e430890bcc572eb92b914ada",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/STATE.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/config.json",
+    "sha256": "743f729e760f2aa3946de213f621776cfc2789cddff305af5b0a274c6e7247e5",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/config.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/ARCHITECTURE.md",
+    "sha256": "121fdc4d2f53e31a65b4f193263c52870de1e95f5cb62befe14d37d4d11cdd5d",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/ARCHITECTURE.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/CONCERNS.md",
+    "sha256": "352a225f4b2e81c7991e9fce9b2c8bc87ea6f14b10b90834401b3e1c6eef972c",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/CONCERNS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/CONVENTIONS.md",
+    "sha256": "f27d5d9227ad9749d42d4f1c4022a2860c3ba31bf1276eec429470501a12d89f",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/CONVENTIONS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/INTEGRATIONS.md",
+    "sha256": "cebaa7fa2289272fe5b14346371a5006894aab1158d063f75fa276f701db0991",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/INTEGRATIONS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/STACK.md",
+    "sha256": "6d39840debf70b891be136d957cd220d82dddeb44c8db509e719e87de1f55b43",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/STACK.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/STRUCTURE.md",
+    "sha256": "4909a8bb705b2f955b223daa3de58563b85f3ad5fb8a8cebede31f78bfedef0e",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/STRUCTURE.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/codebase/TESTING.md",
+    "sha256": "0e30a79d344dec145f6165a277e806a852d43d571857a5ebcd324d054712fdee",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/codebase/TESTING.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/features/BROADER_SEARCH_SUGGESTIONS.md",
+    "sha256": "0e188416d4e35e09f905cb28756061b28a33c6c800af9dd5c7864a07437dfac0",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/features/BROADER_SEARCH_SUGGESTIONS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/phases/06-debug-verify/06-01-PLAN.md",
+    "sha256": "a2921d18b3e2ca7bb74ee696eb1acb0636bf84e0956147cc20dcf15408c9365c",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/phases/06-debug-verify/06-01-PLAN.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/phases/07-broader-search-suggestions/07-01-PLAN.md",
+    "sha256": "925e5a0ba13d7efc8962d6e46199c24cde923c607f02fd0f2e2f25f65d606a7e",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/phases/07-broader-search-suggestions/07-01-PLAN.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/phases/07-broader-search-suggestions/07-CONTEXT.md",
+    "sha256": "e1fff09a5cad020fbb463898c235f010a20f6ac505ba7d00ea162ea057c29aa9",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/phases/07-broader-search-suggestions/07-CONTEXT.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/.planning/phases/07-broader-search-suggestions/07-RESEARCH.md",
+    "sha256": "6d5212c6f10b347f45b8232e5a7b171ef5cab2ec9b7793bd1ba1978b89f2c8af",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/.planning/phases/07-broader-search-suggestions/07-RESEARCH.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/src/auth.ts",
+    "sha256": "cc67fdbc49e50e0500877e069fec37377900e585e8d52ee9b6dd026fd62c9a9f",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/src/auth.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/src/index.ts",
+    "sha256": "ea64537594d4a910bf145268dcd04e5333dc6232137c712b02ef48d7ec795543",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/src/index.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/src/oauth.ts",
+    "sha256": "c9f18d7495b52407349458bbcf8d3e7f2aef17e9eac8a2be571c80d4c0fd4bcb",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/src/oauth.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-mcp/src/tools.ts",
+    "sha256": "190c0f8ff0f6ecadf64701a5d5a6a52384c9568bb97e19e3ea1a850c4a2ab9ba",
+    "source": "/home/somdutta/.local/share/royva-gmail-mcp/src/tools.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/README.md",
+    "sha256": "08084a7322857b17b94615baf0cd8f3f3ce84407b46eae6d415a99ccf677a822",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/README.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/ROYVA-BATCH.md",
+    "sha256": "b46be7b4c4d1181798c0911db53be2e5a0e861ab5fe1fda0678eeb8d9fb8f01b",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/ROYVA-BATCH.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/ROYVA-COUNTS.md",
+    "sha256": "ce67ed11ba46ccab414230ea483a2f826423d7b77e4b7fbdfb7b012bae44185d",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/ROYVA-COUNTS.md"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/package-lock.json",
+    "sha256": "d96588d138085435b2c85f5ed6f7d6017140c572b750829ca12890cf43391ae6",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/package-lock.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/package.json",
+    "sha256": "751a1d4c16969c564120f2bced7d126fa46da046244f206a1d477db34d48b802",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/package.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/tsconfig.json",
+    "sha256": "97312f3a82ab3d5229e45696a37b5ef72a63b32bb4e5c080bba639365a1924b1",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/tsconfig.json"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/src/auth.ts",
+    "sha256": "cee547770c698c6ed10185978422e61bbeed2abdea098cb94ac804684f787516",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/src/auth.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/src/index.ts",
+    "sha256": "f3614c6f0714fca5cb6e0d13dd605022c158f6a40e2dfbb48e620b89d27d879e",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/src/index.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/src/oauth.ts",
+    "sha256": "3f5b7ada5ee246f51044b37df42ca1c50b187dce7b75c557c23eb7f1d158789a",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/src/oauth.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/src/tools.ts",
+    "sha256": "60f02b1da7e646078b7a47e1941a664925f313da7b60ea8ddf720a2b8a75b23b",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/src/tools.ts"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/tests/batch.test.mjs",
+    "sha256": "5835f2392c3f7d77470ea27f1458578924ff5dcf38427debd519d2bd5394b48b",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/tests/batch.test.mjs"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/gmail-active/tests/counts.test.mjs",
+    "sha256": "03473fba1bb8428620d099a622a89e3018802d937fe66e0c042fc1cf96cdfb1c",
+    "source": "/home/somdutta/.local/share/gmail-mcp-server/tests/counts.test.mjs"
   },
   {
     "executable": false,
@@ -4454,9 +5014,23 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/llm-server/launch_flash.py",
+    "sha256": "939646b89ccfd679e912ea6ffc29f7128d8187d32103f51e0f83fdeaef00ba6e",
+    "source": "/home/somdutta/llm-server/launch_flash.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/llm-server/launch_llamacpp.py",
-    "sha256": "1b84e67a37ca0028e99b610546ce544aefbc47e997580b7a6106b5b97673f56b",
+    "sha256": "cdea552d94be2adc8c6c3e38964b38bbf1926413a43bccb4d65664608e693272",
     "source": "/home/somdutta/llm-server/launch_llamacpp.py"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/llm-server/launch_qwen36.py",
+    "sha256": "566738ee532abdb901f3d96b2d8f587a626fccb6ec39ae14fe8838392dc8d9d8",
+    "source": "/home/somdutta/llm-server/launch_qwen36.py"
   },
   {
     "executable": false,
@@ -6821,7 +7395,7 @@
     "executable": false,
     "redacted": false,
     "repository": "components/systemd/evo-llamacpp-agent.service",
-    "sha256": "4ea8422d07843626c37a784a88613edec4b87bfdbd29056cd9fa7f5590399d49",
+    "sha256": "ec447fdd0a254f92f5c17cd202e2dc63812214f5721a55ce495a90e6072c1fa5",
     "source": "/home/somdutta/.config/systemd/user/evo-llamacpp-agent.service"
   },
   {
@@ -6855,6 +7429,13 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/systemd/opencode-telegram-vanilla.service",
+    "sha256": "14f21e31571483f3fe6b89e4a1b3f57ac32accd0c21535ef143b7b4d11a05951",
+    "source": "/home/somdutta/.config/systemd/user/opencode-telegram-vanilla.service"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/systemd/opencode-telegram.service",
     "sha256": "47ad0c902299d3ccd24e7d1c63b964194c4c91097c1e9e6c6c2618b5d8c03366",
     "source": "/home/somdutta/.config/systemd/user/opencode-telegram.service"
@@ -6862,9 +7443,23 @@
   {
     "executable": false,
     "redacted": false,
+    "repository": "components/systemd/opencode-vanilla.service",
+    "sha256": "248d6751b11e92e99ae4d74d4e4f6ae65080a741a36fa65c98ca174fc151d280",
+    "source": "/home/somdutta/.config/systemd/user/opencode-vanilla.service"
+  },
+  {
+    "executable": false,
+    "redacted": false,
     "repository": "components/systemd/opencode-whisper-http.service",
     "sha256": "a5c2f0bc849c1670333816dbf59230edbb737ce59f230397398bd4f16e24dbe9",
     "source": "/home/somdutta/.config/systemd/user/opencode-whisper-http.service"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/systemd/royva-ha-mcp.service",
+    "sha256": "c4fcdb4b8d9cc8b1f5144d639099aedc77b4efbee8196fde9eee7e9e56184cb8",
+    "source": "/home/somdutta/.config/systemd/user/royva-ha-mcp.service"
   },
   {
     "executable": false,
@@ -6893,6 +7488,13 @@
     "repository": "components/systemd/opencode-telegram.service.d/readiness.conf",
     "sha256": "65c9da34e40424bb220588a47253a49b7217a038afe2a895b1447034415c966b",
     "source": "/home/somdutta/.config/systemd/user/opencode-telegram.service.d/readiness.conf"
+  },
+  {
+    "executable": false,
+    "redacted": false,
+    "repository": "components/systemd/royva-ha-mcp.service.d/20-lite-docstrings.conf",
+    "sha256": "2caa83f3ad730a01b1253b101e6fd32ed18cca66c234a9faf218784702c35f1e",
+    "source": "/home/somdutta/.config/systemd/user/royva-ha-mcp.service.d/20-lite-docstrings.conf"
   },
   {
     "executable": false,

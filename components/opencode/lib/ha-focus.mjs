@@ -1,3 +1,4 @@
+import {isHAWrite} from './tool-permissions.mjs';
 export function resolvedTargets(tool,state){
  const out=[];
  function visit(x,depth=0){if(depth>6||!x)return;if(typeof x==='string'){try{visit(JSON.parse(x),depth+1)}catch{}return;}if(Array.isArray(x)){for(const i of x)visit(i,depth+1);return;}if(typeof x!=='object')return;
@@ -15,6 +16,9 @@ export function focusFromReferences(refs){
  return [];
 }
 export function assertFocusedWrite(tool,input,state){
+ const routineOnly=/^(?:(?:please|just)\s+)*(?:(?:run|trigger|execute|start|activate)\s+(?:the\s+)?)?[\p{L}\p{N} _-]+\s+(?:automation|script|scene|routine)s?[.!?]*$/iu.test(String(state?.requestText||'').trim());
+ if(routineOnly&&isHAWrite(tool))throw new Error('This request names an existing routine. Invoke that routine itself; do not replace it with individual device actions or merely enable an automation.');
+ if(/HassLightSet$/.test(tool)&&Number(input?.brightness)>0&&!/\b(bright(?:ness|er)?|dim(?:mer)?|full|max(?:imum)?|percent(?:age)?)\b|%/i.test(state?.requestText||''))throw new Error('No brightness change was requested. Use on/off without changing the existing brightness.');
  if(!state?.referenceFollowup||!/^home[-_]assistant_/.test(tool)||/GetLiveContext$|GetDateTime$|search_media$/.test(tool))return;
  const targets=state.focusTargets||[];
  if(!targets.length)throw new Error('This follow-up has no uniquely verified target. Ask which device; do not infer targets from older conversations.');

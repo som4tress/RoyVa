@@ -22,7 +22,6 @@ import {quotaInfo,recordFreeQuota,isFreeCoolingDown,freeQuotaState,cloudModelID}
  * back. Tools/MCP servers configured in OpenCode (including Home Assistant)
  * are available to the agent, so the phone becomes a remote control for HA.
  */
-import {planHA,rememberHA,prepareHA} from "./ha-context.mjs";
 import {attachment,MAX_BYTES} from "./media.mjs";
 import { spawn } from "node:child_process";
 import {
@@ -502,7 +501,7 @@ async function handleMessage(msg,diagnostic={}) {
         `default model: ${getModel()}`,
         ...(isFreeCoolingDown()?[`free quota: unavailable until ${new Date(freeQuotaState().until).toLocaleString('en-US',{timeZone:'America/Los_Angeles'})} PT; general fallback: the configured cloud model`]:[]),
         `media: Qwen first; the configured cloud model after 60s / 3 steps; video up to 8 frames, no audio`,
-        `HA: fresh request context; local budget 42s then the configured cloud model`,
+        `Text requests: native conversation; local budget 60s then the configured cloud model`,
         `dir: ${WORKDIR}`,
         `session: ${sessionFor(chatId)}`,
         `voice: whisper.cpp ${existsSync(WHISPER_BIN) ? "local" : WHISPER_REMOTE ? `remote (${WHISPER_REMOTE})` : "MISSING"} (${WHISPER_MODEL.split("/").pop()}, lang=${WHISPER_LANG})`,
@@ -540,9 +539,7 @@ async function handleMessage(msg,diagnostic={}) {
   active.workingId=working?.result?.message_id;
   const finishIndicator=active.workingId?workingHourglass(chatId,active.workingId,active):null;
   try {
-  state.haContext ||= {};
-  let haPlan=!media?planHA(text,state.haContext[String(chatId)]):null;
-  const sessionId=haPlan?newSessionId(chatId)+'_ha':sessionFor(chatId);
+  const sessionId=sessionFor(chatId);
   active.sessionId=sessionId;
   if(active.stopped)return {ok:false,stopped:true,text:'Stopped.',sessionId};
   if(diagnostic.onSession)await diagnostic.onSession(sessionId);
@@ -578,11 +575,7 @@ async function handleMessage(msg,diagnostic={}) {
       }catch(error){reply={ok:false,text:error.message};}
       finally{rmSync(dir,{recursive:true,force:true});}
     }else {
-      if(haPlan)await prepareHA(sessionId,haPlan);
       reply=await runOpenCode(sessionId,text,controlOptions);
-      if(reply.ok&&(haPlan||reply.references?.length))state.haContext[String(chatId)]=rememberHA(text,{...reply,haKind:haPlan?.kind},Date.now(),state.haContext[String(chatId)]);
-      else delete state.haContext[String(chatId)];
-      saveState(state);
     }
   } catch(error) {
     reply={ok:false,text:error.message};

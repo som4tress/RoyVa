@@ -1,0 +1,24 @@
+[Unit]
+Description=Vanilla OpenCode v2.2.5 isolated runtime
+After=network-online.target evo-llamacpp-agent.service royva-ha-mcp.service
+Wants=evo-llamacpp-agent.service royva-ha-mcp.service
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/.local/share/opencode-vanilla/workspace
+EnvironmentFile=/home/somdutta/llm-server/api.env
+EnvironmentFile=/home/somdutta/llm-server/ha.env
+Environment=XDG_CONFIG_HOME=/home/somdutta/.local/share/opencode-vanilla/config-root
+Environment=XDG_DATA_HOME=/home/somdutta/.local/share/opencode-vanilla/data
+Environment=XDG_STATE_HOME=/home/somdutta/.local/share/opencode-vanilla/state
+Environment=XDG_CACHE_HOME=/home/somdutta/.local/share/opencode-vanilla/cache
+Environment=OPENCODE_CONFIG_DIR=/home/somdutta/.local/share/opencode-vanilla/config
+Environment=OPENCODE_CONFIG_PROJECT_DISABLE=1
+Environment=OPENCODE_DISABLE_CLAUDE_CODE=1
+EnvironmentFile=/home/somdutta/.local/share/opencode-vanilla/runtime.env
+Environment=PATH=/home/somdutta/.nvm/versions/node/v24.22.1/bin:/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/home/somdutta/.opencode/bin/opencode serve --hostname 127.0.0.1 --port 49375
+Restart=on-failure
+RestartSec=5
+UMask=0077
+[Install]
+WantedBy=default.target

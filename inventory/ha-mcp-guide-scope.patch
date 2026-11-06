@@ -1,0 +1,11 @@
+--- a/ha_mcp/resources/skills-vendor/skills/home-assistant-best-practices/SKILL.md
++++ b/ha_mcp/resources/skills-vendor/skills/home-assistant-best-practices/SKILL.md
+@@ -1,7 +1,7 @@
+ ---
+ name: home-assistant-best-practices
+ description: >
+-  Home Assistant (HA) best practices. Load first, before answering or exploring, on any HA request.
++  Home Assistant (HA) best practices. Consult this guide before creating or changing Home Assistant configuration. Routine state/history queries and device control do not require it.
+ 
+   TRIGGER THIS SKILL WHEN:
+   - Creating or editing automations, scripts, scenes, dashboards, blueprints

@@ -1,0 +1,29 @@
+[Unit]
+Description=Telegram text and voice for vanilla OpenCode
+After=network-online.target opencode-vanilla.service
+Requires=opencode-vanilla.service
+Conflicts=opencode-telegram.service
+[Service]
+Type=simple
+WorkingDirectory=/home/somdutta/.local/share/opencode-vanilla/workspace
+Environment=XDG_CONFIG_HOME=/home/somdutta/.local/share/opencode-vanilla/config-root
+Environment=XDG_DATA_HOME=/home/somdutta/.local/share/opencode-vanilla/data
+Environment=XDG_STATE_HOME=/home/somdutta/.local/share/opencode-vanilla/state
+Environment=XDG_CACHE_HOME=/home/somdutta/.local/share/opencode-vanilla/cache
+Environment=OPENCODE_CONFIG_DIR=/home/somdutta/.local/share/opencode-vanilla/config
+Environment=OPENCODE_CONFIG_PROJECT_DISABLE=1
+Environment=OPENCODE_DISABLE_CLAUDE_CODE=1
+EnvironmentFile=/home/somdutta/.local/share/opencode-vanilla/runtime.env
+Environment=PATH=/home/somdutta/.nvm/versions/node/v24.22.1/bin:/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/somdutta/.config/opencode/telegram/bot.env
+EnvironmentFile=/home/somdutta/llm-server/api.env
+Environment=OPENCODE_TG_URL=http://127.0.0.1:49375
+Environment=OPENCODE_TG_DIR=/home/somdutta/.local/share/opencode-vanilla/workspace
+Environment=OPENCODE_TG_STATE_FILE=/home/somdutta/.local/share/opencode-vanilla/state/telegram.json
+Environment=WHISPER_TMP=/home/somdutta/.local/share/opencode-vanilla/state/voice
+ExecStart=/home/somdutta/.nvm/versions/node/v24.22.1/bin/node /home/somdutta/Documents/Codex/opencode-clean/integrations/telegram/bridge.mjs
+Restart=on-failure
+RestartSec=5
+UMask=0077
+[Install]
+WantedBy=default.target

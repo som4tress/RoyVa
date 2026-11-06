@@ -1,7 +1,7 @@
 import {isHAConfiguration,isTechnicalRequest} from '../../lib/user-scope.mjs';
 import {isLocationExplanation} from '../../lib/location-query.mjs';
 import {isStatusReport} from '../../lib/ha-reports.mjs';
-import {allowsTaskTool} from '../../lib/tool-permissions.mjs';
+import {allowsTaskTool,isReadOnlyTask} from '../../lib/tool-permissions.mjs';
 import {assertFocusedWrite,resolvedTargets} from '../../lib/ha-focus.mjs';
 import {captureTools,restoreSelected} from '../../lib/capability-discovery.mjs';
 import {onDiscard} from '../../lib/session-lifecycle.mjs';
@@ -61,10 +61,15 @@ export default {id:'ha-mcp-routing',async setup(ctx){
    broad:/\b(all|every|everything)\b/i.test(requestText),
    reportOnly:isStatusReport(requestText),
    referenceFollowup:!!session.metadata?.haReferenceFollowup||isHAFollowup(requestText),
-   focusTargets:session.metadata?.haFocusTargets||prior?.focusTargets||[]});
+   focusTargets:prior?.focusTargets?.length?prior.focusTargets:session.metadata?.haFocusTargets||[]});
  });
  await ctx.session.hook('context',event=>{
-  captureTools(event.sessionID,event.tools,{replace:true});restoreSelected(event.sessionID,event.tools);
+  const state=turns.get(event.sessionID);
+  // Reflect explicit current-request restrictions in the catalog as well as execution.
+  // Do not infer a tool profile from task kind, device names, model or frontend.
+  const scope={requestText:state?.requestText||''};
+  if(isReadOnlyTask(scope))for(const name of Object.keys(event.tools))if(!allowsTaskTool(name,scope))delete event.tools[name];
+  captureTools(event.sessionID,event.tools,{replace:true,allows:name=>allowsTaskTool(name,scope)});restoreSelected(event.sessionID,event.tools);
  });
  await ctx.tool?.hook('execute.before',async event=>{
   const state=turns.get(event.sessionID);

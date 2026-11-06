@@ -1,0 +1,65 @@
+--- a/ha_mcp/tools/tools_history.py
++++ b/ha_mcp/tools/tools_history.py
+@@ -241,14 +241,6 @@
+             ),
+         ] = None,
+         # History-specific (ignored when source="statistics")
+-        minimal_response: Annotated[
+-            bool,
+-            Field(
+-                description="Return only states/timestamps without attributes. Ignored when "
+-                'source="statistics"',
+-                default=True,
+-            ),
+-        ] = True,
+         significant_changes_only: Annotated[
+             bool,
+             Field(
+@@ -369,8 +361,8 @@
+         in HA's timezone (UTC if unavailable). When Core omits lc, last_changed
+         falls back to last_updated; this may not be the actual state-change time
+         with significant_changes_only (default) or a window-start snapshot.
+-        Attributes and unknown fields pass through unchanged.
+-        Statistics timestamps use Unix milliseconds. Minimal history may omit attributes.
++        History returns full recorder rows without attributes; state and timestamp
++        fields are retained. Statistics timestamps use Unix milliseconds.
+         No duplicate compact aliases are added. include_schema=True
+         retains core_contract even when fields selects other data keys.
+ 
+@@ -395,6 +387,8 @@
+         - Time per state: ha_get_history(entity_ids="binary_sensor.door", start_time="7d", summary=True)
+         - ha_get_history(source="statistics", entity_ids="sensor.living_room_temperature", start_time="6m", period="month", statistic_types=["mean", "min", "max"])
+         """
++        # Preserve recorder rows; suppress attributes separately in _fetch_history.
++        minimal_response = False
+         parsed_fields: list[str] | None = None
+         if fields is not None:
+             try:
+@@ -508,6 +502,10 @@
+                 self._client, inner, convert_timestamps=False
+             )
+             _r = format_history_response(_r)
++            if source == "history":
++                for entity in _r["data"]["entities"]:
++                    for row in entity.get("states", []):
++                        row.pop("attributes", None)
+             _r["data"] = project_fields(
+                 _r["data"],
+                 parsed_fields,
+@@ -899,7 +897,7 @@
+         "entity_ids": entity_id_list,
+         "minimal_response": minimal_response,
+         "significant_changes_only": significant_changes_only,
+-        "no_attributes": minimal_response,
++        "no_attributes": True,
+     }
+ 
+     command_params = merge_core_options(command_params, core_options)
+@@ -973,6 +971,7 @@
+         "period": period,
+         "query_params": {
+             "minimal_response": minimal_response,
++            "no_attributes": True,
+             "significant_changes_only": significant_changes_only,
+             "limit": effective_limit,
+             "offset": effective_offset,
