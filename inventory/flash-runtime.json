@@ -1,0 +1,16 @@
+{
+  "baseline_build": "b12084",
+  "baseline_commit": "f9448cddc",
+  "candidate_build": "b12110",
+  "candidate_commit": "cd959bae99ff4bed22bef2604f45241c09bbb8c8",
+  "model_unchanged": "Qwen3.8-Flash-Next UD-IQ4_XS",
+  "draft_unchanged": "mtp-Qwen3.8-Flash-Next-Q4_K_M.gguf",
+  "mtp_length": 6,
+  "context_per_slot": 131072,
+  "binary_sha256": {
+    "b12084": "01e6b9ea23c64b98076627037649c6ce0b09bcbce6088b56cbb6d7474f2d9561",
+    "b12110": "eaf9c1c664cc0ae1f4dea4b171bb91aac8409fcfea0574c9b6bcc93792ce2400"
+  },
+  "archive_sha256": "a5d741940956ec62e8783aee7e5a4c7c761af867d6f027c3277a51e1a3ac59b0",
+  "source_release": "https://github.com/ggml-org/llama.cpp/releases/tag/b12110"
+}

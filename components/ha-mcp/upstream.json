@@ -1,0 +1,16 @@
+{
+  "package": "ha-mcp",
+  "version": "9.1.0",
+  "files": [
+    {
+      "path": "ha_mcp/tools/tools_history.py",
+      "upstream_record_digest": "sha256=sPrVz6ck-gejV6xrE97U0XcPcKooJNNHH1nt210GsCw",
+      "patched_sha256": "2b2403b49c9d37ca9a9ca54a144d87245a4e51327656de57183c0858287d449f"
+    },
+    {
+      "path": "ha_mcp/resources/skills-vendor/skills/home-assistant-best-practices/SKILL.md",
+      "upstream_record_digest": "sha256=a9LRjV7fI39f8NGewo3sySrx_avcQWkZqbVH8ps5sYY",
+      "patched_sha256": "d0f5d5c73e84448f95c94d9887af9b06590d2c5e394269b63e7ffa60c36b9f74"
+    }
+  ]
+}
