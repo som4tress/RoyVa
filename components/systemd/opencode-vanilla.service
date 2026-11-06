@@ -6,6 +6,7 @@ Wants=evo-llamacpp-agent.service royva-ha-mcp.service
 Type=simple
 WorkingDirectory=/home/somdutta/.local/share/opencode-vanilla/workspace
 EnvironmentFile=/home/somdutta/llm-server/api.env
+EnvironmentFile=/home/somdutta/llm-server/ha.env
 Environment=XDG_CONFIG_HOME=/home/somdutta/.local/share/opencode-vanilla/config-root
 Environment=XDG_DATA_HOME=/home/somdutta/.local/share/opencode-vanilla/data
 Environment=XDG_STATE_HOME=/home/somdutta/.local/share/opencode-vanilla/state

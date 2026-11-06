@@ -8,7 +8,7 @@ with os.fdopen(fd,'w') as f:f.write(os.environ['VLLM_API_KEY']+'\n')
 os.environ['LD_LIBRARY_PATH']=str(root/'llamacpp/compat/usr/lib/x86_64-linux-gnu')
 binary=str(root/'llamacpp/llama-b12110/llama-server')
 args=[binary,'--model',str(root/'models/Qwen3.8-Flash-Next-UD-IQ4_XS/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00004.gguf'),
- '--alias','qwen38-flash-next,qwen38-27b','--host','127.0.0.1','--port','8000','--api-key-file',str(keyfile),
+ '--alias','qwen38-flash-next,qwen38-27b,qwen36-35b','--host','127.0.0.1','--port','8000','--api-key-file',str(keyfile),
  '--override-tensor','per_layer_token_embd[.]weight=CPU','--n-gpu-layers','999','--flash-attn','on','--ctx-size','262144','--parallel','2',
  '--batch-size','2048','--ubatch-size','1024','--threads','8','--threads-batch','16',
  '--jinja','--reasoning','off',

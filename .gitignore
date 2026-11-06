@@ -9,3 +9,12 @@ state.json
 auth.json
 *.gguf
 __pycache__/
+
+# Generated builds and private OAuth material
+dist/
+.gmail-mcp/
+**/gcp-oauth.keys.json
+**/credentials.json
+**/client_secret*.json
+*.pem
+*.key

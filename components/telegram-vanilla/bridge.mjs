@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
-import { openCodeAPI, runText, replySession } from './opencode.mjs';
+import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens } from './usage.mjs';
 
-export async function main() {
+export async function main({transcriber = createTranscriber()} = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const modelLabel = process.env.OPENCODE_TG_MODEL_LABEL || 'Qwen3.8 27B Q8_0 · reasoning off · MTP 6';
   const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
@@ -21,7 +21,7 @@ export async function main() {
   const save = () => writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
   const active = new Map();
   const queues = new Map();
-  const transcribe = createTranscriber();
+  const transcribe = transcriber;
   async function tg(method, payload) {
     const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(65000),
@@ -32,6 +32,7 @@ export async function main() {
   }
   async function send(message, text, sessionID, feedback = false) {
     const points = Array.from(text);
+    let first;
     for (let offset = 0; offset < points.length; offset += 3900) {
       const result = await tg('sendMessage', {
         chat_id: message.chat.id, text: points.slice(offset, offset + 3900).join(''),
@@ -41,15 +42,40 @@ export async function main() {
           { text: '👎 Incorrect', callback_data: 'feedback:reject' },
         ]] } } : {}),
       });
+      first ??= result;
       if (sessionID && feedback) state.answers[`${message.chat.id}:${result.message_id}`] = { sessionID, assistantIDs: feedback.assistantIDs };
       if (sessionID) { state.messages[`${message.chat.id}:${result.message_id}`] = sessionID; save(); }
     }
+    return first;
+  }
+  async function preparePrompt(message, text, sessionID) {
+    let prompt = text;
+    let replyTo = message;
+    const audio = message.voice || message.audio || message.video_note;
+    if (audio) {
+      if (audio.file_size > 20 * 1024 * 1024 || audio.duration > 600) throw new Error('Voice limit: 20 MB and 10 minutes.');
+      const directory = await mkdtemp(join(tmpdir(), 'opencode-voice-'));
+      try {
+        const file = await tg('getFile', { file_id: audio.file_id });
+        const response = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(60000) });
+        if (!response.ok) throw new Error('Audio download failed.');
+        const bytes = Buffer.from(await response.arrayBuffer());
+        if (bytes.length > 20 * 1024 * 1024) throw new Error('Audio exceeds 20 MB.');
+        const source = join(directory, 'audio'); await writeFile(source, bytes, { mode: 0o600 });
+        const result = await transcribe(source, directory.split('/').at(-1));
+        if (!result.ok) throw new Error('Speech transcription failed.');
+        prompt = result.text;
+        const transcript = await send(message, prompt, sessionID);
+        if (transcript) replyTo = {...message, message_id: transcript.message_id};
+      } finally { await rm(directory, { recursive: true, force: true }); }
+    }
+    return {prompt, replyTo};
   }
   async function handle(message) {
     if (!allowed.has(String(message.from?.id)) || message.from?.is_bot) return;
     const linked = replySession(state, message);
     const text = message.text || '';
-    if (text === '/start' || text === '/help') return send(message, 'Send text or a voice note to OpenCode. Each standalone message starts a new session; reply to a message to continue it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.');
+    if (text === '/start' || text === '/help') return send(message, 'Send text or a voice note to OpenCode. Each standalone message starts a new session; reply to continue or steer it while it is running. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.');
     if (text === '/status') return send(message, `Vanilla OpenCode v2.2.5. ${modelLabel}. Text and voice notes enabled. Home Assistant MCP connected. No model routing.`);
     if (text === '/stop') {
       const runs = linked ? [active.get(linked)] : [...active.values()].filter(run => run.chat === message.chat.id && run.user === message.from.id);
@@ -65,18 +91,37 @@ export async function main() {
     }
     const sessionID = linked || (await openCodeAPI('/api/session', 'POST', { location: { directory: process.env.OPENCODE_TG_DIR } })).id;
     state.messages[`${message.chat.id}:${message.message_id}`] = sessionID; save();
+    const running = linked && active.get(sessionID);
+    if (running?.accepting) {
+      running.revision++;
+      running.steering = running.steering.then(async () => {
+        const {prompt, replyTo} = await preparePrompt(message, text, sessionID);
+        if (!prompt.trim()) return send(message, 'Send text or a voice note.', sessionID);
+        if (await running.ready && !running.controller.signal.aborted) {
+          await steerText(sessionID, prompt);
+          running.replyTo = replyTo;
+        }
+      }).catch(async error => {
+        console.error('Steering failed:', error.name);
+        await send(message, 'Could not deliver that follow-up. Please try again.', sessionID);
+      });
+      return running.steering;
+    }
     const prior = queues.get(sessionID) || Promise.resolve();
     const job = prior.catch(() => {}).then(async () => {
       const controller = new AbortController();
-      active.set(sessionID, { controller, chat: message.chat.id, user: message.from.id });
+      const admission = Promise.withResolvers();
+      const run = {replyTo: message, ready: admission.promise, controller, chat: message.chat.id, user: message.from.id, accepting: true, revision: 0, steering: Promise.resolve()};
+      active.set(sessionID, run);
+      let observedRevision = 0;
       const typing = () => tg('sendChatAction', { chat_id: message.chat.id, action: 'typing' }).catch(() => {});
       const timer = setInterval(typing, 4000); void typing();
       const started = Date.now();
-      const status = await tg('sendMessage', { chat_id: message.chat.id, text: `⏳ Processing · 0s elapsed\n${modelLabel}\nTokens: awaiting provider usage`, reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true } });
-      state.messages[`${message.chat.id}:${status.message_id}`] = sessionID; save();
+      let status;
       let lastUpdate = 0;
       let rows = [];
       async function updateStatus(finished = false) {
+        if (!status) return;
         if (!finished && Date.now() - lastUpdate < 3000) return;
         lastUpdate = Date.now();
         const usage = tokenUsage(rows);
@@ -97,43 +142,41 @@ export async function main() {
           usage.passes ? formatUsage(usage) : 'Tokens: awaiting provider usage',
           ...(!finished && pending.length ? [`Current pass: ${live === null ? 'output usage pending' : `~${live} streamed output tokens`} · input usage pending`] : []),
           ...(!finished && tool ? [`Tool: ${tool.name} · ${tool.state?.status || 'running'}`] : []),
-          ...(!finished ? ['Reply to continue · /stop'] : []),
+          ...(!finished ? ['Reply to steer · /stop'] : []),
         ];
         await tg('editMessageText', { chat_id: message.chat.id, message_id: status.message_id, text: lines.join('\n') }).catch(() => {});
       }
       const statusTimer = setInterval(() => { void updateStatus().catch(() => {}); }, 3000);
       try {
-        let prompt = text;
-        const audio = message.voice || message.audio || message.video_note;
-        if (audio) {
-          if (audio.file_size > 20 * 1024 * 1024 || audio.duration > 600) return await send(message, 'Voice limit: 20 MB and 10 minutes.', sessionID);
-          const directory = await mkdtemp(join(tmpdir(), 'opencode-voice-'));
-          try {
-            const file = await tg('getFile', { file_id: audio.file_id });
-            const response = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(60000) });
-            if (!response.ok) throw new Error('Audio download failed.');
-            const bytes = Buffer.from(await response.arrayBuffer());
-            if (bytes.length > 20 * 1024 * 1024) throw new Error('Audio exceeds 20 MB.');
-            const source = join(directory, 'audio'); await writeFile(source, bytes, { mode: 0o600 });
-            const result = await transcribe(source, directory.split('/').at(-1));
-            if (!result.ok) throw new Error('Speech transcription failed.');
-            prompt = result.text;
-            await send(message, `Heard: ${prompt}`, sessionID);
-          } finally { await rm(directory, { recursive: true, force: true }); }
-        }
+        const prepared = await preparePrompt(message, text, sessionID);
+        const prompt = prepared.prompt;
+        run.replyTo = prepared.replyTo;
         if (!prompt.trim()) return await send(message, 'Send text or a voice note.', sessionID);
         if (controller.signal.aborted) return;
+        status = await tg('sendMessage', { chat_id: message.chat.id, text: `⏳ Processing · 0s elapsed\n${modelLabel}\nTokens: awaiting provider usage`, reply_parameters: { message_id: run.replyTo.message_id, allow_sending_without_reply: true } });
+        state.messages[`${message.chat.id}:${status.message_id}`] = sessionID; save();
         const answer = await runText(sessionID, prompt, {
           signal: controller.signal,
+          onAdmitted: () => admission.resolve(true),
+          onBeforeFinish: async () => {
+            const revision = run.revision;
+            await run.steering;
+            if (revision !== observedRevision || revision !== run.revision) {
+              observedRevision = revision;
+              return true;
+            }
+            run.accepting = false;
+            return false;
+          },
           onProgress: async progress => { rows = progress; },
-          onPermission: permission => send(message, `Permission requested: ${permission.action}\n${permission.resources.join('\n')}\nReply /approve or /deny.`, sessionID),
+          onPermission: permission => send(run.replyTo, `Permission requested: ${permission.action}\n${permission.resources.join('\n')}\nReply /approve or /deny.`, sessionID),
         });
         await updateStatus(true);
-        await send(message, answer, sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+        await send(run.replyTo, answer, sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.name);
-        await send(message, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
-      } finally { clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
+        await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
+      } finally { run.accepting = false; controller.abort(); admission.resolve(false); clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
     });
     queues.set(sessionID, job);
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});

@@ -6,14 +6,18 @@ permission replies, feedback buttons and token display. No legacy agents, prompt
 model routing, Home Assistant rules, learning execution or history transformations
 are imported. The upstream OpenCode packages remain unchanged.
 
-The sole custom identity instruction is `identity.md`: RoyVa is the Roy family's
-personal AI assistant. It supplies no task policy or individual family names.
+The configured identity is RoyVa, the Roy family's personal assistant. Additional
+instruction files cover source selection, HA tool use, structured evidence, and
+the goodnight shortcut; the time-context plugin supplies local date/timezone.
 
 Standalone messages create a native session. Replying to an incoming or outgoing
-message continues its mapped session in the same chat. `/stop` interrupts the
+message continues its mapped session in the same chat. Replies while generation
+is active use native steer delivery at a step boundary; one final reply is sent. `/stop` interrupts the
 matching request; `/approve` and `/deny` reply to native permission requests.
 `/help` and `/status` describe the interface. Voice notes are transcribed on the
 existing whisper host, with no vocabulary prompt, then submitted as plain user text.
+The recognized question is posted without a Heard: prefix; progress and the final
+answer reply to that transcription. Only the final assistant step is delivered.
 Replies are text; speech synthesis is not included.
 
 Progress edits show elapsed time, native completed-pass token usage, cached input,
@@ -37,9 +41,8 @@ vote for the same answer when consumers fold the ledger.
   Using the matching installed release avoids rebuilding/upgrading upstream.
 - Services: `opencode-vanilla.service` on loopback 49375 and
   `opencode-telegram-vanilla.service`, both user services.
-- Model: local Qwen3.8-27B Q8_0, Q8 MTP companion, draft maximum 6,
-  probabilistic draft sampling, reasoning off, prefix caching retained.
-  Sampling follows https://huggingface.co/Qwen/Qwen3.8-27B.
+- Model: local Qwen3.6-35B-A3B Q8_0, no MTP, reasoning off, prefix caching
+  retained. See the model launcher for the exact sampling/context settings.
 - Bot token and explicit user allowlist are read from the existing private bot.env;
   model credential is read from api.env; native API password is private runtime.env.
   No credentials or previous conversation history are copied into this repository.

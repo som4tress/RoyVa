@@ -49,3 +49,66 @@ test('token display includes cached input without counting non-assistant events'
   assert.deepEqual(usage, { input: 210, cached: 180, output: 10, reasoning: 0, passes: 2, peak: 110 });
   assert.match(formatUsage(usage), /in 210 \(180 cached\).*out 10.*passes 2.*peak input 110/);
 });
+
+
+test('final reply excludes tool-step narration and preserves all final text parts', async () => {
+  let admitted = false;
+  const api = async (path, method) => {
+    if (method === 'POST') { admitted = true; return; }
+    if (path.endsWith('/permission')) return [];
+    if (!path.endsWith('/message')) return { time: {idle: 6, busy: 2} };
+    if (!admitted) return [];
+    return [
+      {id: 'final', type: 'assistant', time: {created: 5}, content: [
+        {type: 'text', text: 'Den Switch is off.'},
+        {type: 'text', text: 'It is in Office.'},
+      ]},
+      {id: 'lookup', type: 'assistant', time: {created: 4}, content: [
+        {type: 'text', text: 'Let me check what lights are available.'},
+        {type: 'tool', name: 'status'},
+      ]},
+      {id: 'user', type: 'user', time: {created: 3}},
+    ];
+  };
+  let progress;
+  assert.equal(await runText('session', 'is my den light on', {api, onProgress: async rows => {progress = rows;}}),
+    'Den Switch is off.\n\nIt is in Office.');
+  assert(progress.some(row => row.id === 'lookup'));
+});
+
+import { steerText } from './opencode.mjs';
+test('mid-generation input uses native steer delivery with exact text', async () => {
+  const calls = [];
+  await steerText('session', 'Only Shobha, please.', {api: async (...args) => calls.push(args)});
+  assert.deepEqual(calls, [['/api/session/session/prompt', 'POST', {text: 'Only Shobha, please.', delivery: 'steer'}]]);
+});
+
+test('completion waits for steering admission and returns the revised final response once', async () => {
+  let submitted = false, steered = false, finishChecks = 0;
+  const posts = [];
+  const user = {id: 'user', type: 'user', time: {created: 2}};
+  const followup = {id: 'followup', type: 'user', time: {created: 5}};
+  const answer = (id, created, text) => ({id, type: 'assistant', time: {created}, content: [{type: 'text', text}]});
+  const api = async (path, method, body) => {
+    if (method === 'POST') { posts.push(body); submitted = true; return; }
+    if (path.endsWith('/permission')) return [];
+    if (path.endsWith('/message')) return !submitted ? [] : steered
+      ? [answer('revised', 6, 'Shobha only.'), followup, answer('old', 3, 'All three.'), user]
+      : [answer('old', 3, 'All three.'), user];
+    return {time: {idle: steered ? 7 : 4, busy: 2}};
+  };
+  assert.equal(await runText('session', 'All three', {api,
+    onAdmitted: () => assert(submitted),
+    onBeforeFinish: async () => {finishChecks++; if (!steered) {steered = true; return true;} return false;},
+  }), 'Shobha only.');
+  assert.equal(posts.length, 1);
+  assert.equal(finishChecks, 2);
+});
+
+import {spawnSync} from 'node:child_process';
+import {fileURLToPath} from 'node:url';
+test('voice progress and answer reply to the completed transcription', () => {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('./voice-routing.fixture.mjs', import.meta.url))], {encoding: 'utf8', timeout: 10000});
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  assert.match(result.stdout, /Voice transcript, progress and final reply routing verified/);
+});

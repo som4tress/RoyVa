@@ -1,8 +1,8 @@
 {
-  "model": "local/qwen38-flash-next",
+  "model": "local/qwen36-35b",
   "providers": {
     "local": {
-      "name": "Local Qwen3.8 Flash Next",
+      "name": "Local Qwen3.6 35B",
       "package": "@opencode/ai/providers/openai-compatible",
       "settings": {
         "baseURL": "http://127.0.0.1:8000/v1",
@@ -10,7 +10,7 @@
       },
       "models": {
         "qwen38-27b": {
-          "name": "Qwen3.8 27B Q8_0",
+          "name": "Qwen3.6-35B-A3B Q8_0 (compatibility alias)",
           "capabilities": {
             "tools": true,
             "input": [
@@ -37,7 +37,34 @@
           }
         },
         "qwen38-flash-next": {
-          "name": "Qwen3.8-Flash-Next UD-IQ4_XS",
+          "name": "Qwen3.6-35B-A3B Q8_0 (compatibility alias)",
+          "capabilities": {
+            "tools": true,
+            "input": [
+              "text"
+            ],
+            "output": [
+              "text"
+            ]
+          },
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          },
+          "body": {
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0,
+            "presence_penalty": 1.5,
+            "repetition_penalty": 1.0,
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
+        },
+        "qwen36-35b": {
+          "name": "Qwen3.6-35B-A3B Q8_0",
           "capabilities": {
             "tools": true,
             "input": [
@@ -77,19 +104,103 @@
       "action": "*",
       "resource": "*",
       "effect": "allow"
+    },
+    {
+      "action": "home-assistant-config_ha_get_history",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "home-assistant-config_ha_get_state",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "home-assistant-config_ha_get_overview",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "home-assistant-config_ha_search",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "home-assistant-config_ha_call_service",
+      "resource": "*",
+      "effect": "deny"
+    },
+    {
+      "action": "gmail_send_message",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "gmail_send_draft",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "gmail_modify_message",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "gmail_create_label",
+      "resource": "*",
+      "effect": "ask"
+    },
+    {
+      "action": "gmail_create_draft",
+      "resource": "*",
+      "effect": "ask"
     }
   ],
   "websearch": {
-    "provider": "random"
+    "provider": "parallel"
   },
   "mcp": {
     "servers": {
       "home-assistant": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_mcp_transport.py"
+        ],
+        "codemode": false
+      },
+      "ha-history": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/Documents/Codex/opencode-clean/integrations/ha-legacy/ha_history.py"
+        ],
+        "codemode": false
+      },
+      "home-assistant-config": {
         "type": "remote",
         "url": "http://127.0.0.1:9584/mcp",
         "oauth": false,
         "codemode": true
+      },
+      "gmail": {
+        "type": "local",
+        "command": [
+          "/home/somdutta/.nvm/versions/node/v24.22.1/bin/node",
+          "/home/somdutta/.local/share/gmail-mcp-server/dist/index.js"
+        ],
+        "environment": {
+          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/.gmail-mcp/gcp-oauth.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/.gmail-mcp/credentials.json"
+        },
+        "codemode": false,
+        "enabled": true
       }
     }
-  }
+  },
+  "plugins": [
+    "file:///home/somdutta/Documents/Codex/opencode-clean/integrations/skill-catalog",
+    "file:///home/somdutta/Documents/Codex/opencode-clean/integrations/time-context",
+    "file:///home/somdutta/Documents/Codex/opencode-clean/integrations/ha-config-access"
+  ]
 }

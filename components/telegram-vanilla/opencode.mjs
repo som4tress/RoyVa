@@ -13,11 +13,12 @@ export async function openCodeAPI(path, method = 'GET', body) {
   return value?.data ?? value;
 }
 
-export async function runText(sessionID, text, { api = openCodeAPI, signal, onPermission = async () => {}, onProgress = async () => {} } = {}) {
+export async function runText(sessionID, text, { api = openCodeAPI, signal, onPermission = async () => {}, onProgress = async () => {}, onBeforeFinish = async () => false, onAdmitted = async () => {} } = {}) {
   const path = `/api/session/${encodeURIComponent(sessionID)}`;
   const before = await api(`${path}/message`);
   const known = new Set(before.map(message => message.id));
   await api(`${path}/prompt`, 'POST', { text, delivery: 'queue' });
+  await onAdmitted();
   const announced = new Set();
   const deadline = Date.now() + 15 * 60 * 1000;
   while (!signal?.aborted && Date.now() < deadline) {
@@ -31,12 +32,13 @@ export async function runText(sessionID, text, { api = openCodeAPI, signal, onPe
     }
     const rows = messages.filter(message => !known.has(message.id)).sort((a, b) => a.time.created - b.time.created);
     await onProgress(rows);
-    const user = rows.find(message => message.type === 'user');
+    const user = rows.filter(message => message.type === 'user').at(-1);
     if (user && session.time.idle >= user.time.created && session.time.idle >= (session.time.busy || 0)) {
+      if (await onBeforeFinish()) continue;
       const assistants = rows.filter(message => message.type === 'assistant');
       const last = assistants.at(-1);
       if (last?.error) throw new Error(`OpenCode: ${JSON.stringify(last.error)}`);
-      const answer = assistants.flatMap(message => message.content.filter(part => part.type === 'text').map(part => part.text)).join('\n\n').trim();
+      const answer = (last?.content ?? []).filter(part => part.type === 'text').map(part => part.text).join('\n\n').trim();
       return answer || 'OpenCode finished without a text response.';
     }
     await setTimeout(500, undefined, { signal }).catch(error => { if (error.name !== 'AbortError') throw error; });
@@ -47,4 +49,8 @@ export async function runText(sessionID, text, { api = openCodeAPI, signal, onPe
 
 export function replySession(state, message) {
   return message.reply_to_message && state.messages[`${message.chat.id}:${message.reply_to_message.message_id}`];
+}
+
+export async function steerText(sessionID, text, {api = openCodeAPI} = {}) {
+  return api(`/api/session/${encodeURIComponent(sessionID)}/prompt`, 'POST', {text, delivery: 'steer'});
 }
