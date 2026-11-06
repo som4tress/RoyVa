@@ -154,6 +154,11 @@
       "action": "gmail_create_draft",
       "resource": "*",
       "effect": "ask"
+    },
+    {
+      "action": "gmail_batch_modify_messages",
+      "resource": "*",
+      "effect": "ask"
     }
   ],
   "websearch": {

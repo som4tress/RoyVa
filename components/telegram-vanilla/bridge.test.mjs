@@ -112,3 +112,19 @@ test('voice progress and answer reply to the completed transcription', () => {
   assert.equal(result.status, 0, result.stderr || result.error?.message);
   assert.match(result.stdout, /Voice transcript, progress and final reply routing verified/);
 });
+
+for (const [command, failure] of [['/approve', false], ['/deny', false], ['/approve', true]]) {
+  test(`permission handler submits ${command}${failure ? ' and reports API failure' : ''}`, () => {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('./permission-routing.fixture.mjs', import.meta.url)), command, ...(failure ? ['fail'] : [])], {encoding: 'utf8', timeout: 10000});
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+    assert.match(result.stdout, /Permission handler verified/);
+  });
+}
+
+for (const scenario of ['stale', 'unbound', 'batch']) {
+  test(`approval prompt ${scenario} cannot authorize a different or unreviewed pending request`, () => {
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('./permission-routing.fixture.mjs', import.meta.url)), '/approve', scenario], {encoding: 'utf8', timeout: 10000});
+    assert.equal(result.status, 0, result.stderr || result.error?.message);
+    assert.match(result.stdout, /Permission handler verified/);
+  });
+}

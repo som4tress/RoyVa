@@ -7,6 +7,7 @@ import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens } from './usage.mjs';
+import {formatPermission} from './permissions.mjs';
 
 export async function main({transcriber = createTranscriber()} = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -18,6 +19,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
   try { state = JSON.parse(readFileSync(stateFile, 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; state = { offset: 0, messages: {} }; }
   state.answers ||= {};
+  state.permissions ||= {};
   const save = () => writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
   const active = new Map();
   const queues = new Map();
@@ -30,7 +32,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     if (!result.ok) throw new Error(`Telegram ${method}: ${result.error_code}`);
     return result.result;
   }
-  async function send(message, text, sessionID, feedback = false) {
+  async function send(message, text, sessionID, feedback = false, permissionID) {
     const points = Array.from(text);
     let first;
     for (let offset = 0; offset < points.length; offset += 3900) {
@@ -43,6 +45,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         ]] } } : {}),
       });
       first ??= result;
+      if (permissionID) state.permissions[`${message.chat.id}:${result.message_id}`] = {sessionID, requestID: permissionID};
       if (sessionID && feedback) state.answers[`${message.chat.id}:${result.message_id}`] = { sessionID, assistantIDs: feedback.assistantIDs };
       if (sessionID) { state.messages[`${message.chat.id}:${result.message_id}`] = sessionID; save(); }
     }
@@ -86,7 +89,18 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (!linked) return send(message, 'Reply to a permission request with /approve or /deny.');
       const pending = await openCodeAPI(`/api/session/${linked}/permission`);
       if (!pending.length) return send(message, 'No pending permission request.', linked);
-      await openCodeAPI(`/api/session/${linked}/permission/${pending[0].id}/reply`, 'POST', { reply: text === '/approve' ? 'once' : 'reject' });
+      const target = state.permissions[`${message.chat.id}:${message.reply_to_message.message_id}`];
+      if (!target || target.sessionID !== linked) {
+        for (const permission of pending) await send(message, formatPermission(permission), linked, false, permission.id);
+        return;
+      }
+      const request = pending.find(permission => permission.id === target.requestID);
+      if (!request) return send(message, 'That permission request is no longer waiting. Reply to the current approval prompt.', linked);
+      try {
+        await openCodeAPI(`/api/session/${linked}/permission/${request.id}/reply`, 'POST', { decision: text === '/approve' ? 'once' : 'reject' });
+      } catch (error) {
+        return send(message, `Could not confirm the permission decision: ${error.message}. Retry only if the request is still waiting.`, linked);
+      }
       return send(message, text === '/approve' ? 'Approved once.' : 'Denied.', linked);
     }
     const sessionID = linked || (await openCodeAPI('/api/session', 'POST', { location: { directory: process.env.OPENCODE_TG_DIR } })).id;
@@ -169,7 +183,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
             return false;
           },
           onProgress: async progress => { rows = progress; },
-          onPermission: permission => send(run.replyTo, `Permission requested: ${permission.action}\n${permission.resources.join('\n')}\nReply /approve or /deny.`, sessionID),
+          onPermission: (permission, history) => send(run.replyTo, formatPermission(permission, history), sessionID, false, permission.id),
         });
         await updateStatus(true);
         await send(run.replyTo, answer, sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });

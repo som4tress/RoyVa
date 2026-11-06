@@ -14,6 +14,7 @@ import {
   searchMessages,
   sendMessage,
   modifyMessage,
+  batchModifyMessages,
   listLabels,
   createLabel,
   createDraft,
@@ -143,6 +144,20 @@ const tools = [
     },
   },
   {
+    name: "batch_modify_messages",
+    description: "Modify labels on a fixed list of 1–1000 message IDs in ONE permission-gated batch call. Use for a user-requested batch move, archive, mark-read or label change instead of separate modify_message calls. Search first and pass only the reviewed IDs; never expand a query during execution. To move to Trash add TRASH; removing only INBOX archives. One approval authorizes only this exact call, not later batches, pages or requests. Gmail returns no per-message receipt; report submitted_count, not an independently verified changed count.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        messageIds: {type: "array", items: {type: "string", minLength: 1}, minItems: 1, maxItems: 1000, uniqueItems: true, description: "Exact message IDs selected from search results. No queries, wildcards or implicit mailbox-wide targets."},
+        addLabelIds: {type: "array", items: {type: "string", minLength: 1}, description: "Labels to add, e.g. TRASH to move to Trash."},
+        removeLabelIds: {type: "array", items: {type: "string", minLength: 1}, description: "Labels to remove. Removing INBOX alone archives; it does not trash."},
+      },
+      required: ["messageIds"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "list_labels",
     description: "List all Gmail labels (system and user-created)",
     inputSchema: {
@@ -268,6 +283,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "modify_message":
         result = await modifyMessage(args as Parameters<typeof modifyMessage>[0]);
+        break;
+
+      case "batch_modify_messages":
+        result = await batchModifyMessages(args as Parameters<typeof batchModifyMessages>[0]);
         break;
 
       case "list_labels":

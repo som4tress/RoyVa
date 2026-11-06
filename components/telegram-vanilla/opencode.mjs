@@ -25,13 +25,13 @@ export async function runText(sessionID, text, { api = openCodeAPI, signal, onPe
     const [messages, session, permissions] = await Promise.all([
       api(`${path}/message`), api(path), api(`${path}/permission`),
     ]);
-    for (const permission of permissions) {
-      if (announced.has(permission.id)) continue;
-      announced.add(permission.id);
-      await onPermission(permission);
-    }
     const rows = messages.filter(message => !known.has(message.id)).sort((a, b) => a.time.created - b.time.created);
     await onProgress(rows);
+    for (const permission of permissions) {
+      if (announced.has(permission.id)) continue;
+      await onPermission(permission, messages);
+      announced.add(permission.id);
+    }
     const user = rows.filter(message => message.type === 'user').at(-1);
     if (user && session.time.idle >= user.time.created && session.time.idle >= (session.time.busy || 0)) {
       if (await onBeforeFinish()) continue;

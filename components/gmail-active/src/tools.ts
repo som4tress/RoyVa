@@ -549,6 +549,43 @@ export async function modifyMessage(params: {
   };
 }
 
+/** Modify an exact message set in one Gmail batch request. */
+export async function batchModifyMessages(params: {
+  messageIds: string[];
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+}): Promise<{
+  submitted_count: number;
+  messageIds: string[];
+  addLabelIds: string[];
+  removeLabelIds: string[];
+  status: string;
+}> {
+  if (!Array.isArray(params.messageIds) || params.messageIds.length < 1 || params.messageIds.length > 1000 ||
+      params.messageIds.some(id => typeof id !== "string" || !id.trim() || /\s|:/.test(id) || ["*", "all"].includes(id.toLowerCase()))) {
+    throw new Error("Provide 1–1000 explicit message IDs. Search queries and implicit all-message targets are not accepted.");
+  }
+  const ids = [...params.messageIds];
+  if (new Set(ids).size !== ids.length) throw new Error("Duplicate message IDs are not accepted.");
+  const add = params.addLabelIds === undefined ? [] : params.addLabelIds;
+  const remove = params.removeLabelIds === undefined ? [] : params.removeLabelIds;
+  if (![add, remove].every(labels => Array.isArray(labels) && labels.every(label => typeof label === "string" && label.trim()))) {
+    throw new Error("Label IDs must be arrays of nonempty strings.");
+  }
+  if (!add.length && !remove.length) throw new Error("Specify at least one label change.");
+  if (add.some(label => remove.includes(label))) throw new Error("The same label cannot be both added and removed.");
+  const requestBody = {ids, addLabelIds: [...add], removeLabelIds: [...remove]};
+  const gmail = await getGmailClient();
+  await gmail.users.messages.batchModify({userId: "me", requestBody});
+  return {
+    submitted_count: ids.length,
+    messageIds: ids,
+    addLabelIds: requestBody.addLabelIds,
+    removeLabelIds: requestBody.removeLabelIds,
+    status: "Gmail accepted this batch. Individual message states were not separately verified.",
+  };
+}
+
 /**
  * List all labels
  */
