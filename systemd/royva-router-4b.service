@@ -1,0 +1,13 @@
+[Unit]
+Description=RoyVa router model: Qwen3-4B Q8 (fallback intent classifier, port 8202)
+After=network-online.target
+PartOf=royva.target
+
+[Service]
+Type=simple
+ExecStart=/home/somdutta/RoyVa/scripts/run-router-model.sh llm Qwen3-4B-Instruct-2507-Q8_0.gguf 8202
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=royva.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=RoyVa stack (model server is evo-llamacpp-agent.service)
+Wants=royva-router-9b.service royva-router-4b.service royva-proxy.service royva-opencode.service royva-gateway.service royva-bridge.service
+
+[Install]
+WantedBy=default.target
