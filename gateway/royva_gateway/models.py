@@ -43,7 +43,7 @@ class Profile(Strict):
     steps: int = Field(8, ge=1, le=20)                       # per-turn cap on model steps (the loop guard)
     write_policy: WritePolicy = "read_only"
     sticky: bool = True                                       # tools persist for the rest of the session
-    scope: str = ""                                           # privacy scope (e.g. "email"): only users granted this scope may use the intent
+    scope: str = ""                                           # privacy scope (e.g. "gmail"): only users granted this scope may use the intent
     style: str = ""                                           # how to answer (concise, grouped...), added to the prompt for this intent
 
 

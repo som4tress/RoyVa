@@ -51,11 +51,40 @@ def grants(reg: Registry, intents: list[Intent]) -> dict[str, str]:
     return out
 
 
-def permissions(reg: Registry, grant_map: dict[str, str], settings: Settings) -> list[dict]:
-    """Session-level rules. They are evaluated after the agent's rules and the last match wins, so these open exactly the granted tools."""
-    rules = [{"action": reg.tools[t].action, "resource": "*", "effect": eff} for t, eff in grant_map.items()
-             if reg.tools[t].action not in settings.never_grant]
+MAIL_SERVERS = ("gmail", "gmail-tidy")      # registry server names whose tools are per-mailbox
+DEFAULT_MAIL = "default"                    # users.json "mail": "default" = the original (owner) servers; anything else = an enrolled account
+MAIL_WRITE_ACTIONS = ("send_message", "send_draft", "create_draft", "create_label")
+
+
+def account_action(server: str, action: str, account: str | None) -> str | None:
+    """The OpenCode action name of a mail tool for one mailbox, or None when the user has no mailbox (fail closed).
+    Default servers keep their names; an enrolled account uses its own server pair: gmail-u-<acct> and gmail-tidy-u-<acct>."""
+    if server not in MAIL_SERVERS:
+        return action
+    if not account:
+        return None
+    if account == DEFAULT_MAIL:
+        return action
+    return action.replace(server + "_", f"{server}-u-{account}_", 1)
+
+
+def permissions(reg: Registry, grant_map: dict[str, str], settings: Settings, mail_account: str | None = None,
+                mail_accounts: tuple[str, ...] = (), mail_readonly: bool = False) -> list[dict]:
+    """Session-level rules. They are evaluated after the agent's rules and the last match wins, so these open exactly the granted tools.
+    Mail tools are opened only for the requester's own mailbox; every other mailbox's send/draft tools are denied explicitly as well."""
+    rules = []
+    for t, eff in grant_map.items():
+        spec = reg.tools[t]
+        action = account_action(spec.server, spec.action, mail_account)
+        if action is None or action in settings.never_grant:
+            continue
+        if mail_readonly and spec.server in MAIL_SERVERS and spec.risk != "read":      # a read-only connection never gets change tools
+            continue
+        rules.append({"action": action, "resource": "*", "effect": eff})
     rules += [{"action": a, "resource": "*", "effect": "deny"} for a in settings.never_grant]      # belt and braces
+    for acct in (DEFAULT_MAIL, *mail_accounts):                                                   # no mailbox ever gets a send path via a session
+        for w in MAIL_WRITE_ACTIONS:
+            rules.append({"action": account_action("gmail", f"gmail_{w}", acct), "resource": "*", "effect": "deny"})
     return rules
 
 

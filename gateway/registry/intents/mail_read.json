@@ -42,7 +42,7 @@
   "steps": 8,
   "write_policy": "read_only",
   "sticky": true,
-  "scope": "email",
+  "scope": "gmail",
   "style": "Never show message IDs to the user; they are internal. Refer to emails by sender, subject and date."
  },
  "provenance": {

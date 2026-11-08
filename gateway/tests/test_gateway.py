@@ -83,7 +83,7 @@ class FakeClassifier:
 
 def write_users(tmp_path, users=None):
     f = tmp_path / "users.json"
-    f.write_text(json.dumps(users if users is not None else {"telegram:1": {"person": "", "scopes": ["*"]}}))
+    f.write_text(json.dumps(users if users is not None else {"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}}))
     return f
 
 
@@ -437,17 +437,17 @@ def ask_as(gw, text, user, session_id=None, reply=False):
 
 
 def test_owner_may_use_email_but_an_unlisted_user_is_refused_and_nothing_runs(tmp_path):
-    gw, oc, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users={"telegram:1": {"person": "", "scopes": ["*"]}, "_policy": {"silent_scopes": []}})
+    gw, oc, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users={"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "_policy": {"silent_scopes": []}})
     assert ask_as(gw, "find invoices", "telegram:1").status == "done"
     n_calls = len(oc.calls)
     r = ask_as(gw, "find invoices", "telegram:2")                                  # not in users.json -> no private scopes
-    assert "email access is limited to the account owner" in r.answer
+    assert "gmail access is limited to the account owner" in r.answer
     assert len(oc.calls) == n_calls                                                  # no session, no grants, no model run for the refused user
     assert '"outcome": "forbidden"' in (tmp_path / "traces.jsonl").read_text()
 
 
 def test_scope_list_grants_exactly_that_scope(tmp_path):
-    users = {"telegram:3": {"person": "", "scopes": ["email"]}, "telegram:4": {"person": "", "scopes": ["location"]}}
+    users = {"telegram:3": {"person": "", "scopes": ["gmail"]}, "telegram:4": {"person": "", "scopes": ["location"]}}
     gw, oc, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users=users)
     assert ask_as(gw, "find invoices", "telegram:3").status == "done"
     assert "limited to the account owner" in ask_as(gw, "find invoices", "telegram:4").answer
@@ -459,7 +459,7 @@ def test_mixed_request_for_an_unprivileged_user_keeps_the_allowed_part_and_drops
     assert r.status == "done" and r.routing.intents == ["home_state", "mail_read"]
     create = next(c for c in oc.calls if c[0] == "create")
     assert not any(a.startswith("gmail_") for a in granted(create)) and "home-assistant_homeassistant__GetLiveContext" in granted(create)
-    assert "email access is limited to the account owner" in next(c for c in oc.calls if c[0] == "prompt")[2]
+    assert "gmail access is limited to the account owner" in next(c for c in oc.calls if c[0] == "prompt")[2]
 
 
 def test_a_second_user_in_the_same_session_never_inherits_the_owners_email_tools(tmp_path):
@@ -482,7 +482,7 @@ def test_users_file_changes_apply_without_restart(tmp_path):
     gw, _, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users={})
     assert "limited to the account owner" in ask_as(gw, "find invoices", "telegram:7").answer
     import os, time
-    write_users(tmp_path, {"telegram:7": {"person": "", "scopes": ["email"]}})
+    write_users(tmp_path, {"telegram:7": {"person": "", "scopes": ["gmail"]}})
     os.utime(gw.s.users_file, (time.time() + 5, time.time() + 5))
     assert ask_as(gw, "find invoices", "telegram:7").status == "done"
 
@@ -508,11 +508,11 @@ def test_house_actions_are_open_to_every_allowed_user_only_email_is_partitioned(
     assert ask_as(gw, "goodnight", "telegram:2").status == "done"
     assert ask_as(gw, "play music", "telegram:2").status == "done"
     assert ask_as(gw, "find invoices", "telegram:2").answer == ""                          # email stays silent for everyone but the owner
-    assert REG.intents["media_playback"].profile.scope == "" and REG.intents["routine_trigger"].profile.scope == "" and REG.intents["mail_read"].profile.scope == "email"
+    assert REG.intents["media_playback"].profile.scope == "" and REG.intents["routine_trigger"].profile.scope == "" and REG.intents["mail_read"].profile.scope == "gmail"
 
 
 # ------------------------------------------------------------------ silent refusals (no reply at all) for configured scopes
-SILENT = {"telegram:1": {"person": "", "scopes": ["*"]}, "_policy": {"silent_scopes": ["email"]}}
+SILENT = {"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "_policy": {"silent_scopes": ["gmail"]}}
 
 
 def test_email_refusal_is_completely_silent_when_configured(tmp_path):
@@ -530,8 +530,8 @@ def test_bridge_route_reports_silent_so_nothing_is_sent(tmp_path):
 
 
 def test_a_scope_not_listed_as_silent_still_gets_a_polite_refusal(tmp_path):
-    gw, _, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users={"telegram:1": {"person": "", "scopes": ["*"]}, "_policy": {"silent_scopes": []}})
-    assert "email access is limited to the account owner" in ask_as(gw, "find invoices", "telegram:2").answer
+    gw, _, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users={"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "_policy": {"silent_scopes": []}})
+    assert "gmail access is limited to the account owner" in ask_as(gw, "find invoices", "telegram:2").answer
 
 
 def test_mixed_request_for_a_silent_scope_answers_the_allowed_part_without_mentioning_email(tmp_path):
@@ -553,3 +553,11 @@ def test_time_intents_get_the_clock_every_turn_and_it_is_not_cached():
     for iid in ("web_lookup", "home_history", "mail_read"):
         assert "current_time" in reg.intents[iid].profile.context
     assert "current_time" in profiles.PER_TURN_PROVIDERS
+
+
+def test_user_allowed_email_but_without_a_connected_mailbox_is_told_so(tmp_path):
+    users = {"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "telegram:5": {"person": "", "scopes": ["gmail"]}}
+    gw, oc, _ = make(tmp_path, {"find invoices": ["mail_read"]}, users=users)
+    r = ask_as(gw, "find invoices", "telegram:5")
+    assert "isn't connected" in r.answer and not oc.calls                  # no session, no tools, no improvised reply
+    assert ask_as(gw, "find invoices", "telegram:1").answer == "all good"      # the owner (default mailbox) is unaffected

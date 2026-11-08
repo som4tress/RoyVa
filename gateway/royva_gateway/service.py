@@ -62,7 +62,7 @@ class Gateway:
         while time.monotonic() < end:
             try:
                 st = await self.oc.mcp_status()
-                if all(st.get(n) == "connected" for n in self.s.expected_mcp):
+                if all(st.get(n) == "connected" for n in self.expected_servers()):
                     await self.refresh_context()
                     self.ready = True
                     return True
@@ -75,7 +75,7 @@ class Gateway:
         """Re-evaluate readiness from OpenCode's live MCP status. Going not-ready -> ready regenerates the Home Assistant context."""
         try:
             st = await self.oc.mcp_status()
-            ok = all(st.get(n) == "connected" for n in self.s.expected_mcp)
+            ok = all(st.get(n) == "connected" for n in self.expected_servers())
         except Exception:                                    # noqa: BLE001
             ok = False
         if ok and not self.ready:
@@ -199,6 +199,37 @@ class Gateway:
         except (OSError, ValueError):
             return {}
 
+    def user_mail(self, user: str) -> str | None:
+        """Which mailbox this user may reach: 'default' (the original account) or an enrolled account name; None = no mailbox (fail closed).
+        An enrolled account is honoured only while it really exists in the enrollment store."""
+        acct = (self._users().get(user) or {}).get("mail")
+        if acct in (None, "", profiles.DEFAULT_MAIL):
+            return acct or None
+        return acct if acct in self.mail_accounts() else None
+
+    def mail_readonly(self, user: str) -> bool:
+        """True when the user's enrolled mailbox was connected read-only (or the mode is unknown: fail closed). The original account is full access."""
+        acct = self.user_mail(user)
+        if acct in (None, profiles.DEFAULT_MAIL):
+            return False
+        try:
+            return json.loads((self.s.state_dir / "gmail" / "accounts.json").read_text()).get(acct, {}).get("mode") != "manage"
+        except (OSError, ValueError):
+            return True
+
+    def _uses_mail(self, intent) -> bool:
+        return any(self.reg.tools[t].server in profiles.MAIL_SERVERS for t in intent.profile.tools if t in self.reg.tools)
+
+    def mail_accounts(self) -> tuple[str, ...]:
+        try:
+            return tuple(json.loads((self.s.state_dir / "gmail" / "accounts.json").read_text()))
+        except (OSError, ValueError):
+            return ()
+
+    def expected_servers(self) -> tuple[str, ...]:
+        extra = tuple(f"{s}-u-{a}" for a in self.mail_accounts() for s in profiles.MAIL_SERVERS)
+        return tuple(self.s.expected_mcp) + extra
+
     def user_scopes(self, user: str) -> set:
         return set((self._users().get(user) or {}).get("scopes", []))
 
@@ -206,7 +237,7 @@ class Gateway:
         return (self._users().get(user) or {}).get("person") or self.s.default_person
 
     def silent_scopes(self) -> set:
-        """Scopes whose refusals send NO reply at all (users file: {"_policy": {"silent_scopes": ["email"]}})."""
+        """Scopes whose refusals send NO reply at all (users file: {"_policy": {"silent_scopes": ["gmail"]}})."""
         return set((self._users().get("_policy") or {}).get("silent_scopes", []))
 
     def may_use(self, user: str, intent) -> bool:
@@ -219,7 +250,7 @@ class Gateway:
     # ---------------------------------------------------------------- sessions created for the bridge before routing
     async def new_session(self) -> str:
         """A conversation with the base agent and NO tools; /v1/route grants tools once the first message is routed."""
-        perms = profiles.permissions(self.reg, {}, self.s)
+        perms = profiles.permissions(self.reg, {}, self.s, None, self.mail_accounts())
         sid = await self.oc.create_session(self.s.agent, perms)
         self.store.put(SessionState(session_id=sid, created_at=datetime.now(timezone.utc).isoformat()))
         self._trace(trace_id="session", session_id=sid, text="new_session", mode="new", chosen=[])
@@ -241,6 +272,12 @@ class Gateway:
         forbidden = [i for i in intents if i.status == "active" and not self.may_use(req.user, i)]
         acting = [i for i in intents if i.status == "active" and i not in forbidden]
         blocked = [i for i in intents if i.status != "active"]
+        if acting and not self.user_mail(req.user) and all(self._uses_mail(i) for i in acting) and not forbidden and not blocked:
+            # allowed by scope but no mailbox is connected for this person: say so instead of letting the model improvise without tools
+            self._trace(trace_id=trace_id, session_id=req.session_id, text=req.text[:200], mode=d.mode, chosen=d.intents,
+                        outcome="no_mailbox", classifier=d.classifier, latency_ms=d.latency_ms)
+            return Prepared("answer", d, trace_id, req.session_id, state=state,
+                            answer="Your Gmail isn't connected yet. Ask the account owner to connect it, then try again.")
         quiet = self.silent_scopes()
         unsupported = [f"{i.id.replace('_', ' ')} ({i.status})" for i in blocked] + [f"{i.profile.scope} access is limited to the account owner"
                                                                                   for i in forbidden if i.profile.scope not in quiet]
@@ -272,7 +309,7 @@ class Gateway:
             cap = profiles.step_cap(acting)
 
         tools = list(grant_map)
-        perms = profiles.permissions(self.reg, grant_map, self.s)
+        perms = profiles.permissions(self.reg, grant_map, self.s, self.user_mail(req.user), self.mail_accounts(), self.mail_readonly(req.user))
         known = self.store.get(req.session_id)
         now = datetime.now(timezone.utc).isoformat()
         if known is not None:                                  # a session the gateway already manages
