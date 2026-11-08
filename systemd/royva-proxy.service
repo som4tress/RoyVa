@@ -1,4 +1,5 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=RoyVa logging proxy (llama.cpp pass-through, request capture)
 After=network-online.target evo-llamacpp-agent.service
 Wants=evo-llamacpp-agent.service
@@ -7,7 +8,7 @@ PartOf=royva.target
 [Service]
 Type=simple
 ExecStart=/home/somdutta/RoyVa/scripts/run-proxy.sh
-Restart=on-failure
+Restart=always
 RestartSec=3
 UMask=0077
 

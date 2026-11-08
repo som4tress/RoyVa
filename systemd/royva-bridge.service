@@ -1,7 +1,8 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=RoyVa Telegram bridge (production bridge copy + test inject hook)
 After=royva-opencode.service royva-gateway.service
-Requires=royva-opencode.service royva-gateway.service
+Wants=royva-opencode.service royva-gateway.service
 PartOf=royva.target
 # Only one process may long-poll a bot token: starting this stops the old bridge.
 Conflicts=opencode-telegram-vanilla.service
@@ -10,7 +11,7 @@ Conflicts=opencode-telegram-vanilla.service
 Type=simple
 Environment=ROYVA_INJECT_DIR=/home/somdutta/RoyVa/runtime/inject
 ExecStart=/home/somdutta/RoyVa/scripts/run-bridge.sh
-Restart=on-failure
+Restart=always
 RestartSec=5
 UMask=0077
 

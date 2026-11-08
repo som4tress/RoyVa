@@ -383,3 +383,11 @@ def test_readiness_is_false_when_opencode_is_unreachable(tmp_path):
         raise OpenCodeError("connection refused")
     oc.mcp_status = boom
     assert run(gw.check_ready_once()) is False and gw.ready is False
+
+
+def test_router_clips_huge_messages_but_keeps_both_ends():
+    from royva_gateway.classifiers import clip, MAX_ROUTER_CHARS
+    text = "START " + "x" * 50000 + " END"
+    out = clip(text, MAX_ROUTER_CHARS)
+    assert len(out) <= MAX_ROUTER_CHARS + 10 and out.startswith("START") and out.endswith("END")
+    assert clip("short", 100) == "short"

@@ -126,6 +126,17 @@ class EmbeddingClassifier:
 
 
 # ------------------------------------------------------------------------------------------ LLM, constrained JSON
+MAX_ROUTER_CHARS = 2000      # a pasted wall of text must never overflow the router's per-slot context; the ends carry the intent
+
+
+def clip(text: str, limit: int) -> str:
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    head = int(limit * 0.65)
+    return text[:head] + " ... " + text[-(limit - head):]
+
+
 class LLMClassifier:
     """A chat model asked to choose intent ids from the registry, with JSON-schema-constrained output.
     `rebuild(reg)` refreshes the prompt after a registry reload. Few-shot examples come from the registry (intent examples + router_examples.json)."""
@@ -154,7 +165,7 @@ class LLMClassifier:
                        "properties": {"intents": {"type": "array", "maxItems": 2, "items": {"type": "string", "enum": self.ids}}}}
 
     def __call__(self, text, prior, state) -> Prediction:
-        user = (f"Previous request: {prior['text']}\n" if prior else "") + f"Latest message: {text}"
+        user = (f"Previous request: {clip(prior['text'], 400)}\n" if prior else "") + f"Latest message: {clip(text, MAX_ROUTER_CHARS)}"
         body = {"model": self.model, "temperature": 0, "max_tokens": 60,
                 "messages": [{"role": "system", "content": self.system}, {"role": "user", "content": user}],
                 "response_format": {"type": "json_schema", "json_schema": {"name": "route", "strict": True, "schema": self.schema}},

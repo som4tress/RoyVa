@@ -1,13 +1,14 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=RoyVa isolated vanilla OpenCode v2.2.5 (minimal config)
 After=royva-proxy.service
-Requires=royva-proxy.service
+Wants=royva-proxy.service
 PartOf=royva.target
 
 [Service]
 Type=simple
 ExecStart=/home/somdutta/RoyVa/scripts/run-opencode.sh
-Restart=on-failure
+Restart=always
 RestartSec=5
 UMask=0077
 

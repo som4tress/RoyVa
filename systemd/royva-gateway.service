@@ -1,14 +1,15 @@
 [Unit]
+StartLimitIntervalSec=0
 Description=RoyVa gateway (intent router + session grants in front of OpenCode)
 After=royva-opencode.service royva-router-9b.service
-Requires=royva-opencode.service
+Wants=royva-opencode.service
 Wants=royva-router-9b.service
 PartOf=royva.target
 
 [Service]
 Type=simple
 ExecStart=/home/somdutta/RoyVa/scripts/run-gateway.sh
-Restart=on-failure
+Restart=always
 RestartSec=5
 UMask=0077
 
