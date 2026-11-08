@@ -386,7 +386,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
         if (!text.trim() && /^\s*\/claude/i.test(body)) { state.mode[chatKey] = 'claude'; save(); return reply('💬 You are now talking to Claude (the developer assistant). Everything you send goes to him until you send /royva.'); }
         toClaude = Boolean(text.trim());
       } else if (message.reply_to_message && sent.includes(message.reply_to_message.message_id)) toClaude = true;
-      else if (state.mode[chatKey] === 'claude' && body.trim() && !body.startsWith('/') && !message._test_royva) toClaude = true;   // _test_royva: injected tests can address RoyVa without touching the user's mode
+      else if (state.mode[chatKey] === 'claude' && body.trim() && !body.startsWith('/') && !message._test_royva && !message.reply_to_message) toClaude = true;   // a reply to one of RoyVa's messages continues that conversation, even in /claude mode
+      // _test_royva: injected tests can address RoyVa without touching the user's mode
       if (toClaude) {
         mkdirSync(dir, { recursive: true });
         appendFileSync(join(dir, 'inbox.jsonl'), JSON.stringify({ ts: new Date().toISOString(), from_id: message.from.id, text, reply_to: message.reply_to_message?.message_id ?? null }) + '\n', { mode: 0o600 });
