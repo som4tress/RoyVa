@@ -1,8 +1,8 @@
 [Unit]
 Description=RoyVa gateway (intent router + session grants in front of OpenCode)
-After=royva-opencode.service royva-router-9b.service royva-router-4b.service
+After=royva-opencode.service royva-router-9b.service
 Requires=royva-opencode.service
-Wants=royva-router-9b.service royva-router-4b.service
+Wants=royva-router-9b.service
 PartOf=royva.target
 
 [Service]

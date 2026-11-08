@@ -15,7 +15,7 @@ Measured effect: the first model step shrank from ~5.8k to ~0.7k tokens and the 
 ```
 Telegram ─► bridge ─► POST /v1/session (base agent, no tools)
                   └─► POST /v1/route   {text, session_id, is_reply}
-                         router chain: 9B ─► 4B ─► keyword rules      (circuit breaker per classifier)
+                         router chain: 9B ─► main 35B (already loaded, no extra VRAM) ─► keyword rules      (circuit breaker per classifier)
                          intents ─► grants (allow|ask) ─► PATCH OpenCode session permissions
                          returns {kind: run|answer|error, prompt, cap, ...}
                   └─► bridge runs the turn itself (progress, steer, /approve), enforcing the round cap
@@ -59,7 +59,7 @@ Pinned by `tests/test_app.py::test_route_table_is_exactly_the_documented_api`.
 * **Planned capability:** mark its tools `available: false` and the intent `planned`; users get an honest reply and the demand is counted.
 
 ## Runbook
-Start order: llama (8000) → proxy (8100) → OpenCode (49380) → gateway (8300) → bridge. Router models: 9B (8203), 4B (8202).
+Start order: llama (8000) → proxy (8100) → OpenCode (49380) → gateway (8300) → bridge. Router model: 9B (8203); fallback is the main model via the proxy (8100).
 `scripts/run-*.sh`; units in `systemd/` (installed with `scripts/install-units.sh`). Tests: `.venv/bin/python -m pytest`.
 Traces: `runtime/gateway/traces.jsonl` (rotates at 20 MB, keeps 3). Sessions: `runtime/gateway/sessions.json` (pruned at start: 30 days / 5000).
 Debug a bad answer: find its `trace_id` in `traces.jsonl` → `capture_ids`/proxy captures show exactly what the model received.

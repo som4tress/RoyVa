@@ -17,8 +17,8 @@ class Settings:
     opencode_dir: str = os.environ.get("ROYVA_OPENCODE_DIR", "/home/somdutta/RoyVa/runtime/workspace")
     router_url: str = os.environ.get("ROYVA_ROUTER_URL", "http://127.0.0.1:8203")
     router_name: str = os.environ.get("ROYVA_ROUTER_NAME", "9B+fs")          # "+fs" = few-shot prompt
-    router_fallback_url: str = os.environ.get("ROYVA_ROUTER_FALLBACK_URL", "http://127.0.0.1:8202")
-    router_fallback_name: str = os.environ.get("ROYVA_ROUTER_FALLBACK_NAME", "4B+fs")
+    router_fallback_url: str = os.environ.get("ROYVA_ROUTER_FALLBACK_URL", "http://127.0.0.1:8100")
+    router_fallback_name: str = os.environ.get("ROYVA_ROUTER_FALLBACK_NAME", "35B+fs")
     router_timeout_s: float = float(os.environ.get("ROYVA_ROUTER_TIMEOUT", "15"))
     users_file: Path = ROOT.parent / "runtime" / "gateway" / "users.json"                  # {"telegram:<id>": {"person": "...", "scopes": ["*"]}}
     token: str = os.environ.get("ROYVA_GATEWAY_TOKEN", "")                  # optional shared secret for /v1/*
