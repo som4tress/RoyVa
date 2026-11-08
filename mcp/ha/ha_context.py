@@ -1,9 +1,14 @@
 """Bounded, read-only current-state and logbook attribution adapter."""
 import datetime as dt
 from urllib.parse import urlencode,quote
-from zoneinfo import ZoneInfo
-TZ=ZoneInfo('America/Los_Angeles')
-TOOL={'name':'get_on_entities_with_context','description':'List entities that are on right now and the recorded cause of their current on transition. Use for "what entities are on right now and what turned them on", "who turned on the lights", or current active devices with since times. Combines current HA states with exact matching logbook transitions. Reports unknown attribution explicitly. All timestamps are local America/Los_Angeles. Read-only.','inputSchema':{'type':'object','properties':{'domains':{'type':'array','items':{'type':'string','enum':['light','switch','fan','media_player','climate','input_boolean','binary_sensor','automation','script','lock','cover']},'description':'Optional domains. Omit for every entity with literal state on, plus currently playing media players.'},'lookback_hours':{'type':'integer','minimum':1,'maximum':168,'description':'Logbook window; default 24h. Older on states remain listed with unknown cause.'},'limit':{'type':'integer','minimum':1,'maximum':200,'description':'Maximum returned entities; default 100. Reports truncation.'}},'additionalProperties':False},'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}}
+TZ=dt.datetime.now().astimezone().tzinfo     # the host's local zone (not hardcoded), so this works for any household
+def local(value):
+ '''Home Assistant stores UTC; only local-time text may reach the model.'''
+ if isinstance(value,str) and len(value)>=19 and value[4:5]=='-' and value[10:11]=='T':
+  try:return dt.datetime.fromisoformat(value.replace('Z','+00:00')).astimezone().isoformat(timespec='seconds')
+  except ValueError:pass
+ return value
+TOOL={'name':'get_on_entities_with_context','description':'List entities that are on right now and the recorded cause of their current on transition. Use for "what entities are on right now and what turned them on", "who turned on the lights", or current active devices with since times. Combines current HA states with exact matching logbook transitions. Reports unknown attribution explicitly. All timestamps are local time. Read-only.','inputSchema':{'type':'object','properties':{'domains':{'type':'array','items':{'type':'string','enum':['light','switch','fan','media_player','climate','input_boolean','binary_sensor','automation','script','lock','cover']},'description':'Optional domains. Omit for every entity with literal state on, plus currently playing media players.'},'lookback_hours':{'type':'integer','minimum':1,'maximum':168,'description':'Logbook window; default 24h. Older on states remain listed with unknown cause.'},'limit':{'type':'integer','minimum':1,'maximum':200,'description':'Maximum returned entities; default 100. Reports truncation.'}},'additionalProperties':False},'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}}
 def stamp(value):
  return dt.datetime.fromisoformat(value.replace('Z','+00:00')).astimezone(TZ)
 def describe(entry):
@@ -33,7 +38,7 @@ def collect(args,get,now=None):
   since=stamp(s['last_changed']);matches=[e for e in events if e.get('entity_id')==s['entity_id'] and e.get('state')==s['state'] and e.get('when') and abs((stamp(e['when'])-since).total_seconds())<=2]
   event=min(matches,key=lambda e:abs((stamp(e['when'])-since).total_seconds())) if matches else None
   cause=describe(event) if event else {'type':'unknown','reason':logbook_error or ('Current on transition predates the requested logbook window.' if since<start else 'No matching transition was found in the logbook window.')}
-  row={'entity_id':s['entity_id'],'name':s.get('attributes',{}).get('friendly_name',s['entity_id']),'domain':s['entity_id'].split('.')[0],'state':s['state'],'since':since.isoformat(timespec='seconds'),'cause':{k:v for k,v in cause.items() if v is not None}}
+  row={'entity_id':s['entity_id'],'name':s.get('attributes',{}).get('friendly_name',s['entity_id']),'domain':s['entity_id'].split('.')[0],'state':local(s['state']),'since':since.isoformat(timespec='seconds'),'cause':{k:v for k,v in cause.items() if v is not None}}
   if event:row['matched_event_at']=stamp(event['when']).isoformat(timespec='seconds')
   rows.append(row)
  return {'as_of':now.isoformat(timespec='seconds'),'timezone':str(TZ),'selection':'All literal on states plus playing media; not all device domains use on/off to indicate activity. Configuration/diagnostic toggles are included, not silently removed.','total_matching':total,'returned':len(rows),'truncated':total>limit,'lookback_hours':hours,'entities':rows,'logbook_error':logbook_error,'limitations':['Causes are based only on logbook entries matching the actual current transition within two seconds.','Current state context may describe a later attribute update; it is not reused as proof of who turned the entity on.','Unknown causes remain unknown. A recorded HA user ID does not identify the client app.']}

@@ -3,8 +3,7 @@
 import datetime as dt
 import json, os, re, sys, urllib.request, urllib.parse
 from pathlib import Path
-from zoneinfo import ZoneInfo
-TZ=ZoneInfo('America/Los_Angeles')
+TZ=dt.datetime.now().astimezone().tzinfo
 from ha_context import TOOL as CONTEXT_TOOL, collect as collect_context
 from ha_device_status import TOOL as STATUS_TOOL, collect as collect_status
 from ha_status_report import TOOL as REPORT_TOOL, collect as collect_report

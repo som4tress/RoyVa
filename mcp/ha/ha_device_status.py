@@ -1,5 +1,11 @@
 """Bounded, read-only current-state MCP tool. No arbitrary URLs or service calls."""
 import re,datetime
+def _local(v):
+ '''Home Assistant stores UTC; show local time only.'''
+ if isinstance(v,str) and len(v)>=19 and v[4:5]=='-' and v[10:11]=='T':
+  try:return datetime.datetime.fromisoformat(v.replace('Z','+00:00')).astimezone().isoformat(timespec='seconds')
+  except ValueError:pass
+ return v
 TOOL={'name':'get_device_status','description':'Read current HA states by entity friendly name, or all live entity states belonging to an exact registry device_id from inspect_resources. Use device_id for physical-device telemetry whose sensor names differ from the device name. Returns states, units and HA timestamps; telemetry refresh sensors retain their own reported values. Cannot control devices.','inputSchema':{'type':'object','properties':{'name':{'type':'string','minLength':2,'description':'Entity friendly name or distinctive substring. Specify exactly one of name or device_id; omit domain if unsure how it is exposed.'},'device_id':{'type':'string','minLength':1,'description':'Exact HA device registry ID obtained from discovery. Returns all its live entity states; mutually exclusive with name.'},'domain':{'type':'array','items':{'type':'string','enum':['light','switch','fan','climate','cover','lock','media_player','binary_sensor','sensor','person','device_tracker']}}},'additionalProperties':False},'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}}
 def collect(args,read_api):
  if set(args)-{'name','domain','device_id'}:raise ValueError('Only name, device_id and domain filters are supported.')
@@ -22,7 +28,7 @@ def collect(args,read_api):
   if device_id is not None:
    if entity not in entity_ids:continue
   elif needle not in normalize(friendly):continue
-  item={'name':friendly,'entity_id':entity,'domain':domain,'state':row.get('state'),'last_changed':row.get('last_changed'),'last_updated':row.get('last_updated')}
+  item={'name':friendly,'entity_id':entity,'domain':domain,'state':_local(row.get('state')),'last_changed':_local(row.get('last_changed')),'last_updated':_local(row.get('last_updated'))}
   for key in ['brightness','percentage','current_temperature','temperature','unit_of_measurement','device_class']:
    if key in attrs:item[key]=attrs[key]
   if attrs.get('latitude') is not None and attrs.get('longitude') is not None:
