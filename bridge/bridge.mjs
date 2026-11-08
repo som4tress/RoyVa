@@ -10,9 +10,17 @@ import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
 import {formatPermission, approvalKey, BatchApprovals} from './permissions.mjs';
+import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
 
 // RoyVa gateway client (only used when ROYVA_GATEWAY_URL is set; otherwise the bridge behaves exactly as before).
+async function gatewayGet(path) {
+  const headers = {};
+  if (process.env.ROYVA_GATEWAY_TOKEN) headers.authorization = `Bearer ${process.env.ROYVA_GATEWAY_TOKEN}`;
+  const response = await fetch(`${process.env.ROYVA_GATEWAY_URL}${path}`, { headers, signal: AbortSignal.timeout(10000) });
+  if (!response.ok) throw new Error(`gateway HTTP ${response.status}`);
+  return response.json();
+}
 async function gatewayCall(path, body = {}) {
   const headers = { 'content-type': 'application/json' };
   if (process.env.ROYVA_GATEWAY_TOKEN) headers.authorization = `Bearer ${process.env.ROYVA_GATEWAY_TOKEN}`;
@@ -148,6 +156,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
   const modelLabel = process.env.OPENCODE_TG_MODEL_LABEL || 'Qwen3.8 27B Q8_0 · reasoning off · MTP 6';
   const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
   if (!token || !allowed.size) throw new Error('Telegram token and explicit allowed user IDs are required.');
+  // Who may talk to RoyVa: the env owners plus people enrolled through the gateway (live, so approvals and revocations apply without a restart).
+  const live = new LiveAllowlist(allowed, () => process.env.ROYVA_GATEWAY_URL ? gatewayGet('/v1/enroll/allowed') : Promise.resolve({}));
   const stateFile = process.env.OPENCODE_TG_STATE_FILE;
   let state;
   try { state = JSON.parse(readFileSync(stateFile, 'utf8')); }
@@ -288,6 +298,14 @@ export async function main({transcriber = createTranscriber()} = {}) {
     if (!result.ok) throw new Error(`Telegram ${method}: ${result.error_code}`);
     return result.result;
   }
+  const enroll = makeEnrollment({
+    call: async (path, body) => { try { return await gatewayCall(path, body); } catch { return { ok: false, error: 'Enrollment is unavailable right now. Try again in a minute.' }; } },
+    reply: (m, text) => tg('sendMessage', { chat_id: m.chat.id, text, reply_parameters: { message_id: m.message_id, allow_sending_without_reply: true } }),
+    tell: (id, text) => tg('sendMessage', { chat_id: Number(id), text }).catch(() => {}),
+    allowlist: live,
+    // After a Gmail connection OpenCode must reload; wait (up to 10 min) until no run is active so nobody's answer is cut off, then restart it.
+    restartWhenIdle: async () => { for (let i = 0; i < 120 && active.size; i++) await new Promise(r => setTimeout(r, 5000)); try { await gatewayCall('/v1/admin/restart-opencode'); } catch (error) { console.log(`OpenCode restart request failed: ${error.message}`); } },
+  });
   async function send(message, text, sessionID, feedback = false, permissionID) {
     const points = Array.from(text);
     const feedbackData = feedback && typeof feedback === 'object' ? feedback : {};
@@ -341,13 +359,19 @@ export async function main({transcriber = createTranscriber()} = {}) {
     return {prompt: expanded.text, replyTo, files: expanded.files};
   }
   async function handle(message) {
-    if (!allowed.has(String(message.from?.id)) || message.from?.is_bot) return;
+    if (message.from?.is_bot) return;
     // Private chats only: group chats are ignored completely (no reply, no processing).
     if (message.chat?.type && message.chat.type !== 'private') { console.log(`Ignored a message from a ${message.chat.type} chat`); return; }
+    if (!(await live.has(message.from?.id))) {
+      // Not allowed: silent, except for a valid-looking invite code (/start CODE or /join CODE), which only asks the owner for approval.
+      if (process.env.ROYVA_GATEWAY_URL) { try { await enroll.handleStranger(message); } catch (error) { console.log(`Enrollment request failed: ${error.message}`); } }
+      return;
+    }
+    if (process.env.ROYVA_GATEWAY_URL && !message._test_royva) { try { if (await enroll.handleMember(message)) return; } catch (error) { console.log(`Enrollment command failed: ${error.message}`); } }
     // RoyVa dev hook (additive): talk to Claude (the developer assistant) from this chat instead of RoyVa.
     // Addressing: "/claude" (sticky mode until "/royva"), "/claude <message>", "cc: <message>", "claude: <message>", "@claude <message>",
-    // or a reply to one of Claude's messages. Messages are appended to an inbox file that Claude's listener follows.
-    {
+    // or a reply to one of Claude's messages. Messages are appended to an inbox file that Claude's listener follows. OWNER ONLY: other members' messages never reach it.
+    if (await live.isOwner(message.from.id)) {
       const dir = process.env.ROYVA_CLAUDE_DIR || '/home/somdutta/RoyVa/runtime/claude';
       let sent = []; try { sent = JSON.parse(readFileSync(join(dir, 'outbox.json'), 'utf8')); } catch {}
       const body = message.text || message.caption || '';
@@ -365,14 +389,14 @@ export async function main({transcriber = createTranscriber()} = {}) {
       else if (state.mode[chatKey] === 'claude' && body.trim() && !body.startsWith('/') && !message._test_royva) toClaude = true;   // _test_royva: injected tests can address RoyVa without touching the user's mode
       if (toClaude) {
         mkdirSync(dir, { recursive: true });
-        appendFileSync(join(dir, 'inbox.jsonl'), JSON.stringify({ ts: new Date().toISOString(), text, reply_to: message.reply_to_message?.message_id ?? null }) + '\n', { mode: 0o600 });
+        appendFileSync(join(dir, 'inbox.jsonl'), JSON.stringify({ ts: new Date().toISOString(), from_id: message.from.id, text, reply_to: message.reply_to_message?.message_id ?? null }) + '\n', { mode: 0o600 });
         let alive = false; try { alive = Date.now() / 1000 - Number(readFileSync(join(dir, 'watch.alive'), 'utf8')) < 60; } catch {}
         return reply(alive ? '✅ Claude got it' : '⚠️ Noted, but Claude is not listening right now; he will see it as soon as he is next active.');
       }
     }
     const linked = replySession(state, message);
     const text = message.text || message.caption || '';
-    if (text === '/start' || text === '/help') return send(message, 'RoyVa: send text, a voice note, a photo or a video. Each standalone message starts a new conversation; reply to one to continue or steer it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.\n\nTo talk to Claude (the developer assistant) instead: /claude (stay in that mode until /royva), /claude <message> for one message, or start a message with cc: or claude:, or reply to one of his messages.');
+    if (text === '/start' || text === '/help') return send(message, 'RoyVa: send text, a voice note, a photo or a video. Each standalone message starts a new conversation; reply to one to continue or steer it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.\n\nGmail: /connect-gmail connects your own Gmail, /disconnect-gmail removes it. Owner only: /invite <name> [gmail], /people, /accept <name>, /decline <name>, /revoke <name>.\n\nTo talk to Claude (the developer assistant) instead: /claude (stay in that mode until /royva), /claude <message> for one message, or start a message with cc: or claude:, or reply to one of his messages.');
     if (text === '/status') return send(message, `RoyVa test build on vanilla OpenCode v2.2.5. ${modelLabel}. Routing gateway: ${process.env.ROYVA_GATEWAY_URL ? 'on' : 'off'}. Talking to: ${(state.mode || {})[String(message.chat.id)] === 'claude' ? 'Claude (/royva to go back)' : 'RoyVa'}.`);
     if (text === '/stop') {
       const runs = linked ? [active.get(linked)] : [...active.values()].filter(run => run.chat === message.chat.id && run.user === message.from.id);
@@ -546,7 +570,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});
   }
   async function feedback(callback) {
-    if (!allowed.has(String(callback.from?.id))) return;
+    if (!(await live.has(callback.from?.id))) return;
     if (callback.message?.chat?.type && callback.message.chat.type !== 'private') return;
     const message = callback.message;
     const target = message && state.answers[`${message.chat.id}:${message.message_id}`];
