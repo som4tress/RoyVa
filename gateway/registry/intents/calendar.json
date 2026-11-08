@@ -1,0 +1,52 @@
+{
+ "id": "calendar",
+ "status": "planned",
+ "description": "Read, add, move or cancel events on the user's calendar and answer questions about their schedule.",
+ "examples": [
+  "What's on my calendar today?",
+  "Add a dentist appointment next Tuesday at 3pm",
+  "Do I have any meetings tomorrow?",
+  "When is my next appointment?",
+  "Move my 2pm meeting to 4pm",
+  "Schedule lunch with Sam on Friday at noon",
+  "Am I free Thursday afternoon?",
+  "What's on my calendar this weekend?",
+  "Cancel the meeting with the contractor",
+  "Put the school concert on the calendar for May 3rd",
+  "Show me my schedule for next week",
+  "Block off tomorrow morning"
+ ],
+ "negatives": [
+  "Find the email confirming my appointment",
+  "Remind me when ticket prices drop",
+  "Turn on the lights at 7am every day"
+ ],
+ "continuations": [
+  "make it an hour long",
+  "invite Sam too",
+  "what about the day after?",
+  "change it to 4pm"
+ ],
+ "profile": {
+  "tools": [
+   "calendar.list_events",
+   "calendar.create_event",
+   "ha.get_datetime"
+  ],
+  "context": [
+   "user_profile"
+  ],
+  "steps": 6,
+  "write_policy": "confirm",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

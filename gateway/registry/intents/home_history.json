@@ -1,0 +1,58 @@
+{
+ "id": "home_history",
+ "status": "active",
+ "description": "Answer questions about what happened over a past time window at home or with connected devices and vehicles: where family members have been (location history), distance a vehicle travelled (odometer change), how often or when a sensor, camera, doorbell or door last triggered (event counts, last activity), durations and numeric trends. Find the entity first, then read its history over the window.",
+ "examples": [
+  "How many miles did the Mustang drive yesterday?",
+  "How long was the garage door open last night?",
+  "What was the temperature in the nursery overnight?",
+  "When did the front door last open?",
+  "How much energy did the house use this month?",
+  "Where did my car go yesterday?",
+  "How many hours was the heater on today?",
+  "When did I get home last night?",
+  "Show me the humidity trend in the basement this week",
+  "How many times did the doorbell ring today?",
+  "When was the last time the dishwasher ran?",
+  "What time did the lights go off last night?",
+  "When did the front door camera last detect someone",
+  "How many motion events did the doorbell record today"
+ ],
+ "negatives": [
+  "What is the temperature in the nursery right now?",
+  "Is the garage door closed?",
+  "Email me last month's electricity bill"
+ ],
+ "continuations": [
+  "and the week before?",
+  "what about the other car?",
+  "show it as a list",
+  "since Monday"
+ ],
+ "profile": {
+  "tools": [
+   "ha.get_live_context",
+   "ha.get_datetime",
+   "ha_history.get_visited_locations",
+   "ha_entity_history.find_entities",
+   "ha_entity_history.get_numeric_change",
+   "ha_entity_history.get_state_changes"
+  ],
+  "context": [
+   "home_map",
+   "user_profile"
+  ],
+  "steps": 6,
+  "write_policy": "read_only",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

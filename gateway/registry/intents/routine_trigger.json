@@ -1,0 +1,50 @@
+{
+ "id": "routine_trigger",
+ "status": "active",
+ "description": "Run an existing, user-defined Home Assistant routine (automation, script or scene) by a short phrase such as goodnight, leaving, or movie time. Runs a routine that already exists; does not write new automations.",
+ "examples": [
+  "Goodnight",
+  "Good morning",
+  "I'm heading out",
+  "Movie time",
+  "Run the bedtime routine",
+  "We're home",
+  "Activate night mode",
+  "Leaving for work",
+  "Start the away routine",
+  "Time to wake up the house",
+  "Dinner time mode",
+  "Run my morning routine"
+ ],
+ "negatives": [
+  "Create an automation that turns everything off at night",
+  "Turn off the kitchen lights",
+  "Set up a goodnight routine for me"
+ ],
+ "continuations": [
+  "run it again",
+  "do the morning one instead",
+  "undo that"
+ ],
+ "profile": {
+  "tools": [
+   "ha_routines.list_routines",
+   "ha_routines.run_routine"
+  ],
+  "context": [],
+  "steps": 4,
+  "write_policy": "auto",
+  "sticky": true,
+  "style": "Say exactly which routine you ran. If it does not exist or is not allowed, say so plainly and list what is available. Never claim a run you did not make. If a tool result says DRY RUN, tell the user it was only a rehearsal and nothing actually happened.",
+  "scope": ""
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

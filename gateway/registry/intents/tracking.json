@@ -1,0 +1,55 @@
+{
+ "id": "tracking",
+ "status": "planned",
+ "description": "Set up, list or cancel ONGOING trackers and alerts that watch a stock, item or ticket price or availability and notify later when a condition is met or on a schedule. A one-off 'what is it now' lookup is NOT tracking.",
+ "examples": [
+  "Alert me when Nvidia drops below 120",
+  "Tell me when concert tickets under 100 dollars become available",
+  "Track the price of this laptop and tell me if it goes below 800",
+  "Notify me every morning with the S&P 500 close",
+  "Let me know when the new iPhone is in stock",
+  "Watch flights to Chicago and tell me if they get cheaper",
+  "Send me a daily update on Tesla's stock price",
+  "Remind me if the gas price drops below 3 dollars",
+  "What trackers do I have running?",
+  "Stop tracking the laptop price",
+  "Check the price of this item every day",
+  "Message me when the ticket resale price falls"
+ ],
+ "negatives": [
+  "What's Nvidia trading at this minute?",
+  "What's the weather tomorrow?",
+  "Turn on the porch light at sunset"
+ ],
+ "continuations": [
+  "make it every hour",
+  "also tell me if it goes above 150",
+  "remove that one",
+  "only on weekdays"
+ ],
+ "profile": {
+  "tools": [
+   "stocks.quote",
+   "tracker.list",
+   "tracker.create",
+   "tracker.delete",
+   "web.search",
+   "web.fetch"
+  ],
+  "context": [
+   "user_profile"
+  ],
+  "steps": 8,
+  "write_policy": "confirm",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

@@ -1,0 +1,57 @@
+{
+ "id": "web_lookup",
+ "status": "active",
+ "description": "Look something up or research it on the web and report the result (as text by default; if the user wants it delivered another way, such as spoken, that is a separate action): weather forecasts, news (including market and sports news), results, directions, opening hours, facts, current prices, product comparisons and reviews. One-off lookups and on-the-go research; not ongoing alerts.",
+ "examples": [
+  "Will it rain this weekend?",
+  "What's the forecast for Saturday?",
+  "How cold will it get tonight?",
+  "What's the latest news about the election?",
+  "Who won the game last night?",
+  "What are the top headlines today?",
+  "How long is the drive to Seattle?",
+  "When does the pharmacy on Main Street close?",
+  "What is the exchange rate from dollars to euros?",
+  "Look up the opening hours of the library",
+  "What's the capital of Australia?",
+  "What is Nvidia's stock price right now?",
+  "Fetch me the top headlines",
+  "Research the best 4K TVs under 800 dollars and summarize",
+  "Pull up the latest on the Fed rate decision and give me the key points",
+  "Find out what people are saying about the new Pixel phone"
+ ],
+ "negatives": [
+  "What is the temperature inside the house?",
+  "Search my email for the tax return",
+  "Create a price alert for Nvidia"
+ ],
+ "continuations": [
+  "what about Sunday?",
+  "and the day after?",
+  "how about in Boston?",
+  "tell me more about that"
+ ],
+ "profile": {
+  "tools": [
+   "web.search",
+   "web.fetch",
+   "ha.get_datetime"
+  ],
+  "context": [
+   "home_location",
+   "current_location"
+  ],
+  "steps": 10,
+  "write_policy": "read_only",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

@@ -1,0 +1,53 @@
+{
+ "id": "ha_automation",
+ "status": "planned",
+ "description": "Create, review or change Home Assistant automations, scenes and routines that run by themselves on a trigger or schedule.",
+ "examples": [
+  "Create an automation that turns off all lights at midnight",
+  "Turn on the porch light at sunset every day",
+  "Write an automation to close the garage door at 10pm if it's open",
+  "Set up a routine that dims the living room lights when I start a movie",
+  "Make the thermostat drop to 65 when everyone leaves",
+  "Notify me if the front door is open for more than five minutes",
+  "Automate the sprinklers to run at 6am on weekdays",
+  "Build an automation that turns on the hallway light when motion is detected at night",
+  "Add a rule that locks the doors at bedtime",
+  "Create a scene called movie night",
+  "Turn the heater off automatically when a window opens",
+  "Set up a good morning routine"
+ ],
+ "negatives": [
+  "Turn off the kitchen lights right now",
+  "Is the porch light on?",
+  "Add a dentist appointment to my calendar"
+ ],
+ "continuations": [
+  "also run it on weekends",
+  "change the time to 11pm",
+  "let me see the YAML code",
+  "apply it"
+ ],
+ "profile": {
+  "tools": [
+   "ha.get_live_context",
+   "ha_config.draft_automation",
+   "ha_config.validate_automation",
+   "ha_config.apply_automation"
+  ],
+  "context": [
+   "home_map"
+  ],
+  "steps": 10,
+  "write_policy": "confirm",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

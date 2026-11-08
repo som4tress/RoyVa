@@ -1,0 +1,54 @@
+{
+ "id": "mail_read",
+ "status": "active",
+ "description": "Search, list or read the user's Gmail messages. Read-only; does not send or change email.",
+ "examples": [
+  "List the oldest unread emails in my inbox",
+  "Do any emails mention XYZ?",
+  "Do I have any unread emails from my bank?",
+  "Show me emails from last week about the tax return",
+  "What was the last email from Amazon about?",
+  "Search my inbox for the flight confirmation",
+  "How many unread emails do I have?",
+  "Read me the newest email from my landlord",
+  "Any emails with attachments from Sam?",
+  "Find the invoice from the plumber",
+  "Did I get a reply from the school?",
+  "Show unread emails from today"
+ ],
+ "negatives": [
+  "Email my boss that I'm running late",
+  "What's the weather forecast?",
+  "Add the dentist appointment to my calendar"
+ ],
+ "continuations": [
+  "read the top one",
+  "show me the next 10",
+  "only the ones from this month",
+  "what's in it?"
+ ],
+ "profile": {
+  "tools": [
+   "gmail.list_labels",
+   "gmail.list_messages",
+   "gmail.read_message",
+   "gmail.search_messages"
+  ],
+  "context": [
+   "user_profile"
+  ],
+  "steps": 8,
+  "write_policy": "read_only",
+  "sticky": true,
+  "scope": "email"
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

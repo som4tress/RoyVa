@@ -1,0 +1,466 @@
+[
+ {
+  "id": "ha.get_live_context",
+  "action": "home-assistant_homeassistant__GetLiveContext",
+  "server": "home-assistant",
+  "risk": "read",
+  "description": "Current state of devices, sensors and areas; optional area/domain filter.",
+  "available": true
+ },
+ {
+  "id": "ha.get_datetime",
+  "action": "home-assistant_llm__GetDateTime",
+  "server": "home-assistant",
+  "risk": "read",
+  "description": "Current date and time.",
+  "available": true
+ },
+ {
+  "id": "ha.search_media",
+  "action": "home-assistant_media_player__search_media",
+  "server": "home-assistant",
+  "risk": "read",
+  "description": "Search a media player's library.",
+  "available": true
+ },
+ {
+  "id": "ha.turn_on",
+  "action": "home-assistant_intent__HassTurnOn",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Turn on / open / lock a device.",
+  "available": true
+ },
+ {
+  "id": "ha.turn_off",
+  "action": "home-assistant_intent__HassTurnOff",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Turn off / close / unlock a device.",
+  "available": true
+ },
+ {
+  "id": "ha.cancel_all_timers",
+  "action": "home-assistant_intent__HassCancelAllTimers",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Cancel all timers.",
+  "available": true
+ },
+ {
+  "id": "ha.light_set",
+  "action": "home-assistant_light__HassLightSet",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Set light brightness or color.",
+  "available": true
+ },
+ {
+  "id": "ha.climate_set_temperature",
+  "action": "home-assistant_climate__HassClimateSetTemperature",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Set a thermostat target temperature.",
+  "available": true
+ },
+ {
+  "id": "ha.fan_set_speed",
+  "action": "home-assistant_fan__HassFanSetSpeed",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Set a fan speed.",
+  "available": true
+ },
+ {
+  "id": "ha.broadcast",
+  "action": "home-assistant_assist_satellite__HassBroadcast",
+  "server": "home-assistant",
+  "risk": "external",
+  "description": "Broadcast a spoken message through the home.",
+  "available": true
+ },
+ {
+  "id": "ha.media_unpause",
+  "action": "home-assistant_media_player__HassMediaUnpause",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Resume a media player.",
+  "available": true
+ },
+ {
+  "id": "ha.media_pause",
+  "action": "home-assistant_media_player__HassMediaPause",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Pause a media player.",
+  "available": true
+ },
+ {
+  "id": "ha.media_next",
+  "action": "home-assistant_media_player__HassMediaNext",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Skip to the next item.",
+  "available": true
+ },
+ {
+  "id": "ha.media_previous",
+  "action": "home-assistant_media_player__HassMediaPrevious",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Replay the previous item.",
+  "available": true
+ },
+ {
+  "id": "ha.set_volume",
+  "action": "home-assistant_media_player__HassSetVolume",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Set a media player volume percentage.",
+  "available": true
+ },
+ {
+  "id": "ha.set_volume_relative",
+  "action": "home-assistant_media_player__HassSetVolumeRelative",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Raise or lower volume.",
+  "available": true
+ },
+ {
+  "id": "ha.media_mute",
+  "action": "home-assistant_media_player__HassMediaPlayerMute",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Mute a media player.",
+  "available": true
+ },
+ {
+  "id": "ha.media_unmute",
+  "action": "home-assistant_media_player__HassMediaPlayerUnmute",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Unmute a media player.",
+  "available": true
+ },
+ {
+  "id": "ha.play_media",
+  "action": "home-assistant_media_player__play_media",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Play a media item or URL on a speaker.",
+  "available": true
+ },
+ {
+  "id": "gmail.list_labels",
+  "action": "gmail_list_labels",
+  "server": "gmail",
+  "risk": "read",
+  "description": "List Gmail labels.",
+  "available": true
+ },
+ {
+  "id": "gmail.list_messages",
+  "action": "gmail_list_messages",
+  "server": "gmail",
+  "risk": "read",
+  "description": "List messages in the inbox or labels.",
+  "available": true
+ },
+ {
+  "id": "gmail.read_message",
+  "action": "gmail_read_message",
+  "server": "gmail",
+  "risk": "read",
+  "description": "Read one message in full.",
+  "available": true
+ },
+ {
+  "id": "gmail.search_messages",
+  "action": "gmail_search_messages",
+  "server": "gmail",
+  "risk": "read",
+  "description": "Search messages with Gmail syntax.",
+  "available": true
+ },
+ {
+  "id": "gmail.send_message",
+  "action": "gmail_send_message",
+  "server": "gmail",
+  "risk": "external",
+  "description": "Send a new email.",
+  "available": true
+ },
+ {
+  "id": "gmail.send_draft",
+  "action": "gmail_send_draft",
+  "server": "gmail",
+  "risk": "external",
+  "description": "Send an existing draft.",
+  "available": true
+ },
+ {
+  "id": "gmail.create_draft",
+  "action": "gmail_create_draft",
+  "server": "gmail",
+  "risk": "write",
+  "description": "Create a draft (not sent).",
+  "available": true
+ },
+ {
+  "id": "gmail.modify_message",
+  "action": "gmail_modify_message",
+  "server": "gmail",
+  "risk": "write",
+  "description": "Add/remove labels, mark read/unread.",
+  "available": true
+ },
+ {
+  "id": "gmail.batch_modify_messages",
+  "action": "gmail_batch_modify_messages",
+  "server": "gmail",
+  "risk": "write",
+  "description": "Modify labels on many messages at once.",
+  "available": true
+ },
+ {
+  "id": "gmail.create_label",
+  "action": "gmail_create_label",
+  "server": "gmail",
+  "risk": "write",
+  "description": "Create a Gmail label.",
+  "available": true
+ },
+ {
+  "id": "web.search",
+  "action": "websearch",
+  "server": "opencode",
+  "risk": "read",
+  "description": "Search the web.",
+  "available": true
+ },
+ {
+  "id": "web.fetch",
+  "action": "webfetch",
+  "server": "opencode",
+  "risk": "read",
+  "description": "Fetch a web page as text.",
+  "available": true
+ },
+ {
+  "id": "calendar.list_events",
+  "action": "calendar_list_events",
+  "server": "calendar",
+  "risk": "read",
+  "description": "List calendar events in a date range.",
+  "available": false
+ },
+ {
+  "id": "calendar.create_event",
+  "action": "calendar_create_event",
+  "server": "calendar",
+  "risk": "write",
+  "description": "Create a calendar event.",
+  "available": false
+ },
+ {
+  "id": "stocks.quote",
+  "action": "stocks_quote",
+  "server": "stocks",
+  "risk": "read",
+  "description": "Current quote for a stock or index.",
+  "available": false
+ },
+ {
+  "id": "tracker.list",
+  "action": "tracker_list",
+  "server": "tracker",
+  "risk": "read",
+  "description": "List active price/ticket/stock trackers.",
+  "available": false
+ },
+ {
+  "id": "tracker.create",
+  "action": "tracker_create",
+  "server": "tracker",
+  "risk": "write",
+  "description": "Create a tracker with a condition and notification schedule.",
+  "available": false
+ },
+ {
+  "id": "tracker.delete",
+  "action": "tracker_delete",
+  "server": "tracker",
+  "risk": "write",
+  "description": "Remove a tracker.",
+  "available": false
+ },
+ {
+  "id": "ha_config.draft_automation",
+  "action": "ha_config_draft_automation",
+  "server": "ha_config",
+  "risk": "read",
+  "description": "Draft Home Assistant automation YAML without applying it.",
+  "available": false
+ },
+ {
+  "id": "ha_config.validate_automation",
+  "action": "ha_config_validate_automation",
+  "server": "ha_config",
+  "risk": "read",
+  "description": "Run Home Assistant's config check on drafted YAML.",
+  "available": false
+ },
+ {
+  "id": "ha_config.apply_automation",
+  "action": "ha_config_apply_automation",
+  "server": "ha_config",
+  "risk": "write",
+  "description": "Write an approved automation into Home Assistant.",
+  "available": false
+ },
+ {
+  "id": "ha.media_join",
+  "action": "ha_media_join",
+  "server": "home-assistant",
+  "risk": "write",
+  "description": "Group speakers for synchronized playback across rooms.",
+  "available": false
+ },
+ {
+  "id": "camera.get_events",
+  "action": "camera_get_events",
+  "server": "camera",
+  "risk": "read",
+  "description": "List detection events (person, motion, doorbell ring) for a camera in a time window.",
+  "available": false
+ },
+ {
+  "id": "camera.analyze_clip",
+  "action": "camera_analyze_clip",
+  "server": "camera",
+  "risk": "read",
+  "description": "Fetch a camera clip or snapshot and describe it with a vision model.",
+  "available": false
+ },
+ {
+  "id": "ha_history.get_visited_locations",
+  "action": "ha-history_get_visited_locations",
+  "server": "ha-history",
+  "risk": "read",
+  "description": "Recorded named-zone visits/locations for a household person over a time range (places or timeline).",
+  "available": true
+ },
+ {
+  "id": "ha_history.get_on_entities_with_context",
+  "action": "ha-history_get_on_entities_with_context",
+  "server": "ha-history",
+  "risk": "read",
+  "description": "Entities that are on right now, with the recorded cause of each on-transition.",
+  "available": true
+ },
+ {
+  "id": "ha_history.get_device_status",
+  "action": "ha-history_get_device_status",
+  "server": "ha-history",
+  "risk": "read",
+  "description": "Current states by entity friendly name, or all live entities belonging to a device/area.",
+  "available": true
+ },
+ {
+  "id": "ha_history.get_device_status_report",
+  "action": "ha-history_get_device_status_report",
+  "server": "ha-history",
+  "risk": "read",
+  "description": "Structured table of current device states for device/light status lists and inventories.",
+  "available": true
+ },
+ {
+  "id": "ha_entity_history.find_entities",
+  "action": "ha-entity-history_find_entities",
+  "server": "ha-entity-history",
+  "risk": "read",
+  "description": "Search Home Assistant entities by words in id, name, device or manufacturer to get the exact entity_id.",
+  "available": true
+ },
+ {
+  "id": "ha_entity_history.get_numeric_change",
+  "action": "ha-entity-history_get_numeric_change",
+  "server": "ha-entity-history",
+  "risk": "read",
+  "description": "First/last/change/min/max of one numeric entity over a time window (e.g. odometer change = distance travelled).",
+  "available": true
+ },
+ {
+  "id": "ha_entity_history.get_state_changes",
+  "action": "ha-entity-history_get_state_changes",
+  "server": "ha-entity-history",
+  "risk": "read",
+  "description": "How often and when one entity changed state over a window: event counts, last trigger of an on/off or motion sensor, door/appliance activity.",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.list_speakers",
+  "action": "ha-speakers_list_speakers",
+  "server": "ha-speakers",
+  "risk": "read",
+  "description": "List the speakers with state, volume and whether they can be grouped.",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.find_radio_stream",
+  "action": "ha-speakers_find_radio_stream",
+  "server": "ha-speakers",
+  "risk": "read",
+  "description": "Find internet radio stations and their stream URLs.",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.speak",
+  "action": "ha-speakers_speak",
+  "server": "ha-speakers",
+  "risk": "write",
+  "description": "Speak text aloud on speakers (text-to-speech)",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.play_stream",
+  "action": "ha-speakers_play_stream",
+  "server": "ha-speakers",
+  "risk": "write",
+  "description": "Play an audio stream on speakers",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.group_speakers",
+  "action": "ha-speakers_group_speakers",
+  "server": "ha-speakers",
+  "risk": "write",
+  "description": "Group speakers for synchronized playback",
+  "available": true
+ },
+ {
+  "id": "ha_speakers.control",
+  "action": "ha-speakers_control",
+  "server": "ha-speakers",
+  "risk": "write",
+  "description": "Control playback or volume on speakers",
+  "available": true
+ },
+ {
+  "id": "ha_routines.list_routines",
+  "action": "ha-routines_list_routines",
+  "server": "ha-routines",
+  "risk": "read",
+  "description": "List existing routines (automations, scripts, scenes) and which may be run.",
+  "available": true
+ },
+ {
+  "id": "ha_routines.run_routine",
+  "action": "ha-routines_run_routine",
+  "server": "ha-routines",
+  "risk": "write",
+  "description": "Run an existing routine",
+  "available": true
+ }
+]

@@ -1,0 +1,61 @@
+{
+ "id": "home_state",
+ "status": "active",
+ "description": "Read the current state of lights, sensors, locks, doors, climate or other home devices and areas, including grouped status by floor, area or device type (upstairs, downstairs, all bedrooms, all doors). Read-only.",
+ "examples": [
+  "Are the upstairs lights on or off?",
+  "Are any lights on downstairs?",
+  "Is the garage door closed?",
+  "What's the temperature in the living room?",
+  "How warm is it in the nursery right now?",
+  "Is the front door locked?",
+  "Which windows are open?",
+  "Is anyone home?",
+  "What is the thermostat set to?",
+  "Is the dishwasher running?",
+  "How humid is it in the basement?",
+  "Show me everything that is on right now",
+  "What is the temperature inside my house?",
+  "Status report for the whole downstairs",
+  "What's on in each room of the house?",
+  "Summarize the lights by floor",
+  "How are all the bedrooms looking?",
+  "Give me a rundown of every door and window"
+ ],
+ "negatives": [
+  "Turn off the kitchen lights",
+  "Email me the thermostat reading",
+  "What's the weather forecast for tomorrow?"
+ ],
+ "continuations": [
+  "how about the downstairs ones?",
+  "and in the kitchen?",
+  "same for the bedrooms",
+  "is that on right now?",
+  "now the other floor"
+ ],
+ "profile": {
+  "tools": [
+   "ha.get_live_context",
+   "ha.get_datetime",
+   "ha_history.get_on_entities_with_context",
+   "ha_history.get_device_status_report"
+  ],
+  "context": [
+   "home_map"
+  ],
+  "steps": 6,
+  "write_policy": "read_only",
+  "sticky": true,
+  "style": "Be concise and group by area. Report user-relevant state per device (on/off or the value) for lights, doors, windows, locks, fans, climate and media. Omit diagnostic and configuration entities (maintenance, supplies, signal, battery, firmware, sensor internals) and unavailable entities unless asked."
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

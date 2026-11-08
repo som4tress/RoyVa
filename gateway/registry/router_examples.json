@@ -1,0 +1,43 @@
+{
+ "cross": [
+  {
+   "text": "Turn off the den lights and tell me if it will snow",
+   "intents": [
+    "home_control",
+    "web_lookup"
+   ]
+  },
+  {
+   "text": "Is the oven off, and what's on my calendar tomorrow?",
+   "intents": [
+    "home_state",
+    "calendar"
+   ]
+  },
+  {
+   "text": "Find the receipt email from the hardware store and play some rock in the garage",
+   "intents": [
+    "mail_read",
+    "media_playback"
+   ]
+  },
+  {
+   "text": "Did the bank email me, and what's the price of silver?",
+   "intents": [
+    "mail_read",
+    "web_lookup"
+   ]
+  },
+  {
+   "text": "Read the latest tech headlines out loud on the kitchen speaker",
+   "intents": [
+    "web_lookup",
+    "media_playback"
+   ]
+  }
+ ],
+ "none": [
+  "Hello there",
+  "Send an email to my sister that dinner is at 7"
+ ]
+}

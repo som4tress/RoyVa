@@ -1,0 +1,55 @@
+{
+ "id": "home_control",
+ "status": "candidate",
+ "description": "Change the state of a home device: turn lights, fans or locks on or off, dim lights, set the thermostat. Changes things in the house.",
+ "examples": [
+  "Turn off the kitchen lights",
+  "Turn on the porch light",
+  "Set the living room lights to 40 percent",
+  "Lock the front door",
+  "Set the thermostat to 70",
+  "Turn the bedroom fan to low",
+  "Switch off everything downstairs",
+  "Dim the lights upstairs",
+  "Close the garage door",
+  "Make the bedroom lights warm white",
+  "Turn up the heat a couple of degrees",
+  "Turn on the fan in the nursery"
+ ],
+ "negatives": [
+  "Is the kitchen light on?",
+  "Play some jazz in the kitchen",
+  "Create an automation that turns off the lights at midnight"
+ ],
+ "continuations": [
+  "now turn them back on",
+  "do the same for downstairs",
+  "a bit lower",
+  "undo that"
+ ],
+ "profile": {
+  "tools": [
+   "ha.get_live_context",
+   "ha.turn_on",
+   "ha.turn_off",
+   "ha.light_set",
+   "ha.climate_set_temperature",
+   "ha.fan_set_speed"
+  ],
+  "context": [
+   "home_map"
+  ],
+  "steps": 6,
+  "write_policy": "confirm",
+  "sticky": true
+ },
+ "provenance": {
+  "created_by": "human",
+  "version": 1
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}
