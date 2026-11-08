@@ -29,7 +29,7 @@ def edit_intent(root: Path, name: str, fn):
 def test_seed_registry_loads():
     r = registry.load(REG)
     assert {"home_state", "mail_read", "web_lookup"} <= {i.id for i in r.active()}
-    assert len(r.intents) == 10
+    assert len(r.intents) == 11
     assert all(i.status != "active" for i in r.intents.values() if any(not r.tools[t].available for t in i.profile.tools))
 
 

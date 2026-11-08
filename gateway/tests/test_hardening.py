@@ -169,7 +169,7 @@ def test_reload_swaps_registry_rebuilds_classifiers_and_rejects_bad_registry(tmp
     async def go():
         return await gw.reload()
     out = run(go())
-    assert out["intents"] == 10 and Rebuildable.rebuilt == 1
+    assert out["intents"] == 11 and Rebuildable.rebuilt == 1
     assert "Is the thermostat on a schedule right now" in gw.reg.intents["home_state"].examples
     good = gw.reg
     (root / "intents" / "home_state.json").write_text("{ not json")

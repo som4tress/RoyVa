@@ -212,7 +212,7 @@
   "action": "gmail_modify_message",
   "server": "gmail",
   "risk": "write",
-  "description": "Add/remove labels, mark read/unread.",
+  "description": "Change labels on one email (e.g. move to Trash, archive, mark read).",
   "available": true
  },
  {
@@ -220,7 +220,7 @@
   "action": "gmail_batch_modify_messages",
   "server": "gmail",
   "risk": "write",
-  "description": "Modify labels on many messages at once.",
+  "description": "Change labels on many emails at once (e.g. move to Trash, archive, mark read).",
   "available": true
  },
  {

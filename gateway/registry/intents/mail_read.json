@@ -19,7 +19,8 @@
  "negatives": [
   "Email my boss that I'm running late",
   "What's the weather forecast?",
-  "Add the dentist appointment to my calendar"
+  "Add the dentist appointment to my calendar",
+  "Move all the PayPal emails to trash"
  ],
  "continuations": [
   "read the top one",
@@ -35,7 +36,7 @@
    "gmail.search_messages"
   ],
   "context": [
-    "current_time",
+   "current_time",
    "user_profile"
   ],
   "steps": 8,
