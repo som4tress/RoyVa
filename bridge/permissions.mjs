@@ -60,7 +60,7 @@ export function formatPermission(permission, rows = []) {
       const top = [...senders].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`).join(', ');
       what = `${ids.length} listed email${ids.length === 1 ? '' : 's'}${top ? `\nFrom: ${top}${senders.size > 3 ? ', …' : ''}` : ''}`;
     } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
-    return ['Approve?', `${verb}: ${what}`, args.action === 'trash' ? 'Trash keeps them for 30 days.' : '', 'One /approve covers this whole request (every batch of this kind). /deny to stop.'].filter(Boolean).join('\n');
+    return ['Approve?', `${verb}: ${what}`, '/approve or /deny'].join('\n');
   }
   let action = `Run ${line(tool)}`;
   const batch = tool === 'gmail_batch_modify_messages';
@@ -91,6 +91,7 @@ export function formatPermission(permission, rows = []) {
     }[tool] || action;
   }
   if (batch) action = action.replace(/\bemail(?= |$)/g, `${Array.isArray(args.messageIds) ? args.messageIds.length : '?'} emails`);
+  const known = tool === 'gmail_modify_message';   // sends/drafts keep exact arguments: the body must be visible before approving
   const nativeAction = {
     HassTurnOn: 'Turn on targeted devices', HassTurnOff: 'Turn off targeted devices',
     HassLightSet: 'Change light brightness or colour', HassFanSetSpeed: 'Change fan speed',
@@ -114,26 +115,19 @@ export function formatPermission(permission, rows = []) {
     out.push('/approve or /deny (this batch only)');
     return out.join('\n');
   }
+  // Short by design: what will happen, to what, and how to answer. Full arguments stay in the tool call, not in the chat.
   const details = emailDetails(rows, args.messageId);
-  const lines = ['Permission required', `Action: ${action}`];
-  if (details?.subject) lines.push(`Subject: ${line(details.subject)}`);
-  if (details?.from) lines.push(`From: ${line(details.from)}`);
-  for (const [key, label] of [['messageId', 'Email ID'], ['draftId', 'Draft ID'], ['to', 'To'], ['cc', 'CC'], ['bcc', 'BCC'], ['subject', 'Subject']]) {
-    if (args[key]) lines.push(`${label}: ${line(args[key])}`);
+  const lines = ['Approve?', action];
+  if (details?.subject) lines.push(`Subject: ${line(details.subject).slice(0, 80)}`);
+  if (details?.from) lines.push(`From: ${line(details.from).slice(0, 60)}`);
+  for (const [key, label] of [['to', 'To'], ['cc', 'CC'], ['bcc', 'BCC'], ['subject', 'Subject']]) {
+    if (args[key] && !(key === 'subject' && details?.subject)) lines.push(`${label}: ${line(args[key]).slice(0, 80)}`);
   }
-  if (tool === 'gmail_send_draft') lines.push('This call supplies a draft ID, not its current recipients/body. Review the draft before approving.');
-  if (batch && Array.isArray(args.messageIds)) {
-    lines.push('Messages in this batch:');
-    for (const id of args.messageIds) {
-      const message = emailDetails(rows, id);
-      lines.push(`- ${line(id)}${message?.subject ? ` | ${line(message.subject)}` : ''}${message?.from ? ` | ${line(message.from)}` : ''}`);
-    }
-    lines.push('This approval does not cover later batches, pages or requests.');
+  if (tool === 'gmail_send_draft') lines.push('Review the draft first: this approval does not show its recipients or text.');
+  if (!details && input !== undefined && !lines.some(l => l.startsWith('To:'))) {
+    const brief = JSON.stringify(scrub(input));
+    if (brief && brief !== '{}') lines.push(`Details: ${brief.length > 220 ? brief.slice(0, 220) + '…' : brief}`);
   }
-  lines.push(`Tool: ${line(tool)}`);
-  if (input !== undefined) lines.push('Exact arguments (secret fields redacted):', JSON.stringify(scrub(input), null, 2));
-  else lines.push('Arguments: not provided by the tool.');
-  if (permission.resources?.length) lines.push(`Permission resources: ${permission.resources.map(line).join(', ')}`);
-  lines.push('Reply to this message with /approve to allow this call once, or /deny.');
+  lines.push('/approve or /deny');
   return lines.join('\n');
 }

@@ -34,3 +34,15 @@ test('the prompt says what will happen and that one approval covers the request'
   const ids = formatPermission(perm('gmail-tidy_tidy_ids', { action: 'archive', ids: ['a1b2c3d4', 'a1b2c3d5'] }));
   assert.match(ids, /Archive: 2 listed emails/);
 });
+
+test('generic approval prompts are short: no JSON dump, no tool-id boilerplate', () => {
+  const out = formatPermission(perm('ha-routines_run_routine', { name: 'Good Night', extra: 'x'.repeat(2000) }));
+  assert.ok(out.split('\n').length <= 5 && out.length < 400, out);
+  assert.match(out, /^Approve\?/); assert.match(out, /\/approve or \/deny/);
+  assert.doesNotMatch(out, /Exact arguments|Permission resources|Tool:/);
+});
+
+test('sending email shows the recipient and subject, briefly', () => {
+  const out = formatPermission(perm('gmail_send_message', { to: 'a@b.com', subject: 'Hi', body: 'long '.repeat(500) }));
+  assert.match(out, /Send email/); assert.match(out, /To: a@b.com/); assert.ok(out.length < 300);
+});
