@@ -468,7 +468,7 @@
   "action": "gmail-tidy_count_matching",
   "server": "gmail-tidy",
   "risk": "read",
-  "description": "Count emails matching a Gmail search (up to 5000) and show examples.",
+  "description": "Exact count of emails matching a Gmail search (counts up to 25,000; says at_least beyond) with a few examples. Use this for any 'how many' question.",
   "available": true
  },
  {

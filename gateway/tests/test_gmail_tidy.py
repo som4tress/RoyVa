@@ -116,3 +116,12 @@ def test_tidy_ids_rejects_junk_ids_and_empty_lists():
     for bad in ([], ["not an id"], ["abc"], "1a1b99fec67dd672", [123]):
         assert gt.tidy_ids({"ids": bad, "action": "trash"}, gm)["ok"] is False
     assert gm.calls == []
+
+
+def test_count_is_exact_above_the_old_5000_cap_and_flags_when_it_is_only_a_lower_bound():
+    g = FakeGmail(total=6200)
+    r = gt.count_matching({"query": "is:unread"}, gm=g)
+    assert r["count"] == 6200 and r["at_least"] is False and not g.calls            # exact, and counting changes nothing
+    big = FakeGmail(total=gt.COUNT_CAP + 10)
+    r = gt.count_matching({"query": "is:unread"}, gm=big)
+    assert r["count"] == gt.COUNT_CAP and r["at_least"] is True

@@ -15,7 +15,7 @@ from pathlib import Path
 
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 PAGE = 500
-COUNT_CAP = 5000
+COUNT_CAP = 25000                      # exact below this; above it the answer says at_least
 DEFAULT_LIMIT, MAX_LIMIT, MAX_IDS = 2000, 10000, 5000
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", Path(__file__).resolve().parents[2] / "runtime" / "gateway" / "dry_run"))
 DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()      # noqa: E731
@@ -155,9 +155,9 @@ def _check(query):
 
 def count_matching(args, gm=None):
     gm = gm or Gmail()
-    q, err = _check(args.get("query"))
-    if err:
-        return {"ok": False, "error": err}
+    q = normalize_query(str(args.get("query") or "").strip())       # counting changes nothing, so broad queries such as is:unread are allowed here
+    if not q:
+        return {"ok": False, "error": "give a Gmail search query to count (for example is:unread)."}
     ids, more = gm.ids(q, COUNT_CAP)
     return {"ok": True, "query": q, "count": len(ids), "at_least": more, "examples": gm.sample(ids),
             "did": f"Counted {len(ids)}{'+' if more else ''} messages matching: {q}"}

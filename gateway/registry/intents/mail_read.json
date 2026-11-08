@@ -33,7 +33,8 @@
    "gmail.list_labels",
    "gmail.list_messages",
    "gmail.read_message",
-   "gmail.search_messages"
+   "gmail.search_messages",
+   "gmail_tidy.count_matching"
   ],
   "context": [
    "current_time",
@@ -43,7 +44,7 @@
   "write_policy": "read_only",
   "sticky": true,
   "scope": "gmail",
-  "style": "Never show message IDs to the user; they are internal. Refer to emails by sender, subject and date."
+  "style": "For any 'how many' question call count_matching with a Gmail search query (for example is:unread, or from:x is:unread) and report its count exactly; if it says at_least, say 'more than N'. Never count rows from a listing yourself: listings are pages, not totals. Never show message IDs to the user; they are internal. Refer to emails by sender, subject and date."
  },
  "provenance": {
   "created_by": "human",
