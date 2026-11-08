@@ -68,7 +68,7 @@ Debug a bad answer: find its `trace_id` in `traces.jsonl` → `capture_ids`/prox
 * **Private chats only.** The bridge ignores group chats completely (no reply, no processing), for RoyVa and for Claude.
 * **Per-user scopes** (`runtime/gateway/users.json`, deployment config, not code): `{"telegram:<id>": {"person": "...", "scopes": ["*"]}, "_policy": {"silent_scopes": ["email"]}}`.
   Intents may carry a `scope`; today only `email` (on mail_read) is scoped. Per the owner, anyone on the bot's allowlist may run routines and drive speakers. A user without a required scope gets nothing run and either a short
-  refusal or, for scopes listed in `silent_scopes` (email), **no reply at all**. Unlisted users have no private scopes. Grant = add the scope to that user's list.
+  refusal or, for scopes listed in `silent_scopes` (gmail), **no reply at all**. Unlisted users have no private scopes. Grant = add the scope to that user's list.
 * A user can't borrow another user's tools: grants are recomputed per turn from the intents the *current* user may use.
 
 ## Acting on the house (options 1 and 2)
@@ -88,3 +88,20 @@ Debug a bad answer: find its `trace_id` in `traces.jsonl` → `capture_ids`/prox
 ## Known gaps (by design, next phases)
 Remote-model escalation and recipe learning (phase 2); write capabilities (speakers/TTS, run-routine, automations, calendar, trackers) are
 registered as `planned` and stay off until a human approves them; per-user mapping beyond `ROYVA_DEFAULT_PERSON`.
+
+
+## Enrollment (who may use RoyVa) and per-person Gmail
+
+* **Roles.** The first user (owner/admin) is in `runtime/gateway/users.json` with `"role": "owner"`. Only the owner can invite, approve, list and remove people
+  (enforced in the gateway, `directory.py`, not just in the bridge). Members start with no private scopes.
+* **Telegram commands (bridge `enroll.mjs`).** Owner: `/invite <name> [gmail-address]` (one-use code, 24 h; deep link `t.me/<bot>?start=CODE`), `/people`,
+  `/accept <name>`, `/decline <name>`, `/revoke <name>`. Newcomer: `/start CODE` or `/join CODE` (strangers are otherwise ignored). Member: `/connect-gmail`,
+  `/disconnect-gmail`. A pasted sign-in address/code (a message that is only that) goes straight to the gateway and never to the model.
+* **Gmail per person.** `/connect-gmail` returns a Google link; the person pastes back the code or the `localhost` address; the gateway exchanges it (PKCE) and stores
+  `runtime/gateway/gmail/<name>.*` (0600). Each person gets their own MCP servers `gmail-u-<name>` and `gmail-tidy-u-<name>`; a session is granted only its owner's
+  mailbox. The privacy scope is `gmail`. Read-only by default (`--manage` via the CLI adds trash/archive). If `/invite` had a Gmail address, any other account is refused.
+* **Client file.** `$ROYVA_GMAIL_CLIENT`, else `~/.royva/gmail-client.json`, else the Gmail MCP's own keys file. A Web-application client with the GitHub Pages relay
+  (`docs/oauth-relay/`) as redirect gives a one-tap "copy code" page; a Desktop client (localhost redirect) works with paste-back. While the Google app is in Testing mode every
+  Gmail address must be a test user and tokens expire after 7 days.
+* **OpenCode reload.** After a connect/disconnect the bridge waits until no run is active, then calls `POST /v1/admin/restart-opencode` (kills the process; systemd restarts it).
+* **CLI.** `scripts/royva-gmail start <name> [--manage] | finish <code> | list | revoke <name>` for the terminal.

@@ -30,3 +30,13 @@ Start `claude` in `~/RoyVa`, say "resume from HANDOFF.md". Then re-arm the Teleg
 * Fresh held-out routing eval set needed (current benchmark is tuned, optimistic). B5 (title-generation extra call) open.
 * Map Telegram IDs to Shobha and Shivangsh (email scope) later. Planned/off: calendar, trackers, HA automation writing, camera analysis, home_control.
 * Phase 2 (remote-model escalation + learning) is parked by the user.
+
+
+## Gmail pipeline + Telegram enrollment (2026-11-08, built while the user was away; all UNCOMMITTED unless noted)
+* Done and tested (gateway 216, bridge 30 tests): `gateway/royva_gateway/{gmail_enroll,gmail_cli,directory}.py`, per-person MCP wiring (profiles/service: `gmail-u-<name>`),
+  scope renamed email -> gmail, endpoints `/v1/enroll/*` and `/v1/admin/restart-opencode`, bridge `enroll.mjs` + hooks in `bridge.mjs`, relay page `docs/oauth-relay/`, `scripts/royva-gmail`.
+* Live-verified: dummy Gmail connected via paste-back (then removed); isolation; unknown-mailbox message; owner-only invite on the live store with a fake id.
+* NOT verified end to end: a real second Telegram account doing /join -> /accept -> /connect-gmail (needs a second account); restart-when-idle after a real connect; the Web-client + GitHub Pages route
+  (needs the user: public repo `som4tress/royva-oauth-relay` + Pages [repo create was denied by the classifier; the local repo ~/royva-oauth-relay is committed], Google Web client JSON at ~/.royva/gmail-client.json).
+* Known gaps: unread-count answers are wrong (model reports a capped page, e.g. 201 vs ~7.6k); env allowlist ids in TELEGRAM_ALLOWED_USER_IDS cannot be revoked from chat (shrink it to the owner).
+* Backups of the bridge before each change: runtime/bridge.mjs.pre-*.bak.
