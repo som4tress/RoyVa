@@ -25,8 +25,8 @@ function emailDetails(rows, id) {
 
 // One approval covers a whole request: after the user approves a bulk-tidy call, further calls of the SAME action in the SAME run
 // (for example the next batch of a large mailbox) go through without asking again. Scoped per session and per action, capped, cleared when the run ends.
-// A person's own mailbox is served by gmail-<person> / gmail-tidy-<person>; everything below reasons about the canonical gmail_* / gmail-tidy_* names.
-const MAIL_NAME = /^(gmail-tidy|gmail)(?:-([a-z0-9][a-z0-9-]*))?_(.+)$/;
+// A person's own mailbox is served by gmail-u-<person> / gmail-tidy-u-<person>; everything below reasons about the canonical gmail_* / gmail-tidy_* names.
+const MAIL_NAME = /^(gmail-tidy|gmail)(?:-u-([a-z0-9][a-z0-9-]*))?_(.+)$/;
 export const canonTool = name => { const m = typeof name === 'string' && MAIL_NAME.exec(name); return m ? `${m[1]}_${m[3]}` : name; };
 export const mailAccount = name => { const m = typeof name === 'string' && MAIL_NAME.exec(name); return m ? (m[2] || 'default') : null; };
 export const BATCH_TOOLS = new Set(['gmail-tidy_tidy_matching', 'gmail-tidy_tidy_ids']);
