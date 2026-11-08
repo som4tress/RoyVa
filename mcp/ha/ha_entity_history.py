@@ -80,6 +80,16 @@ def _aware(value, name):
     return d
 
 
+def _local(value):
+    """Home Assistant stores UTC. The model must only ever see the household's local time, or it quotes 'UTC' times as local."""
+    if isinstance(value, str) and len(value) >= 19 and value[4:5] == "-" and value[10:11] == "T":
+        try:
+            return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone().isoformat(timespec="seconds")
+        except ValueError:
+            pass
+    return value
+
+
 def numeric_change(args):
     eid = args["entity_id"]
     start = _aware(args["start"], "start")
@@ -99,7 +109,7 @@ def numeric_change(args):
     if not vals:
         return {"entity_id": eid, "error": "no numeric readings in that window (entity may be non-numeric, unavailable, or outside recorder retention)"}
     cur = next((s for s in _get("/api/states") if s["entity_id"] == eid), {})
-    return {"entity_id": eid, "unit": cur.get("attributes", {}).get("unit_of_measurement"), "start": start.isoformat(), "end": end.isoformat(),
+    return {"entity_id": eid, "unit": cur.get("attributes", {}).get("unit_of_measurement"), "start": _local(start.isoformat()), "end": _local(end.isoformat()),
             "first": vals[0], "last": vals[-1], "change": round(vals[-1] - vals[0], 3), "min": min(vals), "max": max(vals), "readings": len(vals),
             "note": "change = last - first; for a total_increasing sensor (odometer, energy) this is the amount used/travelled in the window"}
 
@@ -134,10 +144,11 @@ def state_changes(args):
     real = [r for r in inside if r["state"] not in ("unavailable", "unknown")]
     counts = {}
     for r in real:
-        counts[r["state"]] = counts.get(r["state"], 0) + 1
-    recent = [{"state": r["state"], "at": r["last_changed"]} for r in real[-int(args.get("recent", 10)):]][::-1]
-    return {"entity_id": eid, "start": start.isoformat(), "end": end.isoformat(), "changes_in_window": len(real), "availability_changes": len(blips),
-            "counts_by_state": counts, "most_recent_first": recent, "state_at_start": rows[0]["state"],
+        k = _local(r["state"])
+        counts[k] = counts.get(k, 0) + 1
+    recent = [{"state": _local(r["state"]), "at": _local(r["last_changed"])} for r in real[-int(args.get("recent", 10)):]][::-1]
+    return {"entity_id": eid, "start": _local(start.isoformat()), "end": _local(end.isoformat()), "changes_in_window": len(real), "availability_changes": len(blips),
+            "counts_by_state": counts, "most_recent_first": recent, "state_at_start": _local(rows[0]["state"]), "timezone": str(dt.datetime.now().astimezone().tzname()),
             "note": "changes_in_window excludes going unavailable/unknown (reported separately). For event.* entities each real change is one event; "
                     "for on/off sensors count the 'on' entry for how many times it triggered. If the state value itself is a timestamp, it is the time of that event."}
 
