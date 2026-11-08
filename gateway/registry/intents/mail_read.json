@@ -35,6 +35,7 @@
    "gmail.search_messages"
   ],
   "context": [
+    "current_time",
    "user_profile"
   ],
   "steps": 8,

@@ -39,6 +39,7 @@
    "ha_entity_history.get_state_changes"
   ],
   "context": [
+    "current_time",
    "home_map",
    "user_profile"
   ],

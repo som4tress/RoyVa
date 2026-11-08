@@ -286,6 +286,8 @@ class Gateway:
             state = SessionState(session_id=await self.oc.create_session(self.s.agent, perms), created_at=now)
 
         per_turn = {"current_location": await self.current_location_text(req.user)} if "current_location" in new_ctx else {}
+        if "current_time" in new_ctx:
+            per_turn["current_time"] = profiles.now_text()
         text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting), [i.id for i in acting])
         return Prepared("run", d, trace_id, state.session_id, prompt=text, cap=cap, tools=tools, grants=grant_map, state=state, acting=acting, new_ctx=new_ctx)
 

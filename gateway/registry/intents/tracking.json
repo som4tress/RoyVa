@@ -37,6 +37,7 @@
    "web.fetch"
   ],
   "context": [
+    "current_time",
    "user_profile"
   ],
   "steps": 8,

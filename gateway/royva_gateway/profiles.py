@@ -5,7 +5,7 @@ from .config import Settings
 from .models import Intent
 from .registry import Registry
 
-PER_TURN_PROVIDERS = {"current_location"}        # refreshed on every message (the user moves); never cached per session
+PER_TURN_PROVIDERS = {"current_location", "current_time"}        # refreshed on every message (the user moves); never cached per session
 
 PROVIDER_TEXT = {
     # Static placeholders; real generators (home map from HA registry, speaker table, user profile) are separate tasks.
@@ -65,6 +65,14 @@ def step_cap(intents: list[Intent], default: int = 6) -> int:
 
 COMBINED = ("This request combines several capabilities ({names}). Complete every part, in order: gather what is needed first, then deliver it the way the user asked "
             "(for example spoken or played on a speaker) by actually running that action, instead of only replying in text. Text is just the default delivery.")
+
+
+def now_text(now=None) -> str:
+    """The model has no clock: without this it assumes its training year (e.g. summarising 'this month's news' from a year ago)."""
+    from datetime import datetime
+    now = (now or datetime.now()).astimezone()
+    return (f"Right now it is {now:%A %-d %B %Y}, {now:%H:%M} ({now.tzname()}). Use this date for 'today', 'tonight', 'this week', 'this month' and "
+            f"for any news, price, forecast or schedule lookup (search for the current year, never an older one).")
 
 
 def prompt_text(user_text: str, new_context: list[str], hint: str, settings: Settings, unsupported: list[str],

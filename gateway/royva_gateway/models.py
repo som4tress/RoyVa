@@ -11,8 +11,8 @@ SNAKE = re.compile(r"^[a-z][a-z0-9_]{1,40}$")
 Risk = Literal["read", "write", "external"]            # external = leaves the house (send email, broadcast, spend money)
 WritePolicy = Literal["read_only", "confirm", "auto"]
 IntentStatus = Literal["planned", "candidate", "active", "retired"]
-ContextProvider = Literal["home_map", "home_location", "current_location", "speakers", "user_profile"]
-CONTEXT_PROVIDERS: tuple[str, ...] = ("home_map", "home_location", "current_location", "speakers", "user_profile")
+ContextProvider = Literal["home_map", "home_location", "current_location", "current_time", "speakers", "user_profile"]
+CONTEXT_PROVIDERS: tuple[str, ...] = ("home_map", "home_location", "current_location", "current_time", "speakers", "user_profile")
 
 
 class Strict(BaseModel):

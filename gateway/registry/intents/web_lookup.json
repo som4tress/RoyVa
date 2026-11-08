@@ -38,6 +38,7 @@
    "ha.get_datetime"
   ],
   "context": [
+    "current_time",
    "home_location",
    "current_location"
   ],

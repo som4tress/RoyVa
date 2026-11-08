@@ -39,6 +39,7 @@
    "web.fetch"
   ],
   "context": [
+    "current_time",
    "speakers"
   ],
   "steps": 8,

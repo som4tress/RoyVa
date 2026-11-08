@@ -3,7 +3,7 @@ import json
 import itertools
 from pathlib import Path
 
-from royva_gateway import registry
+from royva_gateway import profiles, registry
 from royva_gateway.classifiers import Prediction
 from royva_gateway.config import Settings
 from royva_gateway.models import AskRequest
@@ -540,3 +540,16 @@ def test_mixed_request_for_a_silent_scope_answers_the_allowed_part_without_menti
     assert r.status == "done"
     prompt = next(c for c in oc.calls if c[0] == "prompt")[2]
     assert "email" not in prompt.lower() and not any(a.startswith("gmail_") for a in granted(next(c for c in oc.calls if c[0] == "create")))
+
+
+def test_now_text_gives_the_model_a_real_date_and_year():
+    from datetime import datetime, timezone
+    out = profiles.now_text(datetime(2026, 11, 8, 21, 5, tzinfo=timezone.utc))
+    assert "2026" in out and "Sunday" in out and "never an older one" in out
+
+
+def test_time_intents_get_the_clock_every_turn_and_it_is_not_cached():
+    reg = registry.load(Path(__file__).resolve().parents[1] / "registry")
+    for iid in ("web_lookup", "home_history", "mail_read"):
+        assert "current_time" in reg.intents[iid].profile.context
+    assert "current_time" in profiles.PER_TURN_PROVIDERS
