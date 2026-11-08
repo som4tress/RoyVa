@@ -9,7 +9,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 
 from . import registry as registry_mod
 from .classifiers import LLMClassifier, RulesClassifier
+from pathlib import Path
+
+from pydantic import BaseModel
+
 from .config import Settings
+from .directory import Directory, DirectoryError
+from .gmail_enroll import Enroller
 from .models import AskRequest, AskResponse
 from .opencode_client import OpenCodeClient
 from .router import Entry, Router
@@ -34,6 +40,7 @@ def build_gateway(settings: Optional[Settings] = None) -> Gateway:
 async def lifespan(app: FastAPI):
     gw = build_gateway()
     app.state.gw = gw
+    app.state.dir = Directory(gw.s.users_file, gw.s.state_dir, Enroller(gw.s.state_dir), Path(__file__).resolve().parents[2] / "config" / "opencode.json")
     app.state.ready_task = asyncio.create_task(gw.watch_ready())
     yield
     app.state.ready_task.cancel()
@@ -111,3 +118,94 @@ async def route(req: AskRequest):
     if not gw.ready:
         raise HTTPException(503, "starting: OpenCode MCP servers are not connected yet")
     return await gw.route_for_bridge(req)
+
+
+# ---- enrollment (who may use RoyVa). The bridge forwards Telegram commands here; the gateway is the only writer of users.json. ----
+class Enroll(BaseModel):
+    user: str                      # "telegram:<id>" of the person who sent the command (identity comes from Telegram, never from message text)
+    name: str = ""
+    gmail: str = ""
+    code: str = ""
+    display: str = ""
+    text: str = ""
+    approve: bool = True
+    manage: bool = False
+
+
+def _enroll_call(fn):
+    try:
+        return {"ok": True, **fn()}
+    except DirectoryError as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/v1/enroll/allowed", dependencies=[Depends(require_token)])
+async def enroll_allowed():
+    d: Directory = app.state.dir
+    return {"ids": d.active_ids(), "owners": d.owner_ids()}
+
+
+@app.post("/v1/enroll/invite", dependencies=[Depends(require_token)])
+async def enroll_invite(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.invite(r.user, r.name, r.gmail or None))
+
+
+@app.post("/v1/enroll/join", dependencies=[Depends(require_token)])
+async def enroll_join(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: {**d.join(r.user, r.display, r.code), "owners": d.owner_ids()})
+
+
+@app.post("/v1/enroll/decide", dependencies=[Depends(require_token)])
+async def enroll_decide(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.decide(r.user, r.name, r.approve))
+
+
+@app.post("/v1/enroll/people", dependencies=[Depends(require_token)])
+async def enroll_people(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: {"people": d.people(r.user)})
+
+
+@app.post("/v1/enroll/revoke", dependencies=[Depends(require_token)])
+async def enroll_revoke(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.revoke(r.user, r.name))
+
+
+@app.post("/v1/enroll/gmail/start", dependencies=[Depends(require_token)])
+async def enroll_gmail_start(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: {"url": d.gmail_start(r.user, r.manage)})
+
+
+@app.post("/v1/enroll/gmail/finish", dependencies=[Depends(require_token)])
+async def enroll_gmail_finish(r: Enroll):
+    """The pasted sign-in text goes only here: it is never logged and never reaches the model."""
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.gmail_finish(r.user, r.text))
+
+
+@app.post("/v1/enroll/gmail/stop", dependencies=[Depends(require_token)])
+async def enroll_gmail_stop(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.gmail_stop(r.user))
+
+
+@app.post("/v1/admin/restart-opencode", dependencies=[Depends(require_token)])
+async def restart_opencode():
+    """Restart OpenCode so it loads newly connected Gmail servers. The caller waits until no run is active; the supervisor (systemd) restarts the process."""
+    import subprocess
+    from urllib.parse import urlparse
+    gw: Gateway = app.state.gw
+    pattern = gw.s.opencode_restart.format(port=urlparse(gw.s.opencode_url).port)
+    subprocess.run(["pkill", "-f", pattern], check=False)
+    return {"ok": True}
+
+
+@app.post("/v1/enroll/is-signin", dependencies=[Depends(require_token)])
+async def enroll_is_signin(r: Enroll):
+    d: Directory = app.state.dir
+    return {"signin": d.looks_like_signin(r.text)}

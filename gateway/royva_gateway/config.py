@@ -21,6 +21,7 @@ class Settings:
     router_fallback_name: str = os.environ.get("ROYVA_ROUTER_FALLBACK_NAME", "35B+fs")
     router_timeout_s: float = float(os.environ.get("ROYVA_ROUTER_TIMEOUT", "15"))
     users_file: Path = ROOT.parent / "runtime" / "gateway" / "users.json"                  # {"telegram:<id>": {"person": "...", "scopes": ["*"]}}
+    opencode_restart: str = os.environ.get("ROYVA_OPENCODE_RESTART_PATTERN", "opencode serve --hostname 127.0.0.1 --port {port}")   # process pattern killed to restart OpenCode (its supervisor brings it back)
     token: str = os.environ.get("ROYVA_GATEWAY_TOKEN", "")                  # optional shared secret for /v1/*
     agent: str = os.environ.get("ROYVA_AGENT", "royva")
     max_concurrent_runs: int = int(os.environ.get("ROYVA_MAX_RUNS", "2"))

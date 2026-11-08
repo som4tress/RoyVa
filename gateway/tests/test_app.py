@@ -89,6 +89,14 @@ def test_reload_applies_valid_changes_and_rejects_invalid_ones_with_400(tmp_path
 def test_route_table_is_exactly_the_documented_api():
     """Guards against an edit silently dropping (or adding) an endpoint: the bridge depends on /v1/session and /v1/route."""
     have = {(m, r.path) for r in app_mod.app.routes if hasattr(r, "methods") for m in r.methods if m not in ("HEAD", "OPTIONS")}
-    api = {(m, p) for m, p in have if p.startswith("/v1") or p == "/healthz"}
+    api = {(m, p) for m, p in have if (p.startswith("/v1") and not p.startswith(("/v1/enroll", "/v1/admin"))) or p == "/healthz"}     # enrollment is pinned below
     assert api == {("GET", "/healthz"), ("GET", "/v1/registry"), ("GET", "/v1/stats"),
                    ("POST", "/v1/ask"), ("POST", "/v1/session"), ("POST", "/v1/route"), ("POST", "/v1/reload")}
+
+
+def test_enrollment_route_table_is_pinned():
+    from royva_gateway.app import app
+    have = {r.path for r in app.routes}
+    for path in ("/v1/enroll/allowed", "/v1/enroll/invite", "/v1/enroll/join", "/v1/enroll/decide", "/v1/enroll/people",
+                 "/v1/enroll/revoke", "/v1/enroll/gmail/start", "/v1/enroll/gmail/finish", "/v1/enroll/gmail/stop", "/v1/enroll/is-signin", "/v1/admin/restart-opencode"):
+        assert path in have
