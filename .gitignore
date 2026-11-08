@@ -1,0 +1,12 @@
+# Secrets and runtime data never go in Git
+*.env
+*.key
+*.pem
+.env*
+runtime/
+captures/
+*.log
+node_modules/
+__pycache__/
+*.pyc
+gateway/eval/real_v1.jsonl
