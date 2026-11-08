@@ -11,7 +11,7 @@ function scrub(value, key = '') {
 function emailDetails(rows, id) {
   if (!id) return;
   for (const row of [...rows].reverse()) for (const part of [...(row.content || [])].reverse()) {
-    if (part.type !== 'tool' || !part.name?.startsWith('gmail_')) continue;
+    if (part.type !== 'tool' || !canonTool(part.name)?.startsWith('gmail_')) continue;
     for (const block of part.state?.content || []) {
       if (block.type !== 'text') continue;
       let data;
@@ -25,11 +25,17 @@ function emailDetails(rows, id) {
 
 // One approval covers a whole request: after the user approves a bulk-tidy call, further calls of the SAME action in the SAME run
 // (for example the next batch of a large mailbox) go through without asking again. Scoped per session and per action, capped, cleared when the run ends.
+// A person's own mailbox is served by gmail-<person> / gmail-tidy-<person>; everything below reasons about the canonical gmail_* / gmail-tidy_* names.
+const MAIL_NAME = /^(gmail-tidy|gmail)(?:-([a-z0-9][a-z0-9-]*))?_(.+)$/;
+export const canonTool = name => { const m = typeof name === 'string' && MAIL_NAME.exec(name); return m ? `${m[1]}_${m[3]}` : name; };
+export const mailAccount = name => { const m = typeof name === 'string' && MAIL_NAME.exec(name); return m ? (m[2] || 'default') : null; };
 export const BATCH_TOOLS = new Set(['gmail-tidy_tidy_matching', 'gmail-tidy_tidy_ids']);
 export function approvalKey(permission) {
-  if (!BATCH_TOOLS.has(permission?.action)) return null;
+  if (!BATCH_TOOLS.has(canonTool(permission?.action))) return null;
   const action = permission.metadata?.input?.action;
-  return typeof action === 'string' ? `gmail-tidy:${action}` : null;
+  if (typeof action !== 'string') return null;
+  const acct = mailAccount(permission.action);                       // an approval never carries across mailboxes
+  return acct && acct !== 'default' ? `gmail-tidy:${acct}:${action}` : `gmail-tidy:${action}`;
 }
 export class BatchApprovals {
   constructor(cap = 25) { this.cap = cap; this.sessions = new Map(); }
@@ -49,7 +55,7 @@ const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark
 export function formatPermission(permission, rows = []) {
   const input = permission.metadata?.input;
   const args = input && typeof input === 'object' ? input : {};
-  const tool = permission.action;
+  const tool = canonTool(permission.action);
   if (BATCH_TOOLS.has(tool)) {
     const verb = TIDY_VERB[args.action] || `Run ${line(args.action)}`;
     let what;
@@ -120,7 +126,7 @@ export function formatPermission(permission, rows = []) {
   const lines = ['Approve?', action];
   if (details?.subject) lines.push(`Subject: ${line(details.subject).slice(0, 80)}`);
   if (details?.from) lines.push(`From: ${line(details.from).slice(0, 60)}`);
-  for (const [key, label] of [['to', 'To'], ['cc', 'CC'], ['bcc', 'BCC'], ['subject', 'Subject']]) {
+  for (const [key, label] of [['to', 'To'], ['cc', 'CC'], ['bcc', 'BCC'], ['subject', 'Subject'], ['body', 'Text']]) {
     if (args[key] && !(key === 'subject' && details?.subject)) lines.push(`${label}: ${line(args[key]).slice(0, 80)}`);
   }
   if (tool === 'gmail_send_draft') lines.push('Review the draft first: this approval does not show its recipients or text.');

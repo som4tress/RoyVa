@@ -44,5 +44,5 @@ test('generic approval prompts are short: no JSON dump, no tool-id boilerplate',
 
 test('sending email shows the recipient and subject, briefly', () => {
   const out = formatPermission(perm('gmail_send_message', { to: 'a@b.com', subject: 'Hi', body: 'long '.repeat(500) }));
-  assert.match(out, /Send email/); assert.match(out, /To: a@b.com/); assert.ok(out.length < 300);
+  assert.match(out, /Send email/); assert.match(out, /To: a@b.com/); assert.match(out, /Text: long long/); assert.ok(out.length < 400);
 });
