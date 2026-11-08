@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>RoyVa sign-in code</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:3rem auto;padding:0 1rem;color:#111;background:#fff}
+@media(prefers-color-scheme:dark){body{color:#eee;background:#111}}
+code{display:block;word-break:break-all;padding:.75rem;border:1px solid #888;border-radius:.5rem;margin:1rem 0}
+button{font:inherit;padding:.6rem 1rem}</style></head><body>
+<h1>Almost done</h1>
+<p id="msg">Copy this code and paste it into your RoyVa chat.</p>
+<code id="code" hidden></code><button id="copy" hidden>Copy code</button>
+<p><small>This page runs entirely in your browser. It only displays the code in the address bar and sends nothing anywhere.
+The code is useless without the secret held by your own RoyVa server.</small></p>
+<script>
+// Reads ?code=...&state=... from the address and shows "state.code". No network calls, no storage.
+(function () {
+  var q = new URLSearchParams(location.search), code = q.get("code"), state = q.get("state"), err = q.get("error");
+  var msg = document.getElementById("msg"), box = document.getElementById("code"), btn = document.getElementById("copy");
+  if (err) { msg.textContent = "Google reported: " + err + ". Close this page and ask RoyVa for a new link."; return; }
+  if (!code) { msg.textContent = "No sign-in code here. Start from the link RoyVa sent you."; return; }
+  var text = (state ? state + "." : "") + code;
+  box.textContent = text; box.hidden = false; btn.hidden = false;
+  btn.onclick = function () { (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function () { btn.textContent = "Copied"; }, function () { var r = document.createRange(); r.selectNodeContents(box); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Selected: now copy"; }); };
+  history.replaceState(null, "", location.pathname);
+})();
+</script></body></html>
