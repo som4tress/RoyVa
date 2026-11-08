@@ -1,4 +1,4 @@
-import {boundedDownload, MAX_BYTES} from '../media-input/index.js';
+import {boundedDownload, MAX_BYTES, preparePrompt as expandVideos} from '../media-input/index.js';
 export function attachment(message) {
   if (message.photo?.length) return {...message.photo.at(-1),mime:'image/jpeg',name:'photo.jpg'};
   if (message.video || message.video_note) return {...(message.video || message.video_note),mime:message.video?.mime_type || 'video/mp4',name:message.video?.file_name || 'video.mp4'};
@@ -11,4 +11,11 @@ export async function telegramMedia(message,tg,token) {
   const file=await tg('getFile',{file_id:media.file_id});
   const data=await boundedDownload(await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`,{signal:AbortSignal.timeout(60000)}));
   return [{uri:`data:${media.mime};base64,${data.toString('base64')}`,name:media.name}];
+}
+// Vanilla OpenCode does not load the media-input plugin, so videos are turned into sampled frames here, before the prompt is sent.
+export async function withVideoFrames(files, text) {
+  if (!files.some(f => /^data:video\//i.test(f.uri))) return {files, text};
+  const event = {prompt: {files: [...files], text}, metadata: {}};
+  await expandVideos(event);
+  return {files: event.prompt.files, text: event.prompt.text};
 }

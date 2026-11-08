@@ -1,4 +1,4 @@
-import {telegramMedia} from './media.mjs';
+import {telegramMedia, withVideoFrames} from './media.mjs';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -135,6 +135,12 @@ async function runDeepSeekTakeover(request) {
     if (child.exitCode === null) child.kill('SIGKILL');
     await rm(temporary, {recursive: true, force: true});
   }
+}
+
+async function testFile(path) {
+  const data = readFileSync(path); const ext = path.split('.').pop().toLowerCase();
+  const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm' }[ext] || 'application/octet-stream';
+  return [{ uri: `data:${mime};base64,${data.toString('base64')}`, name: path.split('/').pop() }];
 }
 
 export async function main({transcriber = createTranscriber()} = {}) {
@@ -325,9 +331,12 @@ export async function main({transcriber = createTranscriber()} = {}) {
         if (transcript) replyTo = {...message, message_id: transcript.message_id};
       } finally { await rm(directory, { recursive: true, force: true }); }
     }
-    const files = await telegramMedia(message, tg, token);
-    if (files.length && !prompt.trim()) prompt = message.video || message.video_note || /^video\//.test(message.document?.mime_type || '') ? 'Describe this video.' : 'Describe this image.';
-    return {prompt, replyTo, files};
+    // test-only: a local file stands in for an uploaded photo/video (same bytes-to-data-URI path as telegramMedia)
+    const files = message._test_file ? await testFile(message._test_file) : await telegramMedia(message, tg, token);
+    if (message._test_file && files.length && !prompt.trim()) prompt = /^data:video/.test(files[0].uri) ? 'Describe this video.' : 'Describe this image.';
+    else if (files.length && !prompt.trim()) prompt = message.video || message.video_note || /^video\//.test(message.document?.mime_type || '') ? 'Describe this video.' : 'Describe this image.';
+    const expanded = await withVideoFrames(files, prompt);
+    return {prompt: expanded.text, replyTo, files: expanded.files};
   }
   async function handle(message) {
     if (!allowed.has(String(message.from?.id)) || message.from?.is_bot) return;
@@ -581,7 +590,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
           for (const f of readdirSync(dir).filter(name => name.endsWith('.json')).sort()) {
             const file = join(dir, f); const job = JSON.parse(readFileSync(file, 'utf8')); rmSync(file);
             const mirror = await tg('sendMessage', { chat_id: owner, text: `🧪 ${job.label ?? 'test'}\n${job.text}` });
-            await handle({ message_id: mirror.message_id, from: { id: owner, is_bot: false }, chat: { id: owner, type: job.chat_type || 'private' }, _test_royva: job.as === 'royva', date: Math.floor(Date.now() / 1000), text: job.text });
+            await handle({ message_id: mirror.message_id, from: { id: owner, is_bot: false }, chat: { id: owner, type: job.chat_type || 'private' }, _test_royva: job.as === 'royva', date: Math.floor(Date.now() / 1000), text: job.text, ...(job.file ? { _test_file: job.file } : {}) });
           }
         } catch (error) { console.error('Inject failed:', error.message); }
         await setTimeout(1000);
