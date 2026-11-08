@@ -60,7 +60,7 @@ export function formatPermission(permission, rows = []) {
       const top = [...senders].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`).join(', ');
       what = `${ids.length} listed email${ids.length === 1 ? '' : 's'}${top ? `\nFrom: ${top}${senders.size > 3 ? ', …' : ''}` : ''}`;
     } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
-    return ['Approve?', `${verb}: ${what}`, '/approve or /deny'].join('\n');
+    return ['Approve?', `${verb}: ${what}`, '/approve (covers the whole request) or /deny'].join('\n');
   }
   let action = `Run ${line(tool)}`;
   const batch = tool === 'gmail_batch_modify_messages';

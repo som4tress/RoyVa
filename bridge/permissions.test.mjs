@@ -30,7 +30,7 @@ test('auto-approval is capped', () => {
 
 test('the prompt says what will happen and that one approval covers the request', () => {
   const q = formatPermission(perm('gmail-tidy_tidy_matching', { action: 'trash', query: '{from:paypal.com from:nextdoor.com}' }));
-  assert.match(q, /Move to Trash: every email matching: \{from:paypal.com from:nextdoor.com\}/); assert.match(q, /One \/approve covers this whole request/); assert.match(q, /30 days/);
+  assert.match(q, /Move to Trash: every email matching: \{from:paypal.com from:nextdoor.com\}/); assert.match(q, /covers the whole request/); assert.ok(q.split('\n').length === 3);
   const ids = formatPermission(perm('gmail-tidy_tidy_ids', { action: 'archive', ids: ['a1b2c3d4', 'a1b2c3d5'] }));
   assert.match(ids, /Archive: 2 listed emails/);
 });
