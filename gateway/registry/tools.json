@@ -462,5 +462,21 @@
   "risk": "write",
   "description": "Run an existing routine",
   "available": true
+ },
+ {
+  "id": "gmail_tidy.count_matching",
+  "action": "gmail-tidy_count_matching",
+  "server": "gmail-tidy",
+  "risk": "read",
+  "description": "Count emails matching a Gmail search (up to 5000) and show examples.",
+  "available": true
+ },
+ {
+  "id": "gmail_tidy.tidy_matching",
+  "action": "gmail-tidy_tidy_matching",
+  "server": "gmail-tidy",
+  "risk": "write",
+  "description": "Change every email matching a Gmail search: move to Trash (recoverable 30 days), archive, or mark read/unread.",
+  "available": true
  }
 ]

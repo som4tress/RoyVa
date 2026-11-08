@@ -370,9 +370,9 @@ def test_readiness_follows_the_live_mcp_status(tmp_path):
     gw, oc, _ = make(tmp_path, {})
     assert gw.ready is False
     assert run(gw.check_ready_once()) is True and gw.ready is True
-    oc.mcp = {"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected"}   # OpenCode restarted
+    oc.mcp = {"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}   # OpenCode restarted
     assert run(gw.check_ready_once()) is False and gw.ready is False                  # requests get 503 instead of running with missing tools
-    oc.mcp = {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected"}
+    oc.mcp = {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}
     assert run(gw.check_ready_once()) is True
 
 

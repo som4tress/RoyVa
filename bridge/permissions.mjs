@@ -64,7 +64,20 @@ export function formatPermission(permission, rows = []) {
   if (nativeAction) action = nativeAction;
   if (batch && Array.isArray(args.messageIds)) {
     // IDs and changes are displayed in full, never replaced with an open-ended query.
-    action += ' — this exact batch only';
+    action += '';
+  }
+  if (batch && Array.isArray(args.messageIds) && args.messageIds.length) {
+    // Short summary: what, how many, from whom. The exact IDs stay in the tool call, not in the chat message.
+    const found = args.messageIds.map(id => emailDetails(rows, id));
+    const senders = new Map();
+    for (const m of found) if (m?.from) { const k = line(m.from).replace(/^.*<(.+)>.*$/, '$1').slice(0, 40); senders.set(k, (senders.get(k) || 0) + 1); }
+    const top = [...senders].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`).join(', ');
+    const out = ['Approve?', action];
+    if (top) out.push(`From: ${top}${senders.size > 3 ? ', …' : ''}`);
+    const first = found.find(m => m?.subject);
+    if (first) out.push(`e.g. "${line(first.subject).slice(0, 60)}"`);
+    out.push('/approve or /deny (this batch only)');
+    return out.join('\n');
   }
   const details = emailDetails(rows, args.messageId);
   const lines = ['Permission required', `Action: ${action}`];

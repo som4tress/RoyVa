@@ -20,7 +20,7 @@ class FakeOC:
     """Scripted stand-in for OpenCode. Normal turns finish at once; `runaway` makes the first prompt loop on tools until interrupted."""
     def __init__(self, runaway=False, mcp=None, fanout=0):
         self.sessions, self.msgs, self.calls = {}, {}, []
-        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected"}
+        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}
         self.clock = itertools.count(100, 10)
         self.n = 0
 
@@ -195,7 +195,7 @@ def test_runaway_tool_loop_is_cut_off_and_wrapped_up(tmp_path):
 
 # ------------------------------------------------------------------ readiness (bug B3) and persistence
 def test_ready_only_when_all_mcp_connected(tmp_path):
-    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected"})
+    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"})
     assert asyncio.run(gw.wait_ready(timeout=0.2, poll=0.05)) is False
     gw2, _, _ = make(tmp_path, {})
     assert asyncio.run(gw2.wait_ready(timeout=1, poll=0.05)) is True
@@ -349,7 +349,7 @@ def test_code_contains_no_household_specific_terms():
     """Everything specific to this household/home must come from Home Assistant or deployment config, never from code."""
     import re
     forbidden = re.compile(r"shobha|shivangsh|mustang|milpitas|santa clara|goodnight|kbay|printer|(?<!/home/)somdutta", re.I)
-    files = list((ROOT / "royva_gateway").glob("*.py")) + [ROOT.parent / "mcp" / "ha" / n for n in ("ha_entity_history.py", "ha_routines.py", "ha_speakers.py")]
+    files = list((ROOT / "royva_gateway").glob("*.py")) + [ROOT.parent / "mcp" / "ha" / n for n in ("ha_entity_history.py", "ha_routines.py", "ha_speakers.py")] + [ROOT.parent / "mcp" / "mail" / "gmail_tidy.py"]
     hits = [(f.name, i + 1, line.strip()[:80]) for f in files for i, line in enumerate(f.read_text().splitlines()) if forbidden.search(line)]
     assert not hits, hits
 

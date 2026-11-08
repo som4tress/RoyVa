@@ -207,6 +207,18 @@
           "/home/somdutta/RoyVa/mcp/ha/ha_routines.py"
         ],
         "codemode": false
+      },
+      "gmail-tidy": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/RoyVa/mcp/mail/gmail_tidy.py"
+        ],
+        "environment": {
+          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/.gmail-mcp/gcp-oauth.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/.gmail-mcp/credentials.json"
+        },
+        "codemode": false
       }
     }
   },

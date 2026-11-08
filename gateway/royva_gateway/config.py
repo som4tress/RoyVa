@@ -24,7 +24,7 @@ class Settings:
     token: str = os.environ.get("ROYVA_GATEWAY_TOKEN", "")                  # optional shared secret for /v1/*
     agent: str = os.environ.get("ROYVA_AGENT", "royva")
     max_concurrent_runs: int = int(os.environ.get("ROYVA_MAX_RUNS", "2"))
-    expected_mcp: tuple[str, ...] = ("home-assistant", "gmail", "ha-history", "ha-entity-history", "ha-speakers", "ha-routines")
+    expected_mcp: tuple[str, ...] = ("home-assistant", "gmail", "ha-history", "ha-entity-history", "ha-speakers", "ha-routines", "gmail-tidy")
     home_location: str = os.environ.get("ROYVA_HOME_LOCATION", "")            # optional coarse place name, e.g. 'San Jose, CA'
     default_person: str = os.environ.get("ROYVA_DEFAULT_PERSON", "")   # HA person object id of the asking user; deployment config (scripts/env.sh), not code
     location_ttl_s: float = 60.0
