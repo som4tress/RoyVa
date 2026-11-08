@@ -68,7 +68,7 @@ def find_entities(args):
         a = s.get("attributes", {})
         hay = (s["entity_id"] + " " + str(a.get("friendly_name", "")) + " " + dev.get(s["entity_id"], "")).lower()
         if q and all(w in hay for w in q):
-            out.append({"entity_id": s["entity_id"], "name": a.get("friendly_name"), "device": dev.get(s["entity_id"]) or None, "state": s["state"],
+            out.append({"entity_id": s["entity_id"], "name": a.get("friendly_name"), "device": dev.get(s["entity_id"]) or None, "state": _local(s["state"]),
                         "unit": a.get("unit_of_measurement"), "device_class": a.get("device_class")})
     return {"matches": out[:limit], "total_matches": len(out)}
 
@@ -138,8 +138,8 @@ def state_changes(args):
     rows = groups[0] if groups else []
     if not rows:
         return {"entity_id": eid, "error": "no history in that window (entity unknown, or outside recorder retention)"}
-    # the first row is the state at `start` (not a change inside the window) when its last_changed precedes the window
-    inside = [r for r in rows if r.get("last_changed") and _aware(r["last_changed"], "t") >= start]
+    # Home Assistant opens the window with a carry-in row stamped exactly `start`: it is the state at start, not a change inside the window
+    inside = [r for r in rows if r.get("last_changed") and _aware(r["last_changed"], "t") > start]
     blips = [r for r in inside if r["state"] in ("unavailable", "unknown")]               # connectivity changes, not activity
     real = [r for r in inside if r["state"] not in ("unavailable", "unknown")]
     counts = {}
@@ -148,7 +148,10 @@ def state_changes(args):
         counts[k] = counts.get(k, 0) + 1
     recent = [{"state": _local(r["state"]), "at": _local(r["last_changed"])} for r in real[-int(args.get("recent", 10)):]][::-1]
     return {"entity_id": eid, "start": _local(start.isoformat()), "end": _local(end.isoformat()), "changes_in_window": len(real), "availability_changes": len(blips),
-            "counts_by_state": counts, "most_recent_first": recent, "state_at_start": _local(rows[0]["state"]), "timezone": str(dt.datetime.now().astimezone().tzname()),
+            "counts_by_state": counts, "most_recent_first": recent, "state_at_start": _local(rows[0]["state"]),
+            **({"hint": "No events recorded in this window for this entity. Event entities can be stale: look for sibling entities of the same device or name "
+                        "(motion/on-off binary sensors, timestamp 'last activity' sensors, counters) with find_entities and check those before saying there were none."}
+               if not real else {}), "timezone": str(dt.datetime.now().astimezone().tzname()),
             "note": "changes_in_window excludes going unavailable/unknown (reported separately). For event.* entities each real change is one event; "
                     "for on/off sensors count the 'on' entry for how many times it triggered. If the state value itself is a timestamp, it is the time of that event."}
 
