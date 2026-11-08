@@ -1,11 +1,12 @@
 """MCP server (stdio, newline JSON-RPC): bulk Gmail tidy-up by search query, done server-side.
-Tools: count_matching (read), tidy_matching (write: trash | archive | mark_read | mark_unread).
+Tools: count_matching (read), tidy_matching and tidy_ids (write: trash | archive | mark_read | mark_unread).
 Why it exists: the model must not page through hundreds of message ids by hand (it loses its place, burns tokens and loops). It gives a Gmail search
 query and this server pages, counts and applies the change in chunks.
 Safety: Trash only (messages stay recoverable for 30 days); there is no permanent-delete path and no send path in this file. A change needs a real
 narrowing query, is capped per call and says plainly when more remain. ROYVA_DRY_RUN=1 or the flag file runtime/gateway/dry_run makes it report instead of act."""
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -15,7 +16,7 @@ from pathlib import Path
 API = "https://gmail.googleapis.com/gmail/v1/users/me"
 PAGE = 500
 COUNT_CAP = 5000
-DEFAULT_LIMIT, MAX_LIMIT = 2000, 10000
+DEFAULT_LIMIT, MAX_LIMIT, MAX_IDS = 2000, 10000, 5000
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", Path(__file__).resolve().parents[2] / "runtime" / "gateway" / "dry_run"))
 DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()      # noqa: E731
 TOO_BROAD = {"", "*", "all", "in:inbox", "in:anywhere", "label:inbox", "is:unread", "is:read", "in:all", "category:primary"}
@@ -35,6 +36,9 @@ QUERY = {"type": "string", "description": "Gmail search query, e.g. from:paypal.
 TOOLS = [
     tool("count_matching", "Count the messages matching a Gmail search query (up to 5000) and show a few examples. Use this before changing anything so you can tell the user how many.",
          {"query": QUERY}, ["query"], RO),
+    tool("tidy_ids", "Apply a change to specific messages by id (use when the user means messages you already listed or read): trash (recoverable for 30 days), archive, mark_read or mark_unread. One call handles up to 5000 ids.",
+         {"ids": {"type": "array", "items": {"type": "string"}, "description": "Message ids from a previous list or search."}, "action": {"type": "string", "enum": sorted(ACTIONS)}},
+         ["ids", "action"], HINT),
     tool("tidy_matching", "Apply a change to EVERY message matching a Gmail search query (up to a per-call limit): trash (recoverable for 30 days, never permanent delete), archive, mark_read or mark_unread. Does the paging itself; one call is enough.",
          {"query": QUERY, "action": {"type": "string", "enum": sorted(ACTIONS)}, "limit": {"type": "integer", "description": "Max messages this call (default 2000, max 10000)."}},
          ["query", "action"], HINT),
@@ -98,8 +102,52 @@ class Gmail:
         return rows
 
 
+def _split_terms(q):
+    """Top-level terms of a Gmail query, keeping quoted phrases and {...} / (...) groups whole."""
+    terms, cur, depth, quote = [], "", 0, False
+    for ch in q:
+        if ch == '"':
+            quote = not quote
+        elif not quote and ch in "{(":
+            depth += 1
+        elif not quote and ch in "})":
+            depth = max(0, depth - 1)
+        if ch.isspace() and not quote and depth == 0:
+            if cur:
+                terms.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    if cur:
+        terms.append(cur)
+    return terms
+
+
+def normalize_query(q):
+    """A message has one sender (and one recipient), so several bare from:/to: terms can only mean OR. Gmail would read them as AND and
+    match nothing, which makes the model retry one sender at a time (one approval each). Group them into one {a b} OR group."""
+    terms = _split_terms(q)
+    out, groups = [], {}
+    for t in terms:
+        op = t.split(":", 1)[0].lower() if ":" in t else ""
+        neg = t.startswith("-")
+        if op in ("from", "to") and not neg:
+            groups.setdefault(op, []).append(t)
+            if len(groups[op]) == 1:
+                out.append(("group", op, t))
+            continue
+        out.append(("term", None, t))
+    res = []
+    for kind, op, t in out:
+        if kind == "group" and len(groups[op]) > 1:
+            res.append("{" + " ".join(groups[op]) + "}")
+        else:
+            res.append(t)
+    return " ".join(res)
+
+
 def _check(query):
-    q = str(query or "").strip()
+    q = normalize_query(str(query or "").strip())
     if q.lower() in TOO_BROAD or len(q) < 3:
         return None, "That search is too broad to change in bulk. Narrow it (for example by sender, subject, label or date)."
     return q, None
@@ -138,7 +186,25 @@ def tidy_matching(args, gm=None):
     return {"ok": True, "changed": len(ids), "remaining": more, "dry_run": None, "did": f"{verb} {len(ids)} messages matching: {q}.{note}"}
 
 
-FUNCS = {"count_matching": count_matching, "tidy_matching": tidy_matching}
+def tidy_ids(args, gm=None):
+    gm = gm or Gmail()
+    action = args.get("action")
+    if action not in ACTIONS:
+        return {"ok": False, "error": f"unknown action '{action}' (use one of: {', '.join(sorted(ACTIONS))})"}
+    raw = args.get("ids")
+    if not isinstance(raw, list) or not raw or any(not isinstance(i, str) or not re.fullmatch(r"[0-9a-fA-F]{6,32}", i) for i in raw):
+        return {"ok": False, "error": "ids must be a non-empty list of Gmail message ids (hex strings) from an earlier list or search"}
+    ids = list(dict.fromkeys(raw))[:MAX_IDS]
+    labels, verb = ACTIONS[action]
+    if DRY():
+        return {"ok": True, "changed": 0, "would_change": len(ids), "dry_run": True, "did": f"[DRY RUN, nothing happened] Would have {verb.lower()} {len(ids)} messages"}
+    for i in range(0, len(ids), 1000):
+        gm.call("POST", "/messages/batchModify", None, {"ids": ids[i:i + 1000], **labels})
+    skipped = len(raw) - len(set(raw)) if len(set(raw)) > MAX_IDS else 0
+    return {"ok": True, "changed": len(ids), "dry_run": None, "did": f"{verb} {len(ids)} messages" + (f" ({skipped} over the {MAX_IDS} limit were not included)" if skipped else "")}
+
+
+FUNCS = {"count_matching": count_matching, "tidy_matching": tidy_matching, "tidy_ids": tidy_ids}
 
 
 def handle(msg):

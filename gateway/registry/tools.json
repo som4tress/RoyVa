@@ -478,5 +478,13 @@
   "risk": "write",
   "description": "Change every email matching a Gmail search: move to Trash (recoverable 30 days), archive, or mark read/unread.",
   "available": true
+ },
+ {
+  "id": "gmail_tidy.tidy_ids",
+  "action": "gmail-tidy_tidy_ids",
+  "server": "gmail-tidy",
+  "risk": "write",
+  "description": "Change specific emails by id: move to Trash (recoverable 30 days), archive, or mark read/unread.",
+  "available": true
  }
 ]

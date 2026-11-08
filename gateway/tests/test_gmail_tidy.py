@@ -83,7 +83,36 @@ def test_archive_and_mark_read_use_the_right_labels():
     assert gm.calls[1]["removeLabelIds"] == ["UNREAD"]
 
 
-def test_mcp_protocol_lists_two_tools(capsys):
+def test_mcp_protocol_lists_the_tools(capsys):
     gt.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
     names = [t["name"] for t in json.loads(capsys.readouterr().out)["result"]["tools"]]
-    assert names == ["count_matching", "tidy_matching"]
+    assert names == ["count_matching", "tidy_ids", "tidy_matching"]
+
+
+def test_several_bare_senders_become_one_or_group():
+    n = gt.normalize_query
+    assert n("from:a@x.com from:b@y.com older_than:1y") == "{from:a@x.com from:b@y.com} older_than:1y"
+    assert n('from:"A B" from:c@d.com') == '{from:"A B" from:c@d.com}'
+    assert n("from:a@x.com") == "from:a@x.com"                       # single sender untouched
+    assert n("{from:a from:b} is:unread") == "{from:a from:b} is:unread"  # already grouped
+    assert n("from:a -from:b") == "from:a -from:b"                   # negation is not an OR candidate
+
+
+def test_trash_with_space_joined_senders_uses_one_query():
+    g = FakeGmail(total=3)
+    gt.tidy_matching({"query": "from:a@x.com from:b@y.com", "action": "trash"}, gm=g)
+    assert g.queries[0].startswith("{from:a@x.com from:b@y.com}")
+    assert len(g.calls) == 1
+
+
+def test_tidy_ids_changes_exactly_the_given_messages_in_one_call():
+    gm = FakeGmail(5)
+    out = gt.tidy_ids({"ids": ["1a1b99fec67dd672", "1a1b97b7dadfffcf", "1a1b99fec67dd672"], "action": "trash"}, gm)
+    assert out["changed"] == 2 and len(gm.calls) == 1 and gm.calls[0]["addLabelIds"] == ["TRASH"] and gm.calls[0]["ids"] == ["1a1b99fec67dd672", "1a1b97b7dadfffcf"]
+
+
+def test_tidy_ids_rejects_junk_ids_and_empty_lists():
+    gm = FakeGmail(5)
+    for bad in ([], ["not an id"], ["abc"], "1a1b99fec67dd672", [123]):
+        assert gt.tidy_ids({"ids": bad, "action": "trash"}, gm)["ok"] is False
+    assert gm.calls == []

@@ -9,7 +9,7 @@ import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
-import {formatPermission} from './permissions.mjs';
+import {formatPermission, approvalKey, BatchApprovals} from './permissions.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
 
 // RoyVa gateway client (only used when ROYVA_GATEWAY_URL is set; otherwise the bridge behaves exactly as before).
@@ -157,6 +157,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
   const usageTotals = new UsageTotals(process.env.ROYVA_USAGE_FILE || join(process.env.XDG_STATE_HOME || dirname(stateFile), 'usage_totals.json'));
   const save = () => writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
   const active = new Map();
+  const batchApprovals = new BatchApprovals();
+  const permissionKeys = new Map();     // permission request id -> batch key, so /approve can cover the rest of the request
   const queues = new Map();
   const transcribe = transcriber;
   const cleanReviewText = value => String(value ?? '')
@@ -393,7 +395,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
       } catch (error) {
         return send(message, `Could not confirm the permission decision: ${error.message}. Retry only if the request is still waiting.`, linked);
       }
-      return send(message, text === '/approve' ? 'Approved once.' : 'Denied.', linked);
+      if (text === '/approve') batchApprovals.grant(linked, permissionKeys.get(request.id));
+      return send(message, text === '/approve' ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied.', linked);
     }
     // RoyVa gateway (optional, ROYVA_GATEWAY_URL): new conversations are created through the gateway (base agent, no tools yet).
     let sessionID = linked;
@@ -519,7 +522,16 @@ export async function main({transcriber = createTranscriber()} = {}) {
               }
             }
           },
-          onPermission: (permission, history) => send(run.replyTo, formatPermission(permission, history), sessionID, false, permission.id),
+          onPermission: async (permission, history) => {
+            const key = approvalKey(permission);
+            if (key && batchApprovals.take(sessionID, key)) {        // already approved for this request: do not ask again
+              await openCodeAPI(`/api/session/${sessionID}/permission/${permission.id}/reply`, 'POST', { decision: 'once' });
+              console.log(`Auto-approved a further ${key} call (covered by the earlier approval in this request)`);
+              return;
+            }
+            if (key) permissionKeys.set(permission.id, key);
+            return send(run.replyTo, formatPermission(permission, history), sessionID, false, permission.id);
+          },
         });
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         await updateStatus(true);
@@ -528,7 +540,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       } catch (error) {
         console.error('Request failed:', error.name);
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
-      } finally { run.accepting = false; controller.abort(); admission.resolve(false); clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
+      } finally { batchApprovals.clear(sessionID); run.accepting = false; controller.abort(); admission.resolve(false); clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
     });
     queues.set(sessionID, job);
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});

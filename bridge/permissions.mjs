@@ -23,10 +23,45 @@ function emailDetails(rows, id) {
   }
 }
 
+// One approval covers a whole request: after the user approves a bulk-tidy call, further calls of the SAME action in the SAME run
+// (for example the next batch of a large mailbox) go through without asking again. Scoped per session and per action, capped, cleared when the run ends.
+export const BATCH_TOOLS = new Set(['gmail-tidy_tidy_matching', 'gmail-tidy_tidy_ids']);
+export function approvalKey(permission) {
+  if (!BATCH_TOOLS.has(permission?.action)) return null;
+  const action = permission.metadata?.input?.action;
+  return typeof action === 'string' ? `gmail-tidy:${action}` : null;
+}
+export class BatchApprovals {
+  constructor(cap = 25) { this.cap = cap; this.sessions = new Map(); }
+  grant(session, key) { if (key) { if (!this.sessions.has(session)) this.sessions.set(session, new Map()); this.sessions.get(session).set(key, 0); } }
+  take(session, key) {
+    const keys = this.sessions.get(session);
+    if (!key || !keys || !keys.has(key)) return false;
+    const used = keys.get(key) + 1;
+    if (used > this.cap) { keys.delete(key); return false; }
+    keys.set(key, used);
+    return true;
+  }
+  clear(session) { this.sessions.delete(session); }
+}
+const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
+
 export function formatPermission(permission, rows = []) {
   const input = permission.metadata?.input;
   const args = input && typeof input === 'object' ? input : {};
   const tool = permission.action;
+  if (BATCH_TOOLS.has(tool)) {
+    const verb = TIDY_VERB[args.action] || `Run ${line(args.action)}`;
+    let what;
+    if (tool.endsWith('_ids')) {
+      const ids = Array.isArray(args.ids) ? args.ids : [];
+      const senders = new Map();
+      for (const id of ids) { const m = emailDetails(rows, id); if (m?.from) { const k = line(m.from).replace(/^.*<(.+)>.*$/, '$1').slice(0, 40); senders.set(k, (senders.get(k) || 0) + 1); } }
+      const top = [...senders].sort((x, y) => y[1] - x[1]).slice(0, 3).map(([k, n]) => `${k} (${n})`).join(', ');
+      what = `${ids.length} listed email${ids.length === 1 ? '' : 's'}${top ? `\nFrom: ${top}${senders.size > 3 ? ', …' : ''}` : ''}`;
+    } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
+    return ['Approve?', `${verb}: ${what}`, args.action === 'trash' ? 'Trash keeps them for 30 days.' : '', 'One /approve covers this whole request (every batch of this kind). /deny to stop.'].filter(Boolean).join('\n');
+  }
   let action = `Run ${line(tool)}`;
   const batch = tool === 'gmail_batch_modify_messages';
   if (tool === 'gmail_modify_message' || batch) {
