@@ -28,7 +28,7 @@
   "action": "home-assistant_intent__HassTurnOn",
   "server": "home-assistant",
   "risk": "write",
-  "description": "Turn on a device (light, switch, fan).",
+  "description": "Turn on / open / lock a device.",
   "available": true
  },
  {
@@ -36,7 +36,7 @@
   "action": "home-assistant_intent__HassTurnOff",
   "server": "home-assistant",
   "risk": "write",
-  "description": "Turn off a device (light, switch, fan).",
+  "description": "Turn off / close / unlock a device.",
   "available": true
  },
  {
