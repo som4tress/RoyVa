@@ -24,6 +24,10 @@ def _entity_area(entity,devices):
 def _tokens(text):
  import re
  return [t for t in re.split(r'[^a-z0-9]+',str(text).casefold()) if t]
+LIGHT_WORDS={'light','lights','lamp','lamps','tubelight','bulb','chandelier','lighting'}
+def _acts_as_light(domain,eid,friendly):
+ """Many homes run a light through a smart plug or relay (a switch.* named '... light'); a 'lights' question must include them."""
+ return domain=='switch' and bool(LIGHT_WORDS & set(_tokens(friendly)+_tokens(eid.split('.',1)[1])))
 def _name_match(name,*fields):
  """Every word of the query must appear in the entity's friendly name, entity_id, device name or area (any order)."""
  q=_tokens(name)
@@ -65,7 +69,9 @@ def collect(args,read_api):
  rows=[]
  for entity in read_api('/api/states'):
   eid=entity.get('entity_id','');domain=eid.split('.')[0];friendly=entity.get('attributes',{}).get('friendly_name',eid)
-  if domain not in domains:continue
+  as_light='light' in domains and _acts_as_light(domain,eid,friendly)
+  if domain not in domains and not as_light:continue
+  if as_light and domain not in domains:domain='light'
   rec=registry['entities'].get(eid,{}) if registry else {}
   dev=registry['devices'].get(rec.get('device_id'),{}) if registry else {}
   area_nm=registry['areas'].get(_entity_area(rec,registry['devices']),{}).get('name','') if registry else ''
