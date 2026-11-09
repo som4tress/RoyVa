@@ -40,3 +40,13 @@ Start `claude` in `~/RoyVa`, say "resume from HANDOFF.md". Then re-arm the Teleg
   (needs the user: public repo `som4tress/royva-oauth-relay` + Pages [repo create was denied by the classifier; the local repo ~/royva-oauth-relay is committed], Google Web client JSON at ~/.royva/gmail-client.json).
 * Known gaps: unread-count answers are wrong (model reports a capped page, e.g. 201 vs ~7.6k); env allowlist ids in TELEGRAM_ALLOWED_USER_IDS cannot be revoked from chat (shrink it to the owner).
 * Backups of the bridge before each change: runtime/bridge.mjs.pre-*.bak.
+
+## Session handoff 2026-11-09 (read this first)
+
+**Goal (owner's words, restated):** RoyVa should be an *autonomous*, generic assistant. When no skill matches, it must judge and attempt on its own (consult itself on possible paths), not answer "I can't". Example that failed: "find this cron job on the machine you run on / ssh somewhere" and "how much memory is free?" got zero tools and a guess. Design under discussion (NOT built, owner has not approved): fallback with read-only tools (B) vs. model picks tools from the whole skill catalog within scopes (C) vs. a sandboxed machine-access capability. The owner wants autonomy; clarify with them which level (including machine shell/ssh) before building.
+
+**Standing rules from the owner:** only Gmail trash/archive asks for approval; everything else (device control, media, routines) runs unattended. Never change user-visible behavior (policies, enabled skills, routing) without asking first. No hardcoded household/vocabulary logic. Commit locally in small commits; do not push. Tell the owner via Telegram (`scripts/notify.sh`); keep replies short (5-8 points). Re-arm `scripts/claude-inbox-watch.sh` under Monitor (30 min cap). Owner's chat is sticky in /claude mode until they send /royva (a reply to a RoyVa message now goes to RoyVa).
+
+**Done this session (all committed, 219 gateway tests, 30 bridge tests):** Gmail enrollment + per-person isolation + Telegram invite flow, exact unread counts, local-time (not UTC) in HA history/device/context tools, doorbell false-event fix, home_control enabled with no approval + look-up-first style, lights wired as switches returned for the model to judge (no keyword list), policy-pin test, original on/off tool descriptions restored after an audit against 49b1d97 (HA status output identical old vs new for default/floor/area/name queries).
+
+**Known open:** GitHub Pages OAuth relay (owner runs two `gh` commands), second real Telegram account for an enrollment test, locks/garage on the no-approval path (owner has not said), fallback autonomy (above), `config/opencode.json` carries generated dummy Gmail server entries (uncommitted on purpose).
