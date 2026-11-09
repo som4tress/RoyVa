@@ -24,10 +24,6 @@ def _entity_area(entity,devices):
 def _tokens(text):
  import re
  return [t for t in re.split(r'[^a-z0-9]+',str(text).casefold()) if t]
-LIGHT_WORDS={'light','lights','lamp','lamps','tubelight','bulb','chandelier','lighting'}
-def _acts_as_light(domain,eid,friendly):
- """Many homes run a light through a smart plug or relay (a switch.* named '... light'); a 'lights' question must include them."""
- return domain=='switch' and bool(LIGHT_WORDS & set(_tokens(friendly)+_tokens(eid.split('.',1)[1])))
 def _name_match(name,*fields):
  """Every word of the query must appear in the entity's friendly name, entity_id, device name or area (any order)."""
  q=_tokens(name)
@@ -69,9 +65,8 @@ def collect(args,read_api):
  rows=[]
  for entity in read_api('/api/states'):
   eid=entity.get('entity_id','');domain=eid.split('.')[0];friendly=entity.get('attributes',{}).get('friendly_name',eid)
-  as_light='light' in domains and _acts_as_light(domain,eid,friendly)
-  if domain not in domains and not as_light:continue
-  if as_light and domain not in domains:domain='light'
+  also_switch='light' in domains and domain=='switch'          # lights are often wired as switches/plugs: include switches so the caller can judge by name
+  if domain not in domains and not also_switch:continue
   rec=registry['entities'].get(eid,{}) if registry else {}
   dev=registry['devices'].get(rec.get('device_id'),{}) if registry else {}
   area_nm=registry['areas'].get(_entity_area(rec,registry['devices']),{}).get('name','') if registry else ''
@@ -103,6 +98,7 @@ def collect(args,read_api):
   out['suggestions']=difflib.get_close_matches(name,names,n=5,cutoff=0.4)
   out['note']='No entity matched in the searched domains %s. Try a different word or check the suggestions; do not tell the user the device does not exist until you have.'%(domains,)
  out['counts_by_state']=dict(Counter(r[2] for r in rows))
+ if 'light' in domains and any(r[1]=='switch' for r in rows):out['note']=(out.get('note','')+" Rows of Type 'switch' are included because some lights are wired as switches or plugs. From each name decide which are lights, report only those as lights, and count only those; the counts_by_state here cover every row.").strip()
  if scoped:out['counts_by_area_state']={area:dict(Counter(r[2] for r in rows if r[3]==area)) for area in sorted(set(r[3] for r in rows))}
  if scoped:out['scope_rule']='Entity area overrides device area; floor membership comes from the area registry.'
  return out

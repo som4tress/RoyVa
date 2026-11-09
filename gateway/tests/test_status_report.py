@@ -64,10 +64,10 @@ def test_name_search_still_works_if_the_registry_is_unavailable(monkeypatch):
     assert devices(out) == ["Stovetop SATV173380P Cooktop Status"]
 
 
-def test_lights_question_includes_switches_that_act_as_lights(monkeypatch):
-    states = STATES + [{"entity_id": "switch.porch_lamp_plug", "state": "on", "attributes": {"friendly_name": "Porch Lamp"}},
-                       {"entity_id": "switch.upper_oven_sabbath", "state": "off", "attributes": {"friendly_name": "Sabbath Mode"}}]
+def test_lights_question_includes_switches_for_the_caller_to_judge(monkeypatch):
+    states = STATES + [{"entity_id": "switch.porch_plug", "state": "on", "attributes": {"friendly_name": "Porch Lamp"}}]
     monkeypatch.setitem(sys.modules, "ha_registry", types.SimpleNamespace(snapshot=lambda: REG))
     out = sr.collect({"domains": ["light"]}, lambda path: states)
-    assert devices(out) == ["Den Light", "Porch Lamp"]            # the plug counts as a light; an ordinary switch does not
-    assert {r[1] for r in out["rows"]} == {"light"}
+    assert {r[0]: r[1] for r in out["rows"]}["Porch Lamp"] == "switch"        # no name vocabulary: switches are returned, tagged, with a note
+    assert "wired as switches" in out["note"]
+    assert "wired as switches" not in sr.collect({"domains": ["sensor"]}, lambda path: states).get("note", "")
