@@ -40,7 +40,7 @@
    "home_map"
   ],
   "steps": 6,
-  "write_policy": "confirm",
+  "write_policy": "auto",
   "sticky": true
  },
  "provenance": {
