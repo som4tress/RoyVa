@@ -1,6 +1,6 @@
 {
  "id": "home_control",
- "status": "candidate",
+ "status": "active",
  "description": "Change the state of a home device: turn lights, fans or locks on or off, dim lights, set the thermostat. Changes things in the house.",
  "examples": [
   "Turn off the kitchen lights",
