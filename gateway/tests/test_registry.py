@@ -158,3 +158,12 @@ def test_session_state_defaults():
 def test_tool_id_format():
     with pytest.raises(ValidationError):
         ToolSpec(id="BadId", action="x", server="s", risk="read", description="d")
+
+
+def test_owner_policy_pins():
+    """Owner decisions that must never change silently: device control is on and runs without approval; Gmail changes ask first."""
+    intents = {p.stem: json.loads(p.read_text()) for p in (REG / "intents").glob("*.json")}
+    assert intents["home_control"]["status"] == "active" and intents["home_control"]["profile"]["write_policy"] == "auto"
+    assert intents["mail_manage"]["profile"]["write_policy"] == "confirm"
+    for name in ("home_state", "home_history", "mail_read", "web_lookup"):
+        assert intents[name]["profile"]["write_policy"] == "read_only"
