@@ -41,7 +41,8 @@
   ],
   "steps": 6,
   "write_policy": "auto",
-  "sticky": true
+  "sticky": true,
+  "style": "Before acting, call get_live_context to find the device the user means: match their words to a device's name or area (a 'den light' may be named 'Den Switch'). Then act with the device's exact name (and domain, e.g. light) rather than guessing an area, and never use a speaker or media device's area for a light. If it is already in the requested state, say so. If several devices match, act on the clear best match and say which. If nothing matches, name what you looked for and the closest devices. Say plainly what you did; never claim an action that errored."
  },
  "provenance": {
   "created_by": "human",
