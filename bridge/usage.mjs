@@ -71,11 +71,11 @@ export function loadPricing(file) {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
 }
 
-export function formatFinalUsage(run, totals, since, pricing = null, extraLine = '') {
+export function formatFinalUsage(run, totals, since, pricing = null) {
   const line = u => `in ${fmt(u.input)} (cached ${fmt(u.cached)} · uncached ${fmt(u.input - u.cached)}) · out ${fmt(u.output)}${u.reasoning ? ` + thinking ${fmt(u.reasoning)}` : ''}`;
   const cost = estimateCost(totals, pricing);
-  const saved = cost === null ? '' : `\nEst. saved vs ${pricing.model} (OpenRouter median): ${money(cost)}`;
-  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}${extraLine ? `\n${extraLine}` : ''}`;
+  const saved = cost === null ? '' : `\nEst. saved vs ${pricing.model}: ${money(cost)}`;
+  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}`;
 }
 
 export async function streamingTokens(text) {
