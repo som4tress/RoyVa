@@ -9,6 +9,7 @@ import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
+import { openRouterLine } from './openrouter.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
 import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
@@ -166,7 +167,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
   catch (error) { if (error.code !== 'ENOENT') console.error('State file unreadable, starting fresh:', error.message); state = { offset: 0, messages: {} }; }
   state.answers ||= {};
   state.permissions ||= {};
-  const usageTotals = new UsageTotals(process.env.ROYVA_USAGE_FILE || join(process.env.XDG_STATE_HOME || dirname(stateFile), 'usage_totals.json'));
+  const usageTotals = new UsageTotals(process.env.ROYVA_USAGE_FILE || join(process.env.XDG_STATE_HOME || dirname(stateFile), 'usage_totals.json'), join(process.env.XDG_STATE_HOME || dirname(stateFile), 'usage_backfill.json'));
   const save = () => { const tmp = `${stateFile}.tmp`; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, stateFile); };
   const active = new Map();
   const batchApprovals = new BatchApprovals();
@@ -588,7 +589,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
-        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE), await openRouterLine()) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);

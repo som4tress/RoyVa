@@ -25,7 +25,16 @@ const fmt = value => Number(value || 0).toLocaleString('en-US');
 // Lifetime totals survive restarts: one small JSON file, written atomically. Per-session watermarks (message ids are ascending)
 // stop a reply inside an old session from counting that session's earlier turns twice.
 export class UsageTotals {
-  constructor(file) { this.file = file; this.data = this.#load(); }
+  constructor(file, backfillFile = null) { this.file = file; this.data = this.#load(); if (backfillFile) this.#backfill(backfillFile); }
+  // One-time merge of history from before counting began (made by scripts/make_usage_backfill.py); marked so it is never added twice.
+  #backfill(file) {
+    if (this.data.backfilled) return;
+    let extra; try { extra = JSON.parse(readFileSync(file, 'utf8')); } catch { return; }
+    for (const key of ['input', 'cached', 'output', 'reasoning', 'passes', 'runs']) this.data.totals[key] += Number(extra.totals?.[key] || 0);
+    if (extra.since && extra.since < this.data.since) this.data.since = extra.since;
+    this.data.backfilled = true;
+    this.#save();
+  }
   #load() {
     try { return JSON.parse(readFileSync(this.file, 'utf8')); }
     catch { return { since: new Date().toISOString(), totals: { input: 0, cached: 0, output: 0, reasoning: 0, passes: 0, runs: 0 }, watermarks: {} }; }
@@ -62,11 +71,11 @@ export function loadPricing(file) {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
 }
 
-export function formatFinalUsage(run, totals, since, pricing = null) {
+export function formatFinalUsage(run, totals, since, pricing = null, extraLine = '') {
   const line = u => `in ${fmt(u.input)} (cached ${fmt(u.cached)} · uncached ${fmt(u.input - u.cached)}) · out ${fmt(u.output)}${u.reasoning ? ` + thinking ${fmt(u.reasoning)}` : ''}`;
   const cost = estimateCost(totals, pricing);
   const saved = cost === null ? '' : `\nEst. saved vs ${pricing.model} (OpenRouter median): ${money(cost)}`;
-  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}`;
+  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}${extraLine ? `\n${extraLine}` : ''}`;
 }
 
 export async function streamingTokens(text) {

@@ -44,3 +44,17 @@ test('footer shows estimated cost saved from the pricing file, and omits it with
   assert.match(formatFinalUsage({}, totals, '2026-11-08T00:00:00Z', pricing), /\nEst\. saved vs Test Model \(OpenRouter median\): \$0\.0022/);
   assert.doesNotMatch(formatFinalUsage({}, totals, '2026-11-08T00:00:00Z'), /Est\. saved/);
 });
+
+test('backfill is merged once, moves the since date back, and an OpenRouter line is appended', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { creditsLine } = await import('./openrouter.mjs');
+  const f = file(), b = file();
+  writeFileSync(f, JSON.stringify({ since: '2026-11-08T00:00:00Z', totals: { input: 10, cached: 4, output: 2, reasoning: 0, passes: 1, runs: 1 }, watermarks: {} }));
+  writeFileSync(b, JSON.stringify({ since: '2026-10-26T00:00:00Z', totals: { input: 100, cached: 40, output: 20, reasoning: 5, passes: 9, runs: 3 } }));
+  assert.equal(new UsageTotals(f, b).lifetime.input, 110);
+  const again = new UsageTotals(f, b);
+  assert.equal(again.lifetime.input, 110); assert.equal(again.lifetime.runs, 4); assert.equal(again.since, '2026-10-26T00:00:00Z');
+  assert.equal(creditsLine({ total_credits: 10, total_usage: 5.32 }), 'OpenRouter: spent $5.32 of $10.00 · left $4.68');
+  assert.equal(creditsLine({}), '');
+  assert.match(formatFinalUsage({}, again.lifetime, again.since, null, 'OpenRouter: x'), /requests\nOpenRouter: x$/);
+});
