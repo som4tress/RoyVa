@@ -333,5 +333,375 @@
   "intents": [],
   "mode": "fallback",
   "tools_include": "machine.run"
+ },
+ {
+  "id": "past-01",
+  "q": "turn off my den light",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-02",
+  "q": "Turn on all lights in shivi room",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-03",
+  "q": "What are the temperatures and humidity across my home",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-04",
+  "q": "Where is shobha now",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-05",
+  "q": "Where is pecky right now?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-06",
+  "q": "How far is she from home",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-07",
+  "q": "Turn off kitchen lights",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-08",
+  "q": "Turn on master bedroom lights",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-09",
+  "q": "Turn off all lights,fans,switches in shivi room",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-10",
+  "q": "Can you capture a snapshot from my living room blink, it's connected to my HA",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-11",
+  "q": "Summarize the top 10 soccer stories for me and play it on living room Sonos speaker",
+  "intents": [
+   "web_lookup",
+   "media_playback"
+  ]
+ },
+ {
+  "id": "past-12",
+  "q": "Play kbay country 94.5 in all the Sonos speakers",
+  "intents": [
+   "media_playback"
+  ]
+ },
+ {
+  "id": "past-13",
+  "q": "Increase volume by 10%",
+  "intents": [
+   "media_playback"
+  ]
+ },
+ {
+  "id": "past-14",
+  "q": "Where was I 2 hours ago",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-15",
+  "q": "List all the places shobha visited today",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-16",
+  "q": "Show me all the places Shivangsh visited this week",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-17",
+  "q": "Compile and summarize top 10 breaking news from around the world for me at 10 am today",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-18",
+  "q": "What is my current GPU usage and memory usage",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-19",
+  "q": "Which lights are currently on in the house? Answer in one short line.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-20",
+  "q": "Is Den Switch currently on? Read its state only; do not change any device.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-21",
+  "q": "Is my gas stove on ?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-22",
+  "q": "When was my gas stove on last nd how much time",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-23",
+  "q": "Turn off living room tv",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-24",
+  "q": "Turn off all air purifiers",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-25",
+  "q": "Show me the status of all lights and devices in my home in a nice tabular format",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-26",
+  "q": "What is this computer's kernel version? Use uname -r.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-27",
+  "q": "Can you look up my open router usage?",
+  "intents": [],
+  "no_write": true,
+  "mode": "fallback",
+  "xfail": "routed to home_history; should fall back to general mode"
+ },
+ {
+  "id": "past-28",
+  "q": "What is the current status of Den Switch in Home Assistant?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-29",
+  "q": "Show my Ubuntu release, kernel version, and available disk space. Make no changes.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-30",
+  "q": "Report available RAM on this machine in GiB. Make no changes.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-31",
+  "q": "Report current system uptime. Make no changes.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-32",
+  "q": "Report python3 version on this host. Make no changes.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-33",
+  "q": "Compute (48.50 + 22.75) * 1.08. Give the total to two decimals.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-34",
+  "q": "Translate \"Good morning, how are you?\" into Spanish. Return the translation only.",
+  "intents": [],
+  "mode": "fallback"
+ },
+ {
+  "id": "past-35",
+  "q": "Fetch https://blog.python.org/ and summarize the two newest posts with dates and links.",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-36",
+  "q": "Downstairs status",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-37",
+  "q": "Upstairs Thermostat status",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-38",
+  "q": "How many ring doorbell events yesterday, along with times",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-39",
+  "q": "Show me the history of b-hyves watering",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-40",
+  "q": "Show me Somdutta's location history for this week",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-41",
+  "q": "Turn dining lights off.",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-42",
+  "q": "Increased brightness of living room lights by 10%.",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-43",
+  "q": "Turn on all the lights in Shivanshi's room and turn off the fan.",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-44",
+  "q": "Play the top 20 news headlines and short brief in my living room speaker",
+  "intents": [
+   "media_playback",
+   "web_lookup"
+  ]
+ },
+ {
+  "id": "past-45",
+  "q": "What time did Vama leave?",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-46",
+  "q": "Top 10 news headlines today",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-47",
+  "q": "Add living room lights to downstairs area",
+  "intents": [
+   "home_control"
+  ]
+ },
+ {
+  "id": "past-48",
+  "q": "Which lights are on right now? Read only.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-49",
+  "q": "List unavailable devices in my home. Make no changes.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "past-50",
+  "q": "Show current status of all fans. Read only.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
  }
 ]
