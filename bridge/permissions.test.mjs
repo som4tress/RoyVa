@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BatchApprovals, approvalKey, formatPermission, idsInArgs, permissionVerified } from './permissions.mjs';
+import { withoutOwnerDoors, BatchApprovals, approvalKey, formatPermission, idsInArgs, permissionVerified } from './permissions.mjs';
 
 const perm = (action, input) => ({ id: 'p1', action, metadata: { input } });
 
@@ -90,4 +90,13 @@ test('ids inside nested service calls are all collected', () => {
   const ids = idsInArgs({params: {target: {entity_id: ['light.a', 'light.b'], area_id: 'kitchen'}}});
   assert.deepEqual(ids.entity_id, ['light.a', 'light.b']);
   assert.deepEqual(ids.area_id, ['kitchen']);
+});
+
+test('the remote takeover config never contains the owner-only doors', () => {
+  const cfg = {mcp: {servers: {'home-assistant': {}, machine: {}, 'ha-api': {}, gmail: {}}}, other: 1};
+  const out = withoutOwnerDoors(cfg);
+  assert.deepEqual(Object.keys(out.mcp.servers), ['home-assistant', 'gmail']);
+  assert.equal(out.other, 1);
+  assert.ok(cfg.mcp.servers.machine);                         // the live config object is untouched
+  assert.doesNotThrow(() => withoutOwnerDoors({}));
 });

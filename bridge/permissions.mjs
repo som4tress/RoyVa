@@ -178,3 +178,12 @@ export function formatPermission(permission, rows = [], live = undefined) {
   lines.push('/approve or /deny');
   return lines.join('\n');
 }
+
+// The owner-only doors (shell on this and other machines, the Home Assistant write API) must never reach a remote model: the DeepSeek takeover runs with every permission
+// pre-allowed, so any server left in its config would run without the owner's approval.
+export const OWNER_DOOR_SERVERS = ['machine', 'ha-api'];
+export function withoutOwnerDoors(config) {
+  const out = structuredClone(config);
+  for (const name of OWNER_DOOR_SERVERS) if (out.mcp?.servers) delete out.mcp.servers[name];
+  return out;
+}

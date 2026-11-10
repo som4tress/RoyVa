@@ -10,7 +10,7 @@ import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
-import {formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
+import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
 
@@ -64,7 +64,7 @@ async function runDeepSeekTakeover(request) {
   const sourceConfig = process.env.OPENCODE_CONFIG
     ? JSON.parse(readFileSync(process.env.OPENCODE_CONFIG, 'utf8'))
     : JSON.parse(readFileSync(join(process.env.OPENCODE_CONFIG_DIR || join(homedir(), '.config/opencode'), 'opencode.json'), 'utf8'));
-  const config = structuredClone(sourceConfig);
+  const config = withoutOwnerDoors(sourceConfig);       // never hand the owner-only doors to a remote model running with every permission pre-allowed
   // Takeover runs in a private OpenCode server/config so permissions and provider
   // credentials do not alter the normal Qwen service.
   config.permissions = [{action: '*', resource: '*', effect: 'allow'}];
