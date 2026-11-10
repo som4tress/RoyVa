@@ -28,6 +28,7 @@ class Settings:
     expected_mcp: tuple[str, ...] = ("home-assistant", "gmail", "ha-history", "ha-entity-history", "ha-speakers", "ha-routines", "gmail-tidy")
     home_location: str = os.environ.get("ROYVA_HOME_LOCATION", "")            # optional coarse place name, e.g. 'San Jose, CA'
     default_person: str = os.environ.get("ROYVA_DEFAULT_PERSON", "")   # HA person object id of the asking user; deployment config (scripts/env.sh), not code
+    protected_devices: tuple[str, ...] = tuple(x.strip() for x in os.environ.get("ROYVA_PROTECTED_DEVICES", "").split(",") if x.strip())   # deployment config (scripts/env.sh)
     location_ttl_s: float = 60.0
     dynamic_context: dict = field(default_factory=dict)      # filled at startup from Home Assistant
     run_timeout_s: int = int(os.environ.get("ROYVA_RUN_TIMEOUT", "300"))

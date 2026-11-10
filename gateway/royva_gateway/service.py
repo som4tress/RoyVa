@@ -328,7 +328,7 @@ class Gateway:
         if "current_time" in new_ctx:
             per_turn["current_time"] = profiles.now_text()
         recent = await previous_scope(self.oc, state.session_id) if (d.mode == "continuation" and known is not None and known.turns) else None
-        text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting), [i.id for i in acting], recent)
+        text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting, self.s.protected_devices, any(t.startswith("ha.") and t in self.reg.tools and self.reg.tools[t].risk != "read" for t in tools)), [i.id for i in acting], recent)
         return Prepared("run", d, trace_id, state.session_id, prompt=text, cap=cap, tools=tools, grants=grant_map, state=state, acting=acting, new_ctx=new_ctx)
 
     def commit(self, p: Prepared, req: AskRequest, outcome: str = "prepared", tool_calls: Optional[int] = None) -> None:

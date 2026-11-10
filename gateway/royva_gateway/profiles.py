@@ -30,8 +30,15 @@ def capability_hint(reg: Registry, intents: list[Intent]) -> str:
     return " ".join(f"{i.description}" for i in intents)
 
 
-def style_hint(intents: list[Intent]) -> str:
-    return " ".join(i.profile.style for i in intents if i.profile.style)
+PROTECTED = ("Protected devices: {names}. Never include them in a multi-device or 'everything' change. Change one only when the user names it "
+             "on its own, and even then ask for explicit approval first, warning that turning it off may take the system down, and wait for the reply.")
+
+
+def style_hint(intents: list[Intent], protected: tuple[str, ...] = (), can_write: bool = False) -> str:
+    parts = [i.profile.style for i in intents if i.profile.style]
+    if protected and can_write:
+        parts.append(PROTECTED.format(names=", ".join(protected)))
+    return " ".join(parts)
 
 
 def grants(reg: Registry, intents: list[Intent]) -> dict[str, str]:

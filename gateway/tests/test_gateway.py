@@ -591,3 +591,9 @@ def test_scope_lookup_failure_never_breaks_the_turn(tmp_path):
     oc.messages = boom
     r2 = ask(gw, "b", session_id=r1.session_id, reply=True)
     assert r2.status == "done" or r2.answer
+
+
+def test_protected_devices_line_only_for_home_writes():
+    from royva_gateway import profiles
+    assert "Protected devices: Box A" in profiles.style_hint([], ("Box A",), True)
+    assert profiles.style_hint([], ("Box A",), False) == "" and profiles.style_hint([], (), True) == ""
