@@ -46,3 +46,14 @@ test('sending email shows the recipient and subject, briefly', () => {
   const out = formatPermission(perm('gmail_send_message', { to: 'a@b.com', subject: 'Hi', body: 'long '.repeat(500) }));
   assert.match(out, /Send email/); assert.match(out, /To: a@b.com/); assert.match(out, /Text: long long/); assert.ok(out.length < 400);
 });
+
+test('arbitrary-power tools show the whole call and are never batch-approved', () => {
+  const p = a => ({action: a, metadata: {input: {host: 'h', command: "echo 'a;b'\nrm x"}}});
+  const out = formatPermission(p('remote_run_approved'));
+  assert.match(out, /REMOTE machine/);
+  assert.match(out, /echo 'a;b'\\nrm x/);                 // newline shown escaped
+  assert.match(out, /this call only/);
+  assert.equal(approvalKey(p('machine_run_approved')), null);
+  const long = formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: 'x'.repeat(5000)}}});
+  assert.match(long, /Too long to review/);
+});

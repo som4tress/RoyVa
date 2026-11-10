@@ -52,6 +52,8 @@ export class BatchApprovals {
 }
 const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
 
+export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'remote_run_approved': 'Run on a REMOTE machine:'};
+const FULL_LIMIT = 3500;
 export function formatPermission(permission, rows = []) {
   const input = permission.metadata?.input;
   const args = input && typeof input === 'object' ? input : {};
@@ -67,6 +69,13 @@ export function formatPermission(permission, rows = []) {
       what = `${ids.length} listed email${ids.length === 1 ? '' : 's'}${top ? `\nFrom: ${top}${senders.size > 3 ? ', …' : ''}` : ''}`;
     } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
     return ['Approve?', `${verb}: ${what}`, '/approve (covers the whole request) or /deny'].join('\n');
+  }
+  if (FULL_CALL[tool]) {                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
+    const body = JSON.stringify(scrub(args), null, 1);
+    const out = ['Approve?', FULL_CALL[tool], body.length > FULL_LIMIT ? body.slice(0, FULL_LIMIT) + '…' : body];
+    if (body.length > FULL_LIMIT) out.push('⚠ Too long to review in full. Deny it and ask for a smaller step.');
+    out.push('/approve or /deny (this call only)');
+    return out.join('\n');
   }
   let action = `Run ${line(tool)}`;
   const batch = tool === 'gmail_batch_modify_messages';

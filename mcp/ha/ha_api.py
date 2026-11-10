@@ -57,6 +57,8 @@ def check_write(kind: str, target: str, method: str, params: dict):
     if kind not in ("ws", "rest"):
         return "kind must be 'ws' or 'rest'"
     blob = json.dumps(params or {}) + " " + target
+    if len(blob) > 3000:
+        return "call is too long for the owner to review in full; split it into smaller steps"
     hits = [n for n in protected_names() if n in norm(blob)]
     if hits and len(set(re.findall(r"\b[a-z_]+\.[a-z0-9_]+\b", blob.lower()))) > 1:
         return "a protected device is part of a multi-target change; change it on its own, with explicit approval"
