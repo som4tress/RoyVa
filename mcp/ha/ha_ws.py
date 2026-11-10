@@ -102,6 +102,12 @@ class _Reader:
                 return payload.decode('utf-8', 'replace')
 
 
+def failure_text(msg):
+    """Why Home Assistant refused a command, with its own message, so the caller (and the model) can correct the call."""
+    err = msg.get('error') or {}
+    return 'Home Assistant refused the command: %s%s' % (err.get('code', 'unknown'), (' - ' + str(err['message'])[:300]) if err.get('message') else '')
+
+
 def call(url, token, cmds, timeout=8):
     """Send commands over one authenticated HA websocket; return {id: result}."""
     sock, rest = _http_upgrade(url, timeout)
@@ -124,8 +130,7 @@ def call(url, token, cmds, timeout=8):
             if 'id' not in msg:
                 continue
             if not msg.get('success'):
-                raise WSError('Home Assistant registry read failed: %s'
-                              % (msg.get('error') or {}).get('code', 'unknown'))
+                raise WSError(failure_text(msg))
             out[msg['id']] = msg.get('result')
             pending -= 1
         return out

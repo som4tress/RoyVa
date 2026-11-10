@@ -123,3 +123,10 @@ def test_real_sandbox_reads_but_cannot_write_or_see_secrets(monkeypatch):
     assert "hint" in r and "run_approved" in r["hint"]
     net = m.run({"command": "cat /proc/net/dev | wc -l"})
     assert int(net["stdout"].strip()) <= 3                                                    # loopback only: no network interfaces
+
+
+def test_missing_sandbox_fails_closed_instead_of_running_unsandboxed():
+    def gone(argv, **kw):
+        raise FileNotFoundError(2, "No such file", "bwrap")
+    out = m.run({"command": "ls"}, runner=gone)
+    assert "bwrap is not installed" in out["error"] and "stdout" not in out

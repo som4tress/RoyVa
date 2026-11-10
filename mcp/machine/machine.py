@@ -128,6 +128,8 @@ def _exec(argv, env, timeout, cwd=None, runner=subprocess.run) -> dict:
         p = runner(argv, env=env, cwd=cwd, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
         return {"exit_code": None, "error": f"timed out after {timeout}s"}
+    except FileNotFoundError as e:                       # e.g. bwrap or ssh missing: never fall back to running without the sandbox
+        return {"exit_code": None, "error": f"cannot run: {e.filename or argv[0]} is not installed on this machine"}
     return {"exit_code": p.returncode, "stdout": _cap(p.stdout), "stderr": _cap(p.stderr)}
 
 

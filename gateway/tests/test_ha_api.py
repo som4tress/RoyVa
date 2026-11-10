@@ -63,3 +63,12 @@ def test_list_results_are_narrowed_on_the_server():
     whole = ha.ha_read({"kind": "ws", "type": "config/device_registry/list"}, ws=lambda *a: devices)
     assert whole["result"]["matched"] == 201 and whole["result"]["shown"] < 50 and "contains" in whole["result"]["hint"]      # never the whole list by default
     assert "contains" in ha._cap({"x": "a" * 50000})["hint"]
+
+
+def test_home_assistant_refusal_reason_reaches_the_model():
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "mcp" / "ha"))
+    import ha_ws
+    text = ha_ws.failure_text({"success": False, "error": {"code": "invalid_format", "message": "extra keys not allowed @ data['foo']"}})
+    assert "invalid_format" in text and "extra keys not allowed" in text
+    assert ha_ws.failure_text({"error": {"code": "not_found"}}).endswith("not_found")

@@ -580,7 +580,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         const runUsage = usageTotals.record(sessionID, rows);
         await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
-        console.error('Request failed:', error.name);
+        console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
       } finally { batchApprovals.clear(sessionID); run.accepting = false; controller.abort(); admission.resolve(false); clearInterval(timer); clearInterval(statusTimer); active.delete(sessionID); }
     });
