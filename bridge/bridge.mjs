@@ -4,11 +4,12 @@ import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
-import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
+import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
+const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
 import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
@@ -587,7 +588,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
-        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);

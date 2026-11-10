@@ -49,9 +49,24 @@ export class UsageTotals {
   get since() { return this.data.since; }
 }
 
-export function formatFinalUsage(run, totals, since) {
+// What the same tokens would have cost on a hosted model (prices from config/pricing.json, USD per million tokens).
+// Thinking tokens are part of output and are billed at the output rate.
+export function estimateCost(usage, pricing) {
+  const p = pricing?.usd_per_million;
+  if (!p) return null;
+  return ((usage.input - usage.cached) * p.input + usage.cached * p.cached_input + usage.output * p.output) / 1e6;
+}
+const money = value => `$${value >= 0.1 ? value.toFixed(2) : value >= 0.01 ? value.toFixed(3) : value.toFixed(4)}`;
+
+export function loadPricing(file) {
+  try { return JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+export function formatFinalUsage(run, totals, since, pricing = null) {
   const line = u => `in ${fmt(u.input)} (cached ${fmt(u.cached)} · uncached ${fmt(u.input - u.cached)}) · out ${fmt(u.output)}${u.reasoning ? ` (of which thinking ${fmt(u.reasoning)})` : ''}`;
-  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests`;
+  const cost = estimateCost(totals, pricing);
+  const saved = cost === null ? '' : `\nEst. saved vs ${pricing.model} (OpenRouter median): ${money(cost)}`;
+  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}`;
 }
 
 export async function streamingTokens(text) {

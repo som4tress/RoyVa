@@ -1,0 +1,6 @@
+{
+  "model": "DeepSeek V4.1 Flash",
+  "source": "OpenRouter provider-endpoint median, deepseek/deepseek-v4.1-flash-1017",
+  "as_of": "2026-11-10",
+  "usd_per_million": { "input": 0.15575, "cached_input": 0.006, "output": 0.665 }
+}
