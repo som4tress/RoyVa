@@ -51,6 +51,23 @@ def test_secret_paths_are_hidden_only_when_they_exist(tmp_path):
     assert str(tmp_path / ".ssh") in a and str(tmp_path / ".netrc") in a and str(tmp_path / ".gnupg") not in a
 
 
+def test_secret_files_are_found_by_name_not_by_a_fixed_list(tmp_path):
+    for rel in ("llm-server/opencode.env", "llm-server/ha.env", "client_secret_123.json", ".local/share/x/connection.env", "proj/.env", "a/my_api_key.txt",
+                ".ssh/id_ed25519_3090"):
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x")
+    for rel in (".ssh/id_ed25519_3090.pub", "llm-server/model/tokenizer.json", "notes.txt", "proj/.venv/lib/secret.py", "proj/readme.md"):
+        f = tmp_path / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text("x")
+    m._scan.update(home=None)
+    found = {str(Path(p).relative_to(tmp_path)) for p in m.secret_files(tmp_path)}
+    assert found == {"llm-server/opencode.env", "llm-server/ha.env", "client_secret_123.json", ".local/share/x/connection.env", "proj/.env", "a/my_api_key.txt", ".ssh/id_ed25519_3090"}
+    argv = m.sandbox_argv(tmp_path)
+    assert str(tmp_path / "client_secret_123.json") in argv and str(tmp_path / "llm-server/model/tokenizer.json") not in argv
+
+
 def test_exact_trusted_commands_run_unsandboxed_nothing_else():
     f = Fake()
     assert m.run({"command": "crontab -l"}, runner=f)["sandbox"] is False and f.calls[0][0] == ["crontab", "-l"]

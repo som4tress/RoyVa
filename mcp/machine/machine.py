@@ -49,6 +49,31 @@ def refuse(command: str):
     return None
 
 
+SECRET_NAME = re.compile(r"(\.env$|^\.env|credential|secret|token(?!iz)|^id_(rsa|ed25519|ecdsa|dsa)|\.(pem|key|p12|pfx|jks)$|^auth\.json$|^\.(netrc|npmrc|pgpass|git-credentials)$|api[_-]?key|password|passwd)", re.I)
+SKIP_DIRS = {".venv", "node_modules", ".cache", ".nvm", ".git", "snap", "site-packages", "__pycache__", ".npm", ".cargo", ".rustup"}
+_scan = {"home": None, "at": 0.0, "files": []}
+
+
+def secret_files(home: Path = HOME, max_depth: int = 5, ttl: float = 60.0) -> list:
+    """Files under the home directory whose NAME looks like a secret (.env, credentials, tokens, keys...). Found by pattern, not a fixed list, so a new
+    secret file is covered without an edit here. Public keys and tokenizer files are not secrets. Cached for a minute."""
+    now = time.time()
+    if _scan["home"] == str(home) and now - _scan["at"] < ttl:
+        return _scan["files"]
+    found = []
+    base = str(home).rstrip("/").count("/")
+    for dirpath, dirs, files in os.walk(home, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and dirpath.count("/") - base < max_depth]
+        for f in files:
+            if f.endswith(".pub") or not SECRET_NAME.search(f):
+                continue
+            p = os.path.join(dirpath, f)
+            if os.path.isfile(p) and not os.path.islink(p):
+                found.append(p)
+    _scan.update(home=str(home), at=now, files=found)
+    return found
+
+
 def sandbox_argv(home: Path = HOME) -> list:
     """bwrap arguments for a read-only sandbox; mounts only the secret paths that exist on this machine."""
     a = ["bwrap", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp", "--tmpfs", "/run",
@@ -57,9 +82,10 @@ def sandbox_argv(home: Path = HOME) -> list:
     for d in HIDE_DIRS:
         if (home / d).is_dir():
             a += ["--tmpfs", str(home / d)]
-    for f in HIDE_FILES:
-        if (home / f).is_file():
-            a += ["--ro-bind", "/dev/null", str(home / f)]
+    covered = [str(home / d) + "/" for d in HIDE_DIRS]
+    for f in dict.fromkeys([str(home / f) for f in HIDE_FILES if (home / f).is_file()] + secret_files(home)):
+        if not any(f.startswith(c) for c in covered):                          # already inside a hidden directory
+            a += ["--ro-bind", "/dev/null", f]
     return a
 
 
