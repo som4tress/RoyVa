@@ -654,3 +654,15 @@ def test_machine_tools_are_not_in_routed_skills(tmp_path):
     ask(gw, "lights?")
     create = next(c for c in oc.calls if c[0] == "create")
     assert not any(x["action"].startswith("machine_") and x["effect"] != "deny" for x in create[2])
+
+
+def test_resolve_ids_matches_each_id_to_its_own_registry_and_reports_missing():
+    from royva_gateway import home_context as hc
+    snap = {"devices": {"dev1": {"id": "dev1", "name": "Tuya HAP", "name_by_user": "HAP-603WF-Bedroom", "area_id": "master_bedroom"}},
+            "areas": {"master_bedroom": {"area_id": "master_bedroom", "name": "Master Bedroom"}}, "floors": {},
+            "entities": {"switch.a": {"entity_id": "switch.a", "name": None, "original_name": None, "device_id": "dev1"}}}
+    out = hc.resolve_ids({"device_id": ["dev1", "nope"], "area_id": ["master_bedroom"], "entity_id": ["switch.a", "light.yaml"]}, snap,
+                         [{"entity_id": "switch.a", "attributes": {"friendly_name": "A Switch"}}, {"entity_id": "light.yaml", "attributes": {"friendly_name": "Yaml Light"}}])
+    assert out["device_id"] == {"dev1": {"name": "HAP-603WF-Bedroom"}}                    # the UI name, and the unknown id is simply absent
+    assert out["area_id"] == {"master_bedroom": {"name": "Master Bedroom"}}              # the device in the area does not rename the area
+    assert out["entity_id"] == {"switch.a": {"name": "A Switch"}, "light.yaml": {"name": "Yaml Light"}}

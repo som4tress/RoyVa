@@ -53,57 +53,38 @@ export class BatchApprovals {
 const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
 
 
-// The call only carries ids. Names come from what the assistant itself read earlier in this conversation, and an id is only resolved from the
-// registry it belongs to (a device's id from the device registry, an area's from the area registry...): objects point at each other, so a loose
-// "nearest name" match would label an area with the name of a device in it.
-const KINDS = [   // [read-call pattern, parameter key, id field of that registry's own entries, name fields in display order]
-  [/device_registry/, 'device_id', ['id'], ['name_by_user', 'name']],
-  [/area_registry/, 'area_id', ['area_id'], ['name']],
-  [/floor_registry/, 'floor_id', ['floor_id'], ['name']],
-  [/entity_registry/, 'entity_id', ['entity_id'], ['name', 'original_name']],
-];
+// The call only carries ids. The names shown beside them come from Home Assistant itself, asked at the moment of the prompt (gateway /v1/resolve-ids),
+// never from the model or from earlier conversation. An id Home Assistant does not know, or a failed lookup, makes the request unverified: it can only be denied.
 const LABEL = {device_id: 'Device', entity_id: 'Entity', area_id: 'Area', floor_id: 'Floor'};
-function nameIndex(rows) {
-  const index = {device_id: new Map(), area_id: new Map(), floor_id: new Map(), entity_id: new Map()};
-  const items = value => Array.isArray(value) ? value : Array.isArray(value?.result) ? value.result : Array.isArray(value?.result?.items) ? value.result.items : Array.isArray(value?.body) ? value.body : Array.isArray(value?.body?.items) ? value.body.items : [];
-  for (const row of rows) for (const part of row.content || []) {
-    if (part.type !== 'tool' || !String(part.name).endsWith('ha_read')) continue;
-    const call = JSON.stringify(part.state?.input || {});
-    for (const block of part.state?.content || []) {
-      if (block.type !== 'text') continue;
-      let data; try { data = JSON.parse(block.text); } catch { continue; }
-      for (const item of items(data)) {
-        if (!item || typeof item !== 'object') continue;
-        for (const [pattern, key, idFields, nameFields] of KINDS) {
-          if (!pattern.test(call)) continue;
-          const id = idFields.map(f => item[f]).find(v => typeof v === 'string' && v);
-          const label = nameFields.map(f => item[f]).find(v => typeof v === 'string' && v);
-          if (id && label && !index[key].has(id)) index[key].set(id, label);
-        }
-        if (/\/api\/states|get_states/.test(call) && typeof item.entity_id === 'string' && typeof item.attributes?.friendly_name === 'string' && !index.entity_id.has(item.entity_id)) index.entity_id.set(item.entity_id, item.attributes.friendly_name);
-      }
-    }
-  }
-  return index;
-}
-export function resolveNames(rows, args) {
-  const found = [];
-  const seen = new Set();
-  const index = nameIndex(rows || []);
+export function idsInArgs(args) {
+  const out = {device_id: [], entity_id: [], area_id: [], floor_id: []};
   const scan = (value, key) => {
     if (Array.isArray(value)) return value.forEach(v => scan(v, key));
     if (value && typeof value === 'object') return Object.entries(value).forEach(([k, v]) => scan(v, k));
-    if (typeof value !== 'string' || !LABEL[key] || seen.has(`${key}:${value}`)) return;
-    seen.add(`${key}:${value}`);
-    const name = index[key].get(value);
-    found.push(name ? `${LABEL[key]}: ${line(name)}` : `${LABEL[key]}: name not found in this conversation, check the id before approving`);
+    if (typeof value === 'string' && out[key] && !out[key].includes(value)) out[key].push(value);
   };
-  scan(args.params ?? {}, '');
-  return found;
+  scan(args?.params ?? {}, '');
+  return out;
 }
+export const hasIds = ids => Object.values(ids).some(list => list.length);
+// live = the gateway's {kind: {id: {name}}} answer, or null when the lookup failed. Returns the lines to show and whether every id was matched.
+export function verifyIds(args, live) {
+  const ids = idsInArgs(args);
+  if (!hasIds(ids)) return {lines: [], verified: true};
+  if (!live) return {lines: ['⚠ Could not check these ids against Home Assistant, so the names are unverified.'], verified: false};
+  const lines = [];
+  let verified = true;
+  for (const [key, list] of Object.entries(ids)) for (const id of list) {
+    const hit = live[key]?.[id];
+    if (hit) lines.push(`${LABEL[key]}: ${hit.name ? line(hit.name) : '(no display name)'}  [${line(id)}]`);
+    else { verified = false; lines.push(`⚠ ${LABEL[key]} ${line(id)} does not exist in Home Assistant`); }
+  }
+  return {lines, verified};
+}
+export const permissionVerified = (permission, live) => !FULL_CALL[canonTool(permission.action)] || verifyIds(permission.metadata?.input || {}, live).verified;
 export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
 const FULL_LIMIT = 3500;
-export function formatPermission(permission, rows = []) {
+export function formatPermission(permission, rows = [], live = undefined) {
   const input = permission.metadata?.input;
   const args = input && typeof input === 'object' ? input : {};
   const tool = canonTool(permission.action);
@@ -120,11 +101,12 @@ export function formatPermission(permission, rows = []) {
     return ['Approve?', `${verb}: ${what}`, '/approve (covers the whole request) or /deny'].join('\n');
   }
   if (FULL_CALL[tool]) {
-    const names = resolveNames(rows, args);                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
+    const check = verifyIds(args, live);
+    const names = check.lines;                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
     const body = JSON.stringify(scrub(args), null, 1);
     const out = ['Approve?', FULL_CALL[tool], ...names, body.length > FULL_LIMIT ? body.slice(0, FULL_LIMIT) + '…' : body];
     if (body.length > FULL_LIMIT) out.push('⚠ Too long to review in full. Deny it and ask for a smaller step.');
-    out.push('/approve or /deny (this call only)');
+    out.push(check.verified ? '/approve or /deny (this call only)' : 'Approve is disabled until the names match: /deny');
     return out.join('\n');
   }
   let action = `Run ${line(tool)}`;

@@ -120,6 +120,25 @@ async def route(req: AskRequest):
     return await gw.route_for_bridge(req)
 
 
+class ResolveIds(BaseModel):
+    device_id: list[str] = []
+    area_id: list[str] = []
+    floor_id: list[str] = []
+    entity_id: list[str] = []
+
+
+@app.post("/v1/resolve-ids", dependencies=[Depends(require_token)])
+async def resolve_ids(req: ResolveIds):
+    """Live Home Assistant names for the ids in an approval prompt, so the owner approves a name that is really tied to the id."""
+    import asyncio
+    from . import home_context
+    try:
+        found = await asyncio.to_thread(home_context.live_resolve, req.model_dump())
+    except Exception as e:                                           # noqa: BLE001
+        raise HTTPException(502, f"Home Assistant lookup failed: {type(e).__name__}")
+    return {"ok": True, "found": found}
+
+
 # ---- enrollment (who may use RoyVa). The bridge forwards Telegram commands here; the gateway is the only writer of users.json. ----
 class Enroll(BaseModel):
     user: str                      # "telegram:<id>" of the person who sent the command (identity comes from Telegram, never from message text)

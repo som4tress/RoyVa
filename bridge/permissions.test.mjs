@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BatchApprovals, approvalKey, formatPermission } from './permissions.mjs';
+import { BatchApprovals, approvalKey, formatPermission, idsInArgs, permissionVerified } from './permissions.mjs';
 
 const perm = (action, input) => ({ id: 'p1', action, metadata: { input } });
 
@@ -58,29 +58,36 @@ test('arbitrary-power tools show the whole call and are never batch-approved', (
   assert.match(long, /Too long to review/);
 });
 
-const haRead = (type, data) => ({type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {input: {kind: 'ws', type}, content: [{type: 'text', text: JSON.stringify(data)}]}}]});
 const writeCall = params => ({action: 'ha-api_ha_write', metadata: {input: {kind: 'ws', type: 'config/device_registry/update', params}}});
+const live = {device_id: {dev1: {name: 'HAP-603WF-Bedroom'}}, area_id: {master_bedroom: {name: 'Master Bedroom'}}, floor_id: {}, entity_id: {}};
 
-test('ha_write approval names the device and area from the matching registries', () => {
-  const rows = [haRead('config/device_registry/list', {result: {matched: 1, items: [{id: 'dev1', name: 'HAP-603WF-Bedroom', name_by_user: null, area_id: 'master_bedroom'}]}}),
-                haRead('config/area_registry/list', {result: [{area_id: 'master_bedroom', name: 'Master Bedroom'}]})];
-  const out = formatPermission(writeCall({device_id: 'dev1', area_id: 'master_bedroom'}), rows);
-  assert.match(out, /Device: HAP-603WF-Bedroom/);
-  assert.match(out, /Area: Master Bedroom/);
-  assert.doesNotMatch(out, /Area: HAP/);                           // a device that sits in the area must not name the area
+test('ha_write approval shows Home Assistant\'s own name next to each id', () => {
+  const out = formatPermission(writeCall({device_id: 'dev1', area_id: 'master_bedroom'}), [], live);
+  assert.match(out, /Device: HAP-603WF-Bedroom {2}\[dev1\]/);
+  assert.match(out, /Area: Master Bedroom {2}\[master_bedroom\]/);
+  assert.match(out, /\/approve or \/deny/);
+  assert.equal(permissionVerified(writeCall({device_id: 'dev1'}), live), true);
 });
 
-test('an id is never named from another registry or from a display name the user cannot trust', () => {
-  const rows = [haRead('config/entity_registry/list', {result: [{entity_id: 'switch.x', device_id: 'dev1', name: 'Some Entity Name'}]}),
-                haRead('config/device_registry/list', {result: [{id: 'dev1', name: 'Real Device', name_by_user: 'My Renamed Device'}]})];
-  const out = formatPermission(writeCall({device_id: 'dev1'}), rows);
-  assert.match(out, /Device: My Renamed Device/);                  // the UI name wins, and the entity that points at this device does not rename it
-  assert.doesNotMatch(out, /Some Entity Name/);
-  assert.match(formatPermission(writeCall({device_id: 'dev1'}), [rows[0]]), /Device: name not found/);   // only an entity read: the device stays unnamed
-  assert.match(formatPermission(writeCall({device_id: 'zzz'}), rows), /name not found in this conversation/);
+test('an id Home Assistant does not know, or a failed lookup, makes the request unverified and approve is disabled', () => {
+  const bad = formatPermission(writeCall({device_id: 'zzz'}), [], live);
+  assert.match(bad, /Device zzz does not exist in Home Assistant/);
+  assert.match(bad, /Approve is disabled/);
+  assert.equal(permissionVerified(writeCall({device_id: 'zzz'}), live), false);
+  const down = formatPermission(writeCall({device_id: 'dev1'}), [], null);
+  assert.match(down, /unverified/);
+  assert.equal(permissionVerified(writeCall({device_id: 'dev1'}), null), false);
 });
 
-test('entity names come from states reads', () => {
-  const rows = [{type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {input: {kind: 'rest', path: '/api/states'}, content: [{type: 'text', text: JSON.stringify({http_status: 200, body: {items: [{entity_id: 'light.kitchen', attributes: {friendly_name: 'Kitchen Light'}}]}})}]}}]}];
-  assert.match(formatPermission({action: 'ha-api_ha_write', metadata: {input: {kind: 'rest', path: '/api/services/light/turn_off', params: {entity_id: 'light.kitchen'}}}}, rows), /Entity: Kitchen Light/);
+test('calls without ids (an automation body, a command) need no lookup', () => {
+  assert.deepEqual(idsInArgs({params: {alias: 'x', trigger: []}}), {device_id: [], entity_id: [], area_id: [], floor_id: []});
+  assert.equal(permissionVerified({action: 'ha-api_ha_write', metadata: {input: {params: {alias: 'x'}}}}, undefined), true);
+  assert.equal(permissionVerified({action: 'machine_run_approved', metadata: {input: {command: 'ls'}}}, undefined), true);
+  assert.equal(permissionVerified({action: 'gmail_send_message', metadata: {input: {}}}, null), true);
+});
+
+test('ids inside nested service calls are all collected', () => {
+  const ids = idsInArgs({params: {target: {entity_id: ['light.a', 'light.b'], area_id: 'kitchen'}}});
+  assert.deepEqual(ids.entity_id, ['light.a', 'light.b']);
+  assert.deepEqual(ids.area_id, ['kitchen']);
 });

@@ -9,7 +9,7 @@ import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
-import {formatPermission, approvalKey, BatchApprovals} from './permissions.mjs';
+import {formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
 
@@ -170,6 +170,15 @@ export async function main({transcriber = createTranscriber()} = {}) {
   const batchApprovals = new BatchApprovals();
   const permissionKeys = new Map();     // permission request id -> batch key, so /approve can cover the rest of the request
 
+  // Present a permission request. For arbitrary-power calls that name Home Assistant ids, ask Home Assistant for the names right now; if they cannot be matched, the request is "unverified" and can only be denied.
+  async function presentPermission(message, permission, history, sessionID) {
+    let live;
+    if (FULL_CALL[canonTool(permission.action)]) {
+      const ids = idsInArgs(permission.metadata?.input || {});
+      if (hasIds(ids)) { try { live = (await gatewayCall('/v1/resolve-ids', ids)).found; } catch { live = null; } }
+    }
+    return send(message, formatPermission(permission, history, live), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live)});
+  }
   // A denied permission ends the request: RoyVa must not carry on and try another way round what the owner just refused.
   async function stopAfterDeny(sessionID) {
     active.get(sessionID)?.controller.abort();
@@ -312,7 +321,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     // After a Gmail connection OpenCode must reload; wait (up to 10 min) until no run is active so nobody's answer is cut off, then restart it.
     restartWhenIdle: async () => { for (let i = 0; i < 120 && active.size; i++) await new Promise(r => setTimeout(r, 5000)); try { await gatewayCall('/v1/admin/restart-opencode'); } catch (error) { console.log(`OpenCode restart request failed: ${error.message}`); } },
   });
-  async function send(message, text, sessionID, feedback = false, permissionID) {
+  async function send(message, text, sessionID, feedback = false, permissionID, opts = {}) {
     const points = Array.from(text);
     const feedbackData = feedback && typeof feedback === 'object' ? feedback : {};
     let first;
@@ -320,14 +329,14 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const result = await tg('sendMessage', {
         chat_id: message.chat.id, text: points.slice(offset, offset + 3900).join(''),
         reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
-        ...(permissionID && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: [[{text: '✅ Approve', callback_data: 'perm:approve'}, {text: '❌ Deny', callback_data: 'perm:deny'}]]}} : {}),
+        ...(permissionID && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: [opts.unverified ? [{text: '❌ Deny', callback_data: 'perm:deny'}] : [{text: '✅ Approve', callback_data: 'perm:approve'}, {text: '❌ Deny', callback_data: 'perm:deny'}]]}} : {}),
         ...(feedback && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: feedbackData.incorrectOnly
           ? [[{text: '👎 Incorrect', callback_data: 'feedback:reject'}]]
           : [[{text: '👍 Accept & learn', callback_data: 'feedback:accept'}, {text: '👎 Incorrect', callback_data: 'feedback:reject'}]]}} : {}),
       });
       first ??= result;
       console.log(`Sent reply part to chat (message ${result.message_id}, ${points.length} chars)`);
-      if (permissionID) state.permissions[`${message.chat.id}:${result.message_id}`] = {sessionID, requestID: permissionID};
+      if (permissionID) state.permissions[`${message.chat.id}:${result.message_id}`] = {sessionID, requestID: permissionID, ...(opts.unverified ? {unverified: true} : {})};
       if (feedback) state.answers[`${message.chat.id}:${result.message_id}`] = {
         sessionID: sessionID || feedbackData.sessionID,
         assistantIDs: feedbackData.assistantIDs || [],
@@ -417,9 +426,10 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (!pending.length) return send(message, 'No pending permission request.', linked);
       const target = state.permissions[`${message.chat.id}:${message.reply_to_message.message_id}`];
       if (!target || target.sessionID !== linked) {
-        for (const permission of pending) await send(message, formatPermission(permission), linked, false, permission.id);
+        for (const permission of pending) await presentPermission(message, permission, [], linked);
         return;
       }
+      if (text === '/approve' && target.unverified) return send(message, 'Cannot approve: the names in this request could not be matched to Home Assistant. Reply /deny.', linked);
       const request = pending.find(permission => permission.id === target.requestID);
       if (!request) return send(message, 'That permission request is no longer waiting. Reply to the current approval prompt.', linked);
       try {
@@ -563,7 +573,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
               return;
             }
             if (key) permissionKeys.set(permission.id, key);
-            return send(run.replyTo, formatPermission(permission, history), sessionID, false, permission.id);
+            return presentPermission(run.replyTo, permission, history, sessionID);
           },
         });
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
@@ -587,6 +597,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     const target = state.permissions[`${message.chat.id}:${message.message_id}`];
     if (!target) return answer('This request is no longer active.');
     const approve = callback.data === 'perm:approve';
+    if (approve && target.unverified) return answer('Not verified: only Deny is possible.');
     try {
       const pending = await openCodeAPI(`/api/session/${target.sessionID}/permission`);
       const request = pending.find(permission => permission.id === target.requestID);

@@ -91,7 +91,7 @@ def test_route_table_is_exactly_the_documented_api():
     have = {(m, r.path) for r in app_mod.app.routes if hasattr(r, "methods") for m in r.methods if m not in ("HEAD", "OPTIONS")}
     api = {(m, p) for m, p in have if (p.startswith("/v1") and not p.startswith(("/v1/enroll", "/v1/admin"))) or p == "/healthz"}     # enrollment is pinned below
     assert api == {("GET", "/healthz"), ("GET", "/v1/registry"), ("GET", "/v1/stats"),
-                   ("POST", "/v1/ask"), ("POST", "/v1/session"), ("POST", "/v1/route"), ("POST", "/v1/reload")}
+                   ("POST", "/v1/ask"), ("POST", "/v1/session"), ("POST", "/v1/route"), ("POST", "/v1/reload"), ("POST", "/v1/resolve-ids")}
 
 
 def test_enrollment_route_table_is_pinned():

@@ -112,3 +112,35 @@ def away_text(info: dict):
         return None
     return (f"The user is currently away from home, in {where}{at}. For 'here', weather and nearby questions use this location "
             "unless they name another place.")
+
+
+# ---------------------------------------------------------------- live id -> name check for approval prompts (never cached: the owner approves what Home Assistant says right now)
+_TABLES = (("device_id", "devices", lambda r: r.get("name_by_user") or r.get("name")), ("area_id", "areas", lambda r: r.get("name")),
+           ("floor_id", "floors", lambda r: r.get("name")), ("entity_id", "entities", lambda r: r.get("name") or r.get("original_name")))
+
+
+def resolve_ids(wanted: dict, snap: dict, states: list | None = None) -> dict:
+    """{kind: {id: {"name": str|None}}} for the ids that exist in Home Assistant; an id that is absent from its answer does not exist."""
+    friendly = {x["entity_id"]: (x.get("attributes") or {}).get("friendly_name") for x in (states or [])}
+    out: dict = {}
+    for key, table, name_of in _TABLES:
+        found: dict = {}
+        for i in wanted.get(key) or []:
+            row = snap.get(table, {}).get(i)
+            if row is not None:
+                found[i] = {"name": name_of(row) or (friendly.get(i) if key == "entity_id" else None)}
+            elif key == "entity_id" and i in friendly:                  # entities without a registry entry (e.g. defined in YAML) still exist in the state machine
+                found[i] = {"name": friendly[i]}
+        out[key] = found
+    return out
+
+
+def live_resolve(wanted: dict) -> dict:
+    sys.path.insert(0, str(HA_HELPER_DIR))
+    import ha_registry, ha_ws                                  # noqa: E401
+    snap = ha_registry.snapshot()
+    states = None
+    if wanted.get("entity_id"):
+        ws_url, token = ha_registry._connection()
+        states = ha_ws.call(ws_url, token, [{"id": 1, "type": "get_states"}])[1]
+    return resolve_ids(wanted, snap, states)
