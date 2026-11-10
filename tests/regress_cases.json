@@ -1,0 +1,337 @@
+[
+ {
+  "id": "lights-upstairs",
+  "q": "What is the status of lights upstairs?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true,
+  "live": true,
+  "tools_used": "get_live_context|get_device_status_report|get_on_entities",
+  "answer_not": "can.?t|cannot|don.?t have access"
+ },
+ {
+  "id": "upstairs-on-unavail",
+  "q": "Which controllable devices upstairs are currently on, and which are unavailable?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "kitchen-brightness",
+  "q": "Check the kitchen lights now, including brightness where available. Distinguish unavailable from off. Read-only; use fresh data.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "gas-stove",
+  "q": "What is the status of my gas stove?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "is-ford-off",
+  "q": "is ford off",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "staircase-readonly",
+  "q": "Show the staircase LED light status and brightness. Read-only; do not change any device states.",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "sonos-green-light",
+  "q": "Why is a green light glowing on three of my four Sonos speakers at home?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "area-of-device",
+  "q": "Which area is HAP-603WF-Bedroom in?",
+  "intents": [
+   "home_state"
+  ],
+  "no_write": true,
+  "live": true,
+  "tools_used": "get_live_context|ha_read|get_device_status_report",
+  "answer_match": "bedroom|area|upstairs|downstairs"
+ },
+ {
+  "id": "shobha-left",
+  "q": "What time did Shoba leave home?",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "ford-location",
+  "q": "Show me fords location history categorized by driving and parked for yesterday",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "where-is",
+  "q": "Where is Shivangsh",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "entities-on-today",
+  "q": "show me all the entities that are on in my house today",
+  "intents": [
+   "home_history"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "weather-in-out",
+  "q": "What is the weather inside and outside of my house?",
+  "intents": [
+   "home_state",
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "weather-till-nov",
+  "q": "What does the weather look like till 21 Nov?",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true,
+  "live": true,
+  "tools_used": "websearch|webfetch",
+  "answer_match": "[0-9]"
+ },
+ {
+  "id": "news-rss",
+  "q": "Fetch https://feeds.bbci.co.uk/news/technology/rss.xml and give three headlines",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "flight",
+  "q": "I want to fly to Mumbai around 20th of this month and return next month, when is it cheapest?",
+  "intents": [
+   "web_lookup"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "unread-mail",
+  "q": "List the top 20 oldest unread emails from my gmail.",
+  "intents": [
+   "mail_read"
+  ],
+  "no_write": true
+ },
+ {
+  "id": "archive-promos",
+  "q": "Archive all my promotional emails",
+  "intents": [
+   "mail_manage"
+  ],
+  "ask": [
+   "gmail-tidy_tidy_ids",
+   "gmail-tidy_tidy_matching"
+  ]
+ },
+ {
+  "id": "goodnight",
+  "q": "Run goodnight automation",
+  "intents": [
+   "routine_trigger"
+  ]
+ },
+ {
+  "id": "turn-on-mics",
+  "q": "Turn on somdutta-Linux - tonor, webcam mic and both analog inputs. But turn off the microphones on all the Sonos speakers",
+  "intents": [
+   "home_control"
+  ],
+  "ask": [
+   "ha-api_ha_write"
+  ]
+ },
+ {
+  "id": "staircase-on",
+  "q": "Keep the staircase LED's on",
+  "intents": [
+   "home_control"
+  ],
+  "ask": [
+   "ha-api_ha_write"
+  ]
+ },
+ {
+  "id": "rename-device",
+  "q": "Rename the HAP-603WF-Bedroom device to Bedroom Heater",
+  "intents": [
+   "home_control"
+  ],
+  "ask": [
+   "ha-api_ha_write"
+  ]
+ },
+ {
+  "id": "news-and-play",
+  "q": "Give me the news and play it on my Living Room Speaker.",
+  "intents": [
+   "web_lookup",
+   "media_playback"
+  ]
+ },
+ {
+  "id": "play-jazz",
+  "q": "Play some jazz on the living room speaker",
+  "intents": [
+   "media_playback"
+  ]
+ },
+ {
+  "id": "create-automation",
+  "q": "Create an automation that turns off the porch light at midnight",
+  "intents": [
+   "ha_automation"
+  ],
+  "ask": [
+   "ha-api_ha_write"
+  ]
+ },
+ {
+  "id": "mem-free",
+  "q": "How much memory is free on this machine?",
+  "intents": [],
+  "mode": "fallback",
+  "tools_include": "machine.run",
+  "live": true,
+  "tools_used": "machine_run",
+  "answer_match": "[0-9] ?(GiB|GB|MiB|MB|Gi|G|M)",
+  "answer_not": "can.?t|cannot|don.?t have access",
+  "ask": [
+   "machine_run_approved",
+   "machine_remote_run_approved"
+  ],
+  "allow": [
+   "machine_run"
+  ]
+ },
+ {
+  "id": "cron-jobs",
+  "q": "find my cron jobs",
+  "intents": [],
+  "mode": "fallback",
+  "tools_include": "machine.run",
+  "live": true,
+  "tools_used": "machine_run",
+  "answer_not": "can.?t|cannot|don.?t have access",
+  "ask": [
+   "machine_run_approved",
+   "machine_remote_run_approved"
+  ],
+  "allow": [
+   "machine_run"
+  ]
+ },
+ {
+  "id": "os-version",
+  "q": "Read this host's Ubuntu release and kernel version. Give the exact values. Read-only.",
+  "intents": [],
+  "mode": "fallback",
+  "tools_include": "machine.run",
+  "ask": [
+   "machine_run_approved"
+  ],
+  "allow": [
+   "machine_run"
+  ]
+ },
+ {
+  "id": "no-tools-chat",
+  "q": "Do not use tools. Explain in two sentences how rain forms.",
+  "intents": [],
+  "mode": "fallback",
+  "live": true,
+  "no_tools_used": true,
+  "answer_match": "water|vapor|cloud|condens"
+ },
+ {
+  "id": "no-tools-summarize",
+  "q": "Summarize these project notes: Build passed at 09:10. Deployment accepted at 09:12. Health check not yet run.",
+  "intents": [],
+  "mode": "fallback",
+  "live": true,
+  "no_tools_used": true,
+  "answer_match": "09:10|build|health"
+ },
+ {
+  "id": "followup-scope",
+  "seq": [
+   {
+    "q": "Show the hallway light status. Read-only; do not change any device states.",
+    "intents": [
+     "home_state"
+    ]
+   },
+   {
+    "q": "Explain which two lights we just discussed and their reported states. Read-only; do not change anything.",
+    "reply": true,
+    "mode": "continuation",
+    "no_write": true
+   }
+  ]
+ },
+ {
+  "id": "followup-turn-them-back",
+  "seq": [
+   {
+    "q": "Which lights are on upstairs?",
+    "intents": [
+     "home_state"
+    ]
+   },
+   {
+    "q": "Now turn those off",
+    "reply": true,
+    "intents_include": "home_control",
+    "ask": [
+     "ha-api_ha_write"
+    ]
+   }
+  ]
+ },
+ {
+  "id": "mem-free-bare",
+  "q": "How much memory is free?",
+  "intents": [],
+  "mode": "fallback",
+  "tools_include": "machine.run"
+ },
+ {
+  "id": "disk-usage",
+  "q": "Compare disk usage of /home/somdutta/llm-server and /home/somdutta/.cache/huggingface. Identify their three largest immediate subdirectories.",
+  "intents": [],
+  "mode": "fallback",
+  "tools_include": "machine.run"
+ }
+]
