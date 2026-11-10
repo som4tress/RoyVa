@@ -1,5 +1,5 @@
 import {telegramMedia, withVideoFrames} from './media.mjs';
-import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { join, dirname } from 'node:path';
@@ -45,12 +45,12 @@ function toolResult(part) {
 export function actionReport(rows, routed) {
   if (!routed?.can_act) return '';
   const writes = routed.write_tools || {};
-  const parts = rows.filter(row => row.type === 'assistant').flatMap(row => (row.content || []).filter(part => part.type === 'tool' && writes[part.name]));
+  const parts = rows.filter(row => row.type === 'assistant').flatMap(row => (row.content || []).filter(part => part.type === 'tool' && writes[canonTool(part.name)]));
   if (!parts.length) return '\n\nℹ️ No action was taken.';
   const lines = parts.map(part => {
     const result = toolResult(part), status = part.state?.status;
     const failed = status !== 'completed' || result.ok === false || Boolean(result.error);
-    return failed ? `❌ ${writes[part.name]}: ${result.error || status || 'failed'}` : `✅ ${result.did || writes[part.name]}`;
+    return failed ? `❌ ${writes[canonTool(part.name)]}: ${result.error || status || 'failed'}` : `✅ ${result.did || writes[canonTool(part.name)]}`;
   });
   return `\n\n— What I did —\n${lines.join('\n')}`;
 }
@@ -162,11 +162,11 @@ export async function main({transcriber = createTranscriber()} = {}) {
   const stateFile = process.env.OPENCODE_TG_STATE_FILE;
   let state;
   try { state = JSON.parse(readFileSync(stateFile, 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; state = { offset: 0, messages: {} }; }
+  catch (error) { if (error.code !== 'ENOENT') console.error('State file unreadable, starting fresh:', error.message); state = { offset: 0, messages: {} }; }
   state.answers ||= {};
   state.permissions ||= {};
   const usageTotals = new UsageTotals(process.env.ROYVA_USAGE_FILE || join(process.env.XDG_STATE_HOME || dirname(stateFile), 'usage_totals.json'));
-  const save = () => writeFileSync(stateFile, JSON.stringify(state), { mode: 0o600 });
+  const save = () => { const tmp = `${stateFile}.tmp`; writeFileSync(tmp, JSON.stringify(state), { mode: 0o600 }); renameSync(tmp, stateFile); };
   const active = new Map();
   const batchApprovals = new BatchApprovals();
   const permissionKeys = new Map();     // permission request id -> batch key, so /approve can cover the rest of the request
@@ -320,7 +320,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     tell: (id, text) => tg('sendMessage', { chat_id: Number(id), text }).catch(() => {}),
     allowlist: live,
     // After a Gmail connection OpenCode must reload; wait (up to 10 min) until no run is active so nobody's answer is cut off, then restart it.
-    restartWhenIdle: async () => { for (let i = 0; i < 120 && active.size; i++) await new Promise(r => setTimeout(r, 5000)); try { await gatewayCall('/v1/admin/restart-opencode'); } catch (error) { console.log(`OpenCode restart request failed: ${error.message}`); } },
+    restartWhenIdle: async () => { for (let i = 0; i < 120 && active.size; i++) await setTimeout(5000); try { await gatewayCall('/v1/admin/restart-opencode'); } catch (error) { console.log(`OpenCode restart request failed: ${error.message}`); } },
   });
   // Acknowledge a steering reply immediately: a 👀 reaction, or a short message if reactions are unavailable.
   async function ackSteer(message) {
