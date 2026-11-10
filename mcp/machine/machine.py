@@ -22,12 +22,12 @@ MAX_CMD = 3000                                   # an approval must show the who
 MAX_OUT = 20000
 DEFAULT_TIMEOUT, MAX_TIMEOUT = 30, 120
 SAFE_PATH = "/usr/local/bin:/usr/bin:/bin"
-ROOT_CMD = re.compile(r"(^|[;&|(`\s])(sudo|su|doas|pkexec)(\s|$)")
+ROOT_CMD = re.compile(r"(^|[;&|(`\s/])(sudo|su|doas|pkexec)(\s|$)")
 WRITE_HINT = re.compile(r"Read-only file system|Permission denied|Operation not permitted|cannot create|cannot touch|Cannot open", re.I)
 # Home paths that hold secrets: emptied or blanked inside the sandbox (only those that exist are mounted).
 HIDE_DIRS = [".ssh", ".gnupg", ".gmail-mcp", ".royva", ".aws", ".kube", ".docker", ".config/gh", ".config/opencode", ".config/gcloud",
-             ".local/share/opencode", ".local/share/keyrings", ".claude", "RoyVa/runtime/gateway/gmail", "RoyVa/runtime/state"]
-HIDE_FILES = [".netrc", ".npmrc", ".git-credentials", "llm-server/ha-remote.json", "llm-server/api.env", "llm-server/ha.env", "RoyVa/runtime/server.env"]
+             ".local/share/opencode", ".local/share/keyrings", ".claude", "RoyVa/runtime/gateway/gmail", "RoyVa/runtime/state", "RoyVa/runtime/gateway/users.json", "RoyVa/runtime/gateway/invites.json"]
+HIDE_FILES = [".netrc", ".npmrc", ".git-credentials", "llm-server/ha-remote.json", "llm-server/api.env", "llm-server/ha.env", "RoyVa/runtime/server.env", "OpenRouter.txt", "OpenAI.txt", ".claude.json"]
 # A few exact read-only commands that cannot run inside the sandbox (they need the host's privileges or process list). Matched token for token.
 TRUSTED_EXACT = {("crontab", "-l"), ("systemctl", "list-timers", "--all"), ("systemctl", "--user", "list-timers", "--all"),
                  ("ps", "-eo", "pid,ppid,etime,pcpu,pmem,comm")}

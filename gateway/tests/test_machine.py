@@ -130,3 +130,9 @@ def test_missing_sandbox_fails_closed_instead_of_running_unsandboxed():
         raise FileNotFoundError(2, "No such file", "bwrap")
     out = m.run({"command": "ls"}, runner=gone)
     assert "bwrap is not installed" in out["error"] and "stdout" not in out
+
+
+def test_sudo_by_absolute_path_is_refused():
+    assert m.ROOT_CMD.search("/usr/bin/sudo ls")
+    assert m.ROOT_CMD.search("echo hi; sudo ls")
+    assert not m.ROOT_CMD.search("echo pseudo suffix")
