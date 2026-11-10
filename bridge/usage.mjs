@@ -50,8 +50,7 @@ export class UsageTotals {
 }
 
 export function formatFinalUsage(run, totals, since) {
-  const line = u => `in ${fmt(u.input)} (cached ${fmt(u.cached)} · uncached ${fmt(u.input - u.cached)}) · out ${fmt(u.output)}${u.reasoning ? ` (of which thinking ${fmt(u.reasoning)})` : ''}`;
-  return `\n\n— Tokens —\nThis request: ${line(run)} · ${run.passes} model passes\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests`;
+  return `\n\n— Tokens, all time (since ${String(since).slice(0, 10)}): ${fmt(totals.input + totals.output)} total`;
 }
 
 export async function streamingTokens(text) {
