@@ -104,3 +104,15 @@ The owner said things look good after deploying, but Claude did not itself run t
 * A prompt instruction is not enforcement. Where it matters (approvals, secrets, scopes) enforce in code; say so when something is only a prompt rule.
 * If you ask the model to "ask first", it may ask in chat text and never call the tool whose own prompt carries the buttons. Tell it to call the gated tool directly.
 * Ids that reference each other (device <-> area <-> entity) must be named from their own registry, live, never from the nearest name in earlier output.
+
+## 11. Regression suite and open audit findings (2026-11-10)
+Run before/after every change, no Telegram: `. scripts/env.sh; node tests/regress.mjs` (route + permission checks, ~1 min) and `node tests/regress.mjs --live` (also runs the `live` cases through OpenCode; every permission request is denied, so nothing in the house changes; ~10 min). Cases are in `tests/regress_cases.json`, built from real past queries (`past-NN` are frozen current routing; add the owner's new queries there). Known misroute is tagged `xfail`.
+Open findings from the 2026-11-10 audit, not fixed (need an owner decision or more work):
+- Any enrolled member can press 👎 (DeepSeek takeover, all servers allowed); gmail servers are not stripped from the takeover config.
+- One batch approval keys on action only, so later `tidy_*` calls with a different query/ids ride on it.
+- `AskRequest.text` max 8000 chars: long expanded prompts get 422, shown as "routing unreachable".
+- Session permissions are only refreshed when grants change, not when mail accounts/readonly change.
+- Protected-device check in `ha_write` matches names, writes carry ids (approval still shows live names).
+- Steer after Stop is acknowledged then dropped; Deny can send two messages; pending permission left if `onPermission` throws.
+- `expected_mcp` omits `machine` and `ha-api`.
+- Loop guard trips on read, change, re-read of the same query.
