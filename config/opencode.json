@@ -208,6 +208,14 @@
         ],
         "codemode": false
       },
+      "machine": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/RoyVa/mcp/machine/machine.py"
+        ],
+        "codemode": false
+      },
       "ha-routines": {
         "type": "local",
         "command": [

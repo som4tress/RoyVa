@@ -633,3 +633,24 @@ def test_ha_api_tools_are_owner_only_and_always_ask(tmp_path):
     ask(gw2, "turn on the kitchen light")
     c2 = next(c for c in oc2.calls if c[0] == "create")
     assert not any(x["action"].startswith("ha-api_") and x["effect"] != "deny" for x in c2[2])      # no owner scope: no API door
+
+
+def test_machine_door_is_general_mode_owner_only_and_run_approved_asks(tmp_path):
+    gw, oc, _ = make(tmp_path, {})
+    ask(gw, "how much memory is free?")
+    create = next(c for c in oc.calls if c[0] == "create")
+    rules = {x["action"]: x["effect"] for x in create[2]}
+    assert rules["machine_run"] == "allow" and rules["machine_remote_run"] == "allow"
+    assert rules["machine_run_approved"] == "ask" and rules["machine_remote_run_approved"] == "ask"
+    (tmp_path / "b").mkdir()
+    gw2, oc2, _ = make(tmp_path / "b", {}, users={"telegram:1": {"person": "", "scopes": ["home"], "mail": ""}})
+    ask(gw2, "how much memory is free?")
+    c2 = next(c for c in oc2.calls if c[0] == "create")
+    assert not any(x["action"].startswith("machine_") and x["effect"] != "deny" for x in c2[2])        # an invited member never gets a shell
+
+
+def test_machine_tools_are_not_in_routed_skills(tmp_path):
+    gw, oc, _ = make(tmp_path, {"lights?": ["home_state"]})
+    ask(gw, "lights?")
+    create = next(c for c in oc.calls if c[0] == "create")
+    assert not any(x["action"].startswith("machine_") and x["effect"] != "deny" for x in create[2])

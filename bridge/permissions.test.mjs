@@ -49,7 +49,7 @@ test('sending email shows the recipient and subject, briefly', () => {
 
 test('arbitrary-power tools show the whole call and are never batch-approved', () => {
   const p = a => ({action: a, metadata: {input: {host: 'h', command: "echo 'a;b'\nrm x"}}});
-  const out = formatPermission(p('remote_run_approved'));
+  const out = formatPermission(p('machine_remote_run_approved'));
   assert.match(out, /REMOTE machine/);
   assert.match(out, /echo 'a;b'\\nrm x/);                 // newline shown escaped
   assert.match(out, /this call only/);

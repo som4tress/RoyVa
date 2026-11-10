@@ -52,7 +52,7 @@ export class BatchApprovals {
 }
 const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
 
-export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'remote_run_approved': 'Run on a REMOTE machine:'};
+export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
 const FULL_LIMIT = 3500;
 export function formatPermission(permission, rows = []) {
   const input = permission.metadata?.input;

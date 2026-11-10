@@ -10,6 +10,7 @@ GENERAL_ID = "general"
 
 STYLE = ("No specific skill matched this request, so work it out yourself with the tools you have. Think of the possible ways to do it, pick the most direct, "
          "try it, and if it fails or returns nothing useful try the next way. Read before you change anything and check the result after a change. "
+         "For anything on this machine or another allowed one (memory, disks, logs, cron jobs, files) use the machine tools: run and remote_run read freely inside a read-only sandbox; if one fails with Read-only file system and a change is really needed, use run_approved or remote_run_approved. "
          "For Home Assistant things no device tool covers (areas, automations, scenes, renames) use ha_read to look up ids and ha_write to change them. "
          "Anything that changes something will ask the user for approval first; say plainly what you are about to do. "
          "Say you cannot do something only after you have tried, and then name what you tried and what is missing.")
@@ -23,6 +24,9 @@ def build(reg: Registry, usable: list[Intent]) -> Intent:
             spec = reg.tools.get(t)
             if spec is not None and spec.available and t not in tools:
                 tools.append(t)
+    for t in reg.tools.values():                                        # general-purpose doors (machine, ...) that no skill lists
+        if t.door and t.available and t.id not in tools:
+            tools.append(t.id)
     return Intent(
         id=GENERAL_ID, status="fallback",
         description="General requests that no specific skill covers; use any available tool.",

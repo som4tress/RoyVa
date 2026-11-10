@@ -494,7 +494,8 @@
   "risk": "read",
   "scope": "admin",
   "description": "Read anything from Home Assistant's own API (registries, automation config, services, history). Cannot change anything.",
-  "available": true
+  "available": true,
+  "door": true
  },
  {
   "id": "ha_api.write",
@@ -504,6 +505,49 @@
   "scope": "admin",
   "approval": true,
   "description": "Change something through Home Assistant's own API (assign a device to an area, create or edit an automation, rename an entity). Owner approves each exact call.",
+  "available": true,
+  "door": true
+ },
+ {
+  "id": "machine.run",
+  "action": "machine_run",
+  "risk": "read",
+  "description": "Run a shell command on this machine in a read-only sandbox (reads work; writes fail).",
+  "server": "machine",
+  "scope": "admin",
+  "door": true,
+  "available": true
+ },
+ {
+  "id": "machine.run_approved",
+  "action": "machine_run_approved",
+  "risk": "write",
+  "approval": true,
+  "description": "Run a shell command on this machine for real; the owner approves the exact command first.",
+  "server": "machine",
+  "scope": "admin",
+  "door": true,
+  "available": true
+ },
+ {
+  "id": "machine.remote_run",
+  "action": "machine_remote_run",
+  "risk": "read",
+  "description": "Run a shell command on an allowed remote machine in a read-only sandbox there.",
+  "server": "machine",
+  "scope": "admin",
+  "door": true,
+  "available": true
+ },
+ {
+  "id": "machine.remote_run_approved",
+  "action": "machine_remote_run_approved",
+  "risk": "write",
+  "approval": true,
+  "description": "Run a shell command on an allowed remote machine for real; the owner approves the exact command and host first.",
+  "server": "machine",
+  "scope": "admin",
+  "door": true,
   "available": true
  }
 ]

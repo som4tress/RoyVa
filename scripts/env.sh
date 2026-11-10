@@ -17,3 +17,4 @@ ln -sf "$R/config/opencode.json" "$R/runtime/config/opencode.json"
 # Deployment config: which Home Assistant person is the asking user (single-user for now; per-user mapping is a later step)
 export ROYVA_DEFAULT_PERSON=${ROYVA_DEFAULT_PERSON-somdutta}
 export ROYVA_PROTECTED_DEVICES=${ROYVA_PROTECTED_DEVICES-Shivi Linux Box}   # approval first, never in a bulk change (it hosts Home Assistant)
+export ROYVA_REMOTE_HOSTS=${ROYVA_REMOTE_HOSTS-somdutta@somdutta-linux.local}   # hosts the machine door may ssh to (owner-only tool)
