@@ -23,8 +23,8 @@ def home_map(snapshot: dict) -> str:
         lines.append("Other areas (no floor): " + ", ".join(other))
     floor_names = ", ".join(f["name"] for f in floors.values())
     return ("Home layout, floors then their areas. " + " | ".join(lines) + ". "
-            f"Floors ({floor_names}) are NOT areas: for a question or request about a floor, make ONE query for the device type without an area filter and keep only the devices "
-            "in that floor's areas (or send all the per-area queries together in a single step, never one area per step), then report grouped by area. Use the exact area names above.")
+            f"Floors ({floor_names}) are NOT areas: for a question or request about a floor, make ONE query with no area filter and no domain filter (a domain filter hides switches and plugs wired to lights or fans) and keep only the devices of the kind asked "
+            "in that floor's areas (or send all the per-area queries together in a single step, never one area per step, also without a domain filter), then report grouped by area. Use the exact area names above.")
 
 
 def home_location(config: dict, place: str = "") -> str:

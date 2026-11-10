@@ -715,5 +715,17 @@
   "no_domain_arg": true,
   "answer_not": "can.?t|cannot|don.?t have access",
   "answer_match": "Shivi Bedroom Light"
+ },
+ {
+  "id": "floor-all-lights",
+  "q": "Turn off all the lights upstairs",
+  "intents": [
+   "home_control"
+  ],
+  "live": true,
+  "tools_used": "GetLiveContext",
+  "no_domain_arg": true,
+  "answer_match": "Shivi Bedroom Light",
+  "answer_not": "can.?t|cannot|don.?t have access"
  }
 ]
