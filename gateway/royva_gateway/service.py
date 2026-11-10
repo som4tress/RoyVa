@@ -15,7 +15,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from . import profiles, registry as registry_mod
+from . import profiles
+from .scope import previous_scope
+from . import registry as registry_mod
 from .config import Settings
 from .models import AskRequest, AskResponse, RoutingInfo, SessionState
 from .registry import Registry
@@ -325,7 +327,8 @@ class Gateway:
         per_turn = {"current_location": await self.current_location_text(req.user)} if "current_location" in new_ctx else {}
         if "current_time" in new_ctx:
             per_turn["current_time"] = profiles.now_text()
-        text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting), [i.id for i in acting])
+        recent = await previous_scope(self.oc, state.session_id) if (d.mode == "continuation" and known is not None and known.turns) else None
+        text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting), [i.id for i in acting], recent)
         return Prepared("run", d, trace_id, state.session_id, prompt=text, cap=cap, tools=tools, grants=grant_map, state=state, acting=acting, new_ctx=new_ctx)
 
     def commit(self, p: Prepared, req: AskRequest, outcome: str = "prepared", tool_calls: Optional[int] = None) -> None:

@@ -561,3 +561,33 @@ def test_user_allowed_email_but_without_a_connected_mailbox_is_told_so(tmp_path)
     r = ask_as(gw, "find invoices", "telegram:5")
     assert "isn't connected" in r.answer and not oc.calls                  # no session, no tools, no improvised reply
     assert ask_as(gw, "find invoices", "telegram:1").answer == "all good"      # the owner (default mailbox) is unaffected
+
+
+# ------------------------------------------------------------------ follow-ups inherit what the previous turn acted on
+def _tool(tool, **inp):
+    return {"type": "tool", "name": tool, "state": {"status": "completed", "input": inp}}
+
+
+def test_follow_up_gets_previous_scope_but_new_conversation_does_not(tmp_path):
+    from royva_gateway.scope import last_turn_calls
+    gw, oc, _ = make(tmp_path, {"lights on": ["home_state"], "turn off everything but one": ["home_state"], "weather": ["home_state"]})
+    r1 = ask(gw, "lights on")
+    oc._add(r1.session_id, "assistant", [_tool("home-assistant_light__HassLightSet", name="Island Dimmer", brightness=100),
+                                         _tool("home-assistant_light__HassLightSet", name="NT50W", brightness=100),
+                                         {"type": "tool", "name": "failed_one", "state": {"status": "error", "input": {"name": "X"}}}])
+    ask(gw, "turn off everything but one", session_id=r1.session_id, reply=True)
+    follow = [c for c in oc.calls if c[0] == "prompt"][1][2]
+    assert "HassLightSet(name=Island Dimmer, brightness=100)" in follow and "NT50W" in follow and "failed_one" not in follow
+    assert "not the whole home" in follow
+    ask(gw, "weather")                                                              # a new standalone message: new session, nothing inherited
+    assert "HassLightSet" not in [c for c in oc.calls if c[0] == "prompt"][2][2]
+    assert last_turn_calls([]) == []
+
+
+def test_scope_lookup_failure_never_breaks_the_turn(tmp_path):
+    gw, oc, _ = make(tmp_path, {"a": ["home_state"], "b": ["home_state"]})
+    r1 = ask(gw, "a")
+    async def boom(sid): raise RuntimeError("down")
+    oc.messages = boom
+    r2 = ask(gw, "b", session_id=r1.session_id, reply=True)
+    assert r2.status == "done" or r2.answer

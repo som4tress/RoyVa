@@ -105,7 +105,7 @@ def now_text(now=None) -> str:
 
 
 def prompt_text(user_text: str, new_context: list[str], hint: str, settings: Settings, unsupported: list[str],
-                per_turn: dict | None = None, style: str = "", combined: list[str] | None = None) -> str:
+                per_turn: dict | None = None, style: str = "", combined: list[str] | None = None, recent: str | None = None) -> str:
     parts = []
     texts = []
     for p in new_context:
@@ -114,6 +114,8 @@ def prompt_text(user_text: str, new_context: list[str], hint: str, settings: Set
             texts.append(t)
     if texts:
         parts.append("\n".join(texts))
+    if recent:
+        parts.append(recent)
     if hint:
         parts.append("What you can do for this request: " + hint)
     if combined and len(combined) > 1:
