@@ -58,14 +58,29 @@ test('arbitrary-power tools show the whole call and are never batch-approved', (
   assert.match(long, /Too long to review/);
 });
 
-test('ha_write approval names the device and area from earlier tool results', () => {
-  const read = (data) => ({type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {content: [{type: 'text', text: JSON.stringify(data)}]}}]});
-  const rows = [read({result: {matched: 1, items: [{id: 'dev1', name: 'HAP-603WF-Bedroom', name_by_user: null, area_id: null}]}}),
-                read({result: [{area_id: 'master_bedroom', name: 'Master Bedroom'}]})];
-  const out = formatPermission({action: 'ha-api_ha_write', metadata: {input: {kind: 'ws', type: 'config/device_registry/update', params: {device_id: 'dev1', area_id: 'master_bedroom'}}}}, rows);
+const haRead = (type, data) => ({type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {input: {kind: 'ws', type}, content: [{type: 'text', text: JSON.stringify(data)}]}}]});
+const writeCall = params => ({action: 'ha-api_ha_write', metadata: {input: {kind: 'ws', type: 'config/device_registry/update', params}}});
+
+test('ha_write approval names the device and area from the matching registries', () => {
+  const rows = [haRead('config/device_registry/list', {result: {matched: 1, items: [{id: 'dev1', name: 'HAP-603WF-Bedroom', name_by_user: null, area_id: 'master_bedroom'}]}}),
+                haRead('config/area_registry/list', {result: [{area_id: 'master_bedroom', name: 'Master Bedroom'}]})];
+  const out = formatPermission(writeCall({device_id: 'dev1', area_id: 'master_bedroom'}), rows);
   assert.match(out, /Device: HAP-603WF-Bedroom/);
   assert.match(out, /Area: Master Bedroom/);
-  const unknown = formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: {device_id: 'zzz'}}}}, rows);
-  assert.match(unknown, /Device: name not found in this conversation/);
-  assert.doesNotMatch(formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: {alias: 'x'}}}}, rows), /not found/);
+  assert.doesNotMatch(out, /Area: HAP/);                           // a device that sits in the area must not name the area
+});
+
+test('an id is never named from another registry or from a display name the user cannot trust', () => {
+  const rows = [haRead('config/entity_registry/list', {result: [{entity_id: 'switch.x', device_id: 'dev1', name: 'Some Entity Name'}]}),
+                haRead('config/device_registry/list', {result: [{id: 'dev1', name: 'Real Device', name_by_user: 'My Renamed Device'}]})];
+  const out = formatPermission(writeCall({device_id: 'dev1'}), rows);
+  assert.match(out, /Device: My Renamed Device/);                  // the UI name wins, and the entity that points at this device does not rename it
+  assert.doesNotMatch(out, /Some Entity Name/);
+  assert.match(formatPermission(writeCall({device_id: 'dev1'}), [rows[0]]), /Device: name not found/);   // only an entity read: the device stays unnamed
+  assert.match(formatPermission(writeCall({device_id: 'zzz'}), rows), /name not found in this conversation/);
+});
+
+test('entity names come from states reads', () => {
+  const rows = [{type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {input: {kind: 'rest', path: '/api/states'}, content: [{type: 'text', text: JSON.stringify({http_status: 200, body: {items: [{entity_id: 'light.kitchen', attributes: {friendly_name: 'Kitchen Light'}}]}})}]}}]}];
+  assert.match(formatPermission({action: 'ha-api_ha_write', metadata: {input: {kind: 'rest', path: '/api/services/light/turn_off', params: {entity_id: 'light.kitchen'}}}}, rows), /Entity: Kitchen Light/);
 });

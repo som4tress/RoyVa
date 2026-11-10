@@ -53,21 +53,36 @@ export class BatchApprovals {
 const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
 
 
-// The call only carries ids. Names are looked up in what the assistant itself read earlier in this conversation (tool results), never taken from the model's say-so.
-const ID_KEYS = ['id', 'device_id', 'entity_id', 'area_id', 'floor_id'];
+// The call only carries ids. Names come from what the assistant itself read earlier in this conversation, and an id is only resolved from the
+// registry it belongs to (a device's id from the device registry, an area's from the area registry...): objects point at each other, so a loose
+// "nearest name" match would label an area with the name of a device in it.
+const KINDS = [   // [read-call pattern, parameter key, id field of that registry's own entries, name fields in display order]
+  [/device_registry/, 'device_id', ['id'], ['name_by_user', 'name']],
+  [/area_registry/, 'area_id', ['area_id'], ['name']],
+  [/floor_registry/, 'floor_id', ['floor_id'], ['name']],
+  [/entity_registry/, 'entity_id', ['entity_id'], ['name', 'original_name']],
+];
 const LABEL = {device_id: 'Device', entity_id: 'Entity', area_id: 'Area', floor_id: 'Floor'};
 function nameIndex(rows) {
-  const index = new Map();
-  const walk = value => {
-    if (Array.isArray(value)) return value.forEach(walk);
-    if (!value || typeof value !== 'object') return;
-    const label = value.name_by_user || value.name || value.friendly_name || value.original_name;
-    if (typeof label === 'string' && label) for (const key of ID_KEYS) if (typeof value[key] === 'string' && !index.has(value[key])) index.set(value[key], label);
-    Object.values(value).forEach(walk);
-  };
+  const index = {device_id: new Map(), area_id: new Map(), floor_id: new Map(), entity_id: new Map()};
+  const items = value => Array.isArray(value) ? value : Array.isArray(value?.result) ? value.result : Array.isArray(value?.result?.items) ? value.result.items : Array.isArray(value?.body) ? value.body : Array.isArray(value?.body?.items) ? value.body.items : [];
   for (const row of rows) for (const part of row.content || []) {
-    if (part.type !== 'tool') continue;
-    for (const block of part.state?.content || []) { if (block.type !== 'text') continue; try { walk(JSON.parse(block.text)); } catch {} }
+    if (part.type !== 'tool' || !String(part.name).endsWith('ha_read')) continue;
+    const call = JSON.stringify(part.state?.input || {});
+    for (const block of part.state?.content || []) {
+      if (block.type !== 'text') continue;
+      let data; try { data = JSON.parse(block.text); } catch { continue; }
+      for (const item of items(data)) {
+        if (!item || typeof item !== 'object') continue;
+        for (const [pattern, key, idFields, nameFields] of KINDS) {
+          if (!pattern.test(call)) continue;
+          const id = idFields.map(f => item[f]).find(v => typeof v === 'string' && v);
+          const label = nameFields.map(f => item[f]).find(v => typeof v === 'string' && v);
+          if (id && label && !index[key].has(id)) index[key].set(id, label);
+        }
+        if (/\/api\/states|get_states/.test(call) && typeof item.entity_id === 'string' && typeof item.attributes?.friendly_name === 'string' && !index.entity_id.has(item.entity_id)) index.entity_id.set(item.entity_id, item.attributes.friendly_name);
+      }
+    }
   }
   return index;
 }
@@ -78,9 +93,10 @@ export function resolveNames(rows, args) {
   const scan = (value, key) => {
     if (Array.isArray(value)) return value.forEach(v => scan(v, key));
     if (value && typeof value === 'object') return Object.entries(value).forEach(([k, v]) => scan(v, k));
-    if (typeof value !== 'string' || !LABEL[key] || seen.has(value)) return;
-    seen.add(value);
-    found.push(index.has(value) ? `${LABEL[key]}: ${line(index.get(value))}` : `${LABEL[key]}: name not found in this conversation, check the id before approving`);
+    if (typeof value !== 'string' || !LABEL[key] || seen.has(`${key}:${value}`)) return;
+    seen.add(`${key}:${value}`);
+    const name = index[key].get(value);
+    found.push(name ? `${LABEL[key]}: ${line(name)}` : `${LABEL[key]}: name not found in this conversation, check the id before approving`);
   };
   scan(args.params ?? {}, '');
   return found;
