@@ -666,3 +666,9 @@ def test_resolve_ids_matches_each_id_to_its_own_registry_and_reports_missing():
     assert out["device_id"] == {"dev1": {"name": "HAP-603WF-Bedroom"}}                    # the UI name, and the unknown id is simply absent
     assert out["area_id"] == {"master_bedroom": {"name": "Master Bedroom"}}              # the device in the area does not rename the area
     assert out["entity_id"] == {"switch.a": {"name": "A Switch"}, "light.yaml": {"name": "Yaml Light"}}
+
+
+def test_prompts_tell_the_model_to_call_approval_tools_directly_not_ask_in_text():
+    from royva_gateway import general
+    assert "call them directly" in general.STYLE and "never ask for confirmation in plain text" in general.STYLE
+    assert "ha_write" in REG.intents["home_control"].profile.style and "never ask in text first" in REG.intents["home_control"].profile.style
