@@ -486,5 +486,24 @@
   "risk": "write",
   "description": "Change specific emails by id: move to Trash (recoverable 30 days), archive, or mark read/unread.",
   "available": true
+ },
+ {
+  "id": "ha_api.read",
+  "action": "ha-api_ha_read",
+  "server": "ha-api",
+  "risk": "read",
+  "scope": "admin",
+  "description": "Read anything from Home Assistant's own API (registries, automation config, services, history). Cannot change anything.",
+  "available": true
+ },
+ {
+  "id": "ha_api.write",
+  "action": "ha-api_ha_write",
+  "server": "ha-api",
+  "risk": "write",
+  "scope": "admin",
+  "approval": true,
+  "description": "Change something through Home Assistant's own API (assign a device to an area, create or edit an automation, rename an entity). Owner approves each exact call.",
+  "available": true
  }
 ]

@@ -200,6 +200,14 @@
         ],
         "codemode": false
       },
+      "ha-api": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/RoyVa/mcp/ha/ha_api.py"
+        ],
+        "codemode": false
+      },
       "ha-routines": {
         "type": "local",
         "command": [

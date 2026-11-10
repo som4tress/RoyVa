@@ -1,0 +1,56 @@
+"""ha_api door: what counts as a read, what is refused outright, protected devices, dry run. Fakes only: no Home Assistant call is made."""
+import importlib.util
+import json
+from pathlib import Path
+
+SPEC = importlib.util.spec_from_file_location("ha_api", Path(__file__).resolve().parents[2] / "mcp" / "ha" / "ha_api.py")
+ha = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(ha)
+
+
+def test_reads_are_recognised_and_writes_are_sent_to_the_approval_tool():
+    for t in ("config/device_registry/list", "config/area_registry/list", "get_states", "config/entity_registry/get", "logbook/get_events", "get_services"):
+        assert ha.check_read("ws", t) is None, t
+    for t in ("config/device_registry/update", "config/area_registry/create", "call_service", "config/entity_registry/remove", "fire_event"):
+        assert "ha_write" in ha.check_read("ws", t), t
+    assert ha.check_read("rest", "/api/states") is None
+    assert "GET" in ha.check_read("rest", "/api/services/light/turn_on", "POST")
+    assert ha.check_read("rest", "/etc/passwd") is not None
+
+
+def test_secrets_and_streams_refused_in_both_tools():
+    for t in ("auth/current_user", "auth/long_lived_access_token", "config/auth_provider/homeassistant/list", "subscribe_events"):
+        assert ha.check_read("ws", t) and ha.check_write("ws", t, "POST", {})
+
+
+def test_read_tool_never_calls_write_paths():
+    calls = []
+    out = ha.ha_read({"kind": "ws", "type": "config/device_registry/update", "params": {"device_id": "x", "area_id": "y"}}, ws=lambda *a: calls.append(a))
+    assert "error" in out and not calls
+
+
+def test_write_runs_and_reports_the_exact_call(monkeypatch):
+    monkeypatch.setattr(ha, "DRY_FLAG", Path("/nonexistent/dry"))
+    monkeypatch.delenv("ROYVA_DRY_RUN", raising=False)
+    seen = []
+    out = ha.ha_write({"kind": "ws", "type": "config/device_registry/update", "params": {"device_id": "d1", "area_id": "master_bedroom"}},
+                      ws=lambda t, p: seen.append((t, p)) or {"ok": 1})
+    assert seen == [("config/device_registry/update", {"device_id": "d1", "area_id": "master_bedroom"})] and out["done"]["target"] == "config/device_registry/update"
+
+
+def test_dry_run_changes_nothing(monkeypatch):
+    monkeypatch.setenv("ROYVA_DRY_RUN", "1")
+    out = ha.ha_write({"kind": "rest", "path": "/api/config/automation/config/x", "params": {"alias": "t"}}, rest=lambda *a: 1 / 0)
+    assert out["dry_run"] and "DRY RUN" in out["did"]
+
+
+def test_protected_device_refused_in_a_multi_target_change(monkeypatch):
+    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Shivi Linux Box")
+    bad = ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": ["switch.shivi_linux_box", "light.kitchen"]})
+    assert bad and "protected" in bad
+    assert ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": "switch.shivi_linux_box"}) is None      # alone: allowed (the owner approves it)
+
+
+def test_big_results_are_capped():
+    big = ha._cap({"x": "a" * 50000})
+    assert big["truncated"] and len(big["first_chars"]) == ha.MAX_OUT

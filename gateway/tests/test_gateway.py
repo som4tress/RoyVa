@@ -619,3 +619,17 @@ def test_general_mode_respects_scopes(tmp_path):
     create = next(c for c in oc.calls if c[0] == "create")
     assert not any("gmail" in x["action"] and x["effect"] != "deny" for x in create[2])       # no gmail scope: no mail tools in general mode
     assert any(x["action"] == "home-assistant_homeassistant__GetLiveContext" for x in create[2])
+
+
+def test_ha_api_tools_are_owner_only_and_always_ask(tmp_path):
+    gw, oc, _ = make(tmp_path, {"turn on the kitchen light": ["home_control"]})
+    ask(gw, "turn on the kitchen light")
+    create = next(c for c in oc.calls if c[0] == "create")
+    rules = {x["action"]: x["effect"] for x in create[2]}
+    assert rules["ha-api_ha_read"] == "allow" and rules["ha-api_ha_write"] == "ask"                 # home_control is auto-policy; this tool still asks
+    assert rules["home-assistant_intent__HassTurnOn"] == "allow"
+    (tmp_path / "b").mkdir()
+    gw2, oc2, _ = make(tmp_path / "b", {"turn on the kitchen light": ["home_control"]}, users={"telegram:1": {"person": "", "scopes": ["home"], "mail": ""}})
+    ask(gw2, "turn on the kitchen light")
+    c2 = next(c for c in oc2.calls if c[0] == "create")
+    assert not any(x["action"].startswith("ha-api_") and x["effect"] != "deny" for x in c2[2])      # no owner scope: no API door

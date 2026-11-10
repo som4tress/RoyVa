@@ -27,6 +27,8 @@ class ToolSpec(Strict):
     risk: Risk
     description: str
     available: bool = True          # False = planned tool, not built yet
+    scope: str = ""                 # only users holding this scope (or "*") get the tool, whatever intent grants it
+    approval: bool = False          # always ask the user first, even inside an auto-policy intent
 
     @field_validator("id")
     @classmethod

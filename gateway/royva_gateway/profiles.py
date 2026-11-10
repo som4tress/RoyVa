@@ -55,7 +55,7 @@ def grants(reg: Registry, intents: list[Intent]) -> dict[str, str]:
                 continue
             if spec.risk != "read" and i.profile.write_policy == "read_only":
                 continue
-            eff = "allow" if (spec.risk == "read" or i.profile.write_policy == "auto") else "ask"
+            eff = "allow" if ((spec.risk == "read" or i.profile.write_policy == "auto") and not spec.approval) else "ask"
             out[t] = "ask" if "ask" in (out.get(t), eff) else "allow"
     return out
 

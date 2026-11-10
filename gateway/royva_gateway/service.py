@@ -251,6 +251,12 @@ class Gateway:
         have = self.user_scopes(user)
         return "*" in have or scope in have
 
+    def may_use_tool(self, user: str, spec) -> bool:
+        if not spec.scope:
+            return True
+        have = self.user_scopes(user)
+        return "*" in have or spec.scope in have
+
     # ---------------------------------------------------------------- sessions created for the bridge before routing
     def general_for(self, user: str):
         usable = [i for i in self.reg.active() if self.may_use(user, i)]
@@ -314,6 +320,7 @@ class Gateway:
             seen = [x for x in (self._intent(i, req.user) for i in (state.intents_seen if state else [])) if x]       # earlier turns by someone else never lend their tools to this user
             session_intents = list({i.id: i for i in seen + acting}.values())        # tools are the union over the whole conversation, recomputed each turn
             grant_map = profiles.grants(self.reg, session_intents)
+            grant_map = {t: e for t, e in grant_map.items() if self.may_use_tool(req.user, self.reg.tools[t])}      # a tool may carry its own scope (e.g. the Home Assistant API door is owner-only)
             have = set(state.contexts_sent) if state else set()
             new_ctx = list(dict.fromkeys(c for i in acting for c in i.profile.context if c not in have or c in profiles.PER_TURN_PROVIDERS))
             hint = profiles.capability_hint(self.reg, acting)
