@@ -57,3 +57,15 @@ test('arbitrary-power tools show the whole call and are never batch-approved', (
   const long = formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: 'x'.repeat(5000)}}});
   assert.match(long, /Too long to review/);
 });
+
+test('ha_write approval names the device and area from earlier tool results', () => {
+  const read = (data) => ({type: 'assistant', content: [{type: 'tool', name: 'ha-api_ha_read', state: {content: [{type: 'text', text: JSON.stringify(data)}]}}]});
+  const rows = [read({result: {matched: 1, items: [{id: 'dev1', name: 'HAP-603WF-Bedroom', name_by_user: null, area_id: null}]}}),
+                read({result: [{area_id: 'master_bedroom', name: 'Master Bedroom'}]})];
+  const out = formatPermission({action: 'ha-api_ha_write', metadata: {input: {kind: 'ws', type: 'config/device_registry/update', params: {device_id: 'dev1', area_id: 'master_bedroom'}}}}, rows);
+  assert.match(out, /Device: HAP-603WF-Bedroom/);
+  assert.match(out, /Area: Master Bedroom/);
+  const unknown = formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: {device_id: 'zzz'}}}}, rows);
+  assert.match(unknown, /Device: name not found in this conversation/);
+  assert.doesNotMatch(formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: {alias: 'x'}}}}, rows), /not found/);
+});

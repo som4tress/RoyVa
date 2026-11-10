@@ -52,6 +52,39 @@ export class BatchApprovals {
 }
 const TIDY_VERB = { trash: 'Move to Trash', archive: 'Archive', mark_read: 'Mark as read', mark_unread: 'Mark as unread' };
 
+
+// The call only carries ids. Names are looked up in what the assistant itself read earlier in this conversation (tool results), never taken from the model's say-so.
+const ID_KEYS = ['id', 'device_id', 'entity_id', 'area_id', 'floor_id'];
+const LABEL = {device_id: 'Device', entity_id: 'Entity', area_id: 'Area', floor_id: 'Floor'};
+function nameIndex(rows) {
+  const index = new Map();
+  const walk = value => {
+    if (Array.isArray(value)) return value.forEach(walk);
+    if (!value || typeof value !== 'object') return;
+    const label = value.name_by_user || value.name || value.friendly_name || value.original_name;
+    if (typeof label === 'string' && label) for (const key of ID_KEYS) if (typeof value[key] === 'string' && !index.has(value[key])) index.set(value[key], label);
+    Object.values(value).forEach(walk);
+  };
+  for (const row of rows) for (const part of row.content || []) {
+    if (part.type !== 'tool') continue;
+    for (const block of part.state?.content || []) { if (block.type !== 'text') continue; try { walk(JSON.parse(block.text)); } catch {} }
+  }
+  return index;
+}
+export function resolveNames(rows, args) {
+  const found = [];
+  const seen = new Set();
+  const index = nameIndex(rows || []);
+  const scan = (value, key) => {
+    if (Array.isArray(value)) return value.forEach(v => scan(v, key));
+    if (value && typeof value === 'object') return Object.entries(value).forEach(([k, v]) => scan(v, k));
+    if (typeof value !== 'string' || !LABEL[key] || seen.has(value)) return;
+    seen.add(value);
+    found.push(index.has(value) ? `${LABEL[key]}: ${line(index.get(value))}` : `${LABEL[key]}: name not found in this conversation, check the id before approving`);
+  };
+  scan(args.params ?? {}, '');
+  return found;
+}
 export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
 const FULL_LIMIT = 3500;
 export function formatPermission(permission, rows = []) {
@@ -70,9 +103,10 @@ export function formatPermission(permission, rows = []) {
     } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
     return ['Approve?', `${verb}: ${what}`, '/approve (covers the whole request) or /deny'].join('\n');
   }
-  if (FULL_CALL[tool]) {                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
+  if (FULL_CALL[tool]) {
+    const names = resolveNames(rows, args);                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
     const body = JSON.stringify(scrub(args), null, 1);
-    const out = ['Approve?', FULL_CALL[tool], body.length > FULL_LIMIT ? body.slice(0, FULL_LIMIT) + '…' : body];
+    const out = ['Approve?', FULL_CALL[tool], ...names, body.length > FULL_LIMIT ? body.slice(0, FULL_LIMIT) + '…' : body];
     if (body.length > FULL_LIMIT) out.push('⚠ Too long to review in full. Deny it and ask for a smaller step.');
     out.push('/approve or /deny (this call only)');
     return out.join('\n');
