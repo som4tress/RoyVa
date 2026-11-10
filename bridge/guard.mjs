@@ -14,16 +14,24 @@ export function loopVerdict(rows, {hardRounds = HARD_ROUNDS, hardCalls = HARD_CA
   const rounds = assistants.filter(row => toolParts(row).length).length;
   if (rounds > hardRounds) return `${rounds} rounds (ceiling ${hardRounds})`;
   if (parts.length > hardCalls) return `${parts.length} calls (ceiling ${hardCalls})`;
+  // "Going in circles" = the same call, again, in a LATER round, after it already finished. Identical calls fired together in one round
+  // (models do that) and calls still running are not repeats, and an interrupted call never counts.
   const seen = new Map();
-  for (const part of parts) {
-    if (part.state?.status === 'error' && part.state?.error?.type === 'aborted') continue;      // an interrupted call is not a repeat
-    const key = `${part.name}\u0000${JSON.stringify(part.state?.input ?? null)}`;
-    seen.set(key, (seen.get(key) || 0) + 1);
-    if (seen.get(key) >= REPEAT_LIMIT) return `the same call (${part.name}) ${REPEAT_LIMIT} times`;
+  for (const row of assistants) {
+    const inRound = new Set();
+    for (const part of toolParts(row)) {
+      const status = part.state?.status;
+      if (status !== 'completed' && !(status === 'error' && part.state?.error?.type !== 'aborted')) continue;
+      inRound.add(`${part.name}\u0000${JSON.stringify(part.state?.input ?? null)}`);
+    }
+    for (const key of inRound) {
+      seen.set(key, (seen.get(key) || 0) + 1);
+      if (seen.get(key) >= REPEAT_LIMIT) return `the same call (${key.split('\u0000')[0]}) in ${REPEAT_LIMIT} separate rounds`;
+    }
   }
   let streak = 0;
   for (const part of parts) {
-    streak = part.state?.status === 'error' ? streak + 1 : 0;
+    streak = part.state?.status === 'error' && part.state?.error?.type !== 'aborted' ? streak + 1 : 0;       // an interrupted call is not a failure
     if (streak >= ERROR_STREAK) return `${ERROR_STREAK} failed calls in a row`;
   }
   return null;

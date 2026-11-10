@@ -10,9 +10,16 @@ test('a long job made of different calls is not stopped (seven areas one by one)
   assert.equal(loopVerdict(rows), null);
 });
 
-test('the same call repeated is a loop', () => {
+test('the same call repeated in separate rounds after finishing is a loop', () => {
   const rows = [1, 2, 3].map(() => round(call('GetLiveContext', {area: 'Kitchen'})));
   assert.match(loopVerdict(rows), /same call/);
+});
+
+test('identical calls fired together in one round, or still running, are not a loop', () => {
+  const running = status => ({type: 'tool', name: 'ha-history_get_device_status_report', state: {input: {}, status}});
+  assert.equal(loopVerdict([round(running('running'), running('running'), running('running'))]), null);       // the real case: three at once, none finished
+  assert.equal(loopVerdict([round(running('completed'), running('completed'), running('completed'))]), null);  // all together in one round
+  assert.equal(loopVerdict([round(running('completed')), round(running('completed')), round(running('running'))]), null);   // two finished, third still running
 });
 
 test('failed calls in a row are a loop; an interrupted call is not a repeat or a failure of the run', () => {
