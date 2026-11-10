@@ -169,6 +169,12 @@ export async function main({transcriber = createTranscriber()} = {}) {
   const active = new Map();
   const batchApprovals = new BatchApprovals();
   const permissionKeys = new Map();     // permission request id -> batch key, so /approve can cover the rest of the request
+
+  // A denied permission ends the request: RoyVa must not carry on and try another way round what the owner just refused.
+  async function stopAfterDeny(sessionID) {
+    active.get(sessionID)?.controller.abort();
+    await openCodeAPI(`/api/session/${sessionID}/interrupt`, 'POST', {}).catch(error => console.error('Interrupt after deny failed:', error.message || error.name));
+  }
   const queues = new Map();
   const transcribe = transcriber;
   const cleanReviewText = value => String(value ?? '')
@@ -422,7 +428,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
         return send(message, `Could not confirm the permission decision: ${error.message}. Retry only if the request is still waiting.`, linked);
       }
       if (text === '/approve') batchApprovals.grant(linked, permissionKeys.get(request.id));
-      return send(message, text === '/approve' ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied.', linked);
+      else await stopAfterDeny(linked);
+      return send(message, text === '/approve' ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied. Stopped.', linked);
     }
     // RoyVa gateway (optional, ROYVA_GATEWAY_URL): new conversations are created through the gateway (base agent, no tools yet).
     let sessionID = linked;
@@ -586,9 +593,10 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (!request) { await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {}); return answer('Already answered or no longer waiting.'); }
       await openCodeAPI(`/api/session/${target.sessionID}/permission/${request.id}/reply`, 'POST', { decision: approve ? 'once' : 'reject' });
       if (approve) batchApprovals.grant(target.sessionID, permissionKeys.get(request.id));
+      else await stopAfterDeny(target.sessionID);
       delete state.permissions[`${message.chat.id}:${message.message_id}`]; save();
       await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
-      await answer(approve ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied.');
+      await answer(approve ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied. Stopped.');
     } catch (error) {
       console.error('Permission button failed:', error.message || error.name);
       await answer('Could not record that decision. Reply /approve or /deny instead.');
