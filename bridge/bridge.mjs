@@ -314,6 +314,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const result = await tg('sendMessage', {
         chat_id: message.chat.id, text: points.slice(offset, offset + 3900).join(''),
         reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
+        ...(permissionID && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: [[{text: '✅ Approve', callback_data: 'perm:approve'}, {text: '❌ Deny', callback_data: 'perm:deny'}]]}} : {}),
         ...(feedback && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: feedbackData.incorrectOnly
           ? [[{text: '👎 Incorrect', callback_data: 'feedback:reject'}]]
           : [[{text: '👍 Accept & learn', callback_data: 'feedback:accept'}, {text: '👎 Incorrect', callback_data: 'feedback:reject'}]]}} : {}),
@@ -570,6 +571,29 @@ export async function main({transcriber = createTranscriber()} = {}) {
     queues.set(sessionID, job);
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});
   }
+  // Approve/Deny buttons under a permission request: same effect as replying /approve or /deny to it.
+  async function permissionButton(callback) {
+    const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
+    if (!(await live.has(callback.from?.id))) return;
+    const message = callback.message;
+    if (!message || (message.chat?.type && message.chat.type !== 'private')) return;
+    const target = state.permissions[`${message.chat.id}:${message.message_id}`];
+    if (!target) return answer('This request is no longer active.');
+    const approve = callback.data === 'perm:approve';
+    try {
+      const pending = await openCodeAPI(`/api/session/${target.sessionID}/permission`);
+      const request = pending.find(permission => permission.id === target.requestID);
+      if (!request) { await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {}); return answer('Already answered or no longer waiting.'); }
+      await openCodeAPI(`/api/session/${target.sessionID}/permission/${request.id}/reply`, 'POST', { decision: approve ? 'once' : 'reject' });
+      if (approve) batchApprovals.grant(target.sessionID, permissionKeys.get(request.id));
+      delete state.permissions[`${message.chat.id}:${message.message_id}`]; save();
+      await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
+      await answer(approve ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied.');
+    } catch (error) {
+      console.error('Permission button failed:', error.message || error.name);
+      await answer('Could not record that decision. Reply /approve or /deny instead.');
+    }
+  }
   async function feedback(callback) {
     if (!(await live.has(callback.from?.id))) return;
     if (callback.message?.chat?.type && callback.message.chat.type !== 'private') return;
@@ -615,7 +639,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
   await tg('deleteWebhook' , { drop_pending_updates: false });
   const me = await tg('getMe', {});
   console.log(`Telegram connected as @${me.username}; standalone messages create native sessions.`);
-  await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: 'royva', description: 'Talk to RoyVa (default)' }, { command: 'status', description: 'Connection and mode' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
+  await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: 'royva', description: 'Talk to RoyVa (default)' }, { command: 'status', description: 'Connection and mode' }, { command: 'approve', description: 'Approve the pending request (reply to it)' }, { command: 'deny', description: 'Deny the pending request (reply to it)' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
   // RoyVa test hook (additive): ROYVA_INJECT_DIR holds {label,text}.json jobs. Each is mirrored into the owner's chat
   // as a visible "test" message, then fed to handle() as if the owner typed it, so the whole run is watchable on Telegram.
   if (process.env.ROYVA_INJECT_DIR) {
@@ -640,7 +664,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       for (const update of updates) {
         // Record admission before execution; never automatically replay household actions after restart.
         state.offset = update.update_id; save();
-        if (update.callback_query) void feedback(update.callback_query).catch(error => console.error('Feedback failed:', error.name));
+        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
         if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
       }
     } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }
