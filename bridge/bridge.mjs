@@ -9,6 +9,7 @@ import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage } from './usage.mjs';
+import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
 import {formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
