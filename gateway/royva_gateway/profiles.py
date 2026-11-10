@@ -46,8 +46,10 @@ def grants(reg: Registry, intents: list[Intent]) -> dict[str, str]:
     read tools are allowed; write/external tools are allowed only when every intent granting them is 'auto', otherwise 'ask'
     (OpenCode raises a permission request, which the bridge surfaces as /approve or /deny). A write tool inside a read_only intent is refused outright."""
     out: dict[str, str] = {}
-    for i in intents:
+    for i in sorted(intents, key=lambda x: x.status == "fallback"):         # general mode last: it never downgrades a tool a real skill already granted
         for t in i.profile.tools:
+            if i.status == "fallback" and t in out:
+                continue
             spec = reg.tools.get(t)
             if spec is None or not spec.available:
                 continue

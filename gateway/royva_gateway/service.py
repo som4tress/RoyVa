@@ -17,6 +17,7 @@ from typing import Optional
 
 from . import profiles
 from .scope import previous_scope
+from . import general
 from . import registry as registry_mod
 from .config import Settings
 from .models import AskRequest, AskResponse, RoutingInfo, SessionState
@@ -45,6 +46,7 @@ class Prepared:
     state: Optional[SessionState] = None
     acting: list = field(default_factory=list)
     new_ctx: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)       # tools a matched-but-unbuilt skill needed (demand signal)
 
 
 class Gateway:
@@ -167,7 +169,7 @@ class Gateway:
                         continue
         turns = [r for r in rows if r.get("outcome") and r.get("trace_id") not in ("ctx", "session")]
         lat = sorted(r["latency_ms"] for r in turns if isinstance(r.get("latency_ms"), (int, float)))
-        missing = Counter(t for r in turns if r.get("outcome") == "unsupported" for t in (r.get("missing") or []))
+        missing = Counter(t for r in turns if r.get("missing") for t in r["missing"])
         pct = lambda q: lat[min(len(lat) - 1, int(len(lat) * q))] if lat else None
         return {"uptime_s": int(time.time() - self.started), "ready": self.ready, "turns_in_window": len(turns),
                 "outcomes": dict(Counter(r["outcome"] for r in turns)), "modes": dict(Counter(r.get("mode") for r in turns)),
@@ -250,6 +252,16 @@ class Gateway:
         return "*" in have or scope in have
 
     # ---------------------------------------------------------------- sessions created for the bridge before routing
+    def general_for(self, user: str):
+        usable = [i for i in self.reg.active() if self.may_use(user, i)]
+        return general.build(self.reg, usable)
+
+    def _intent(self, iid: str, user: str):
+        if iid == general.GENERAL_ID:
+            return self.general_for(user)
+        i = self.reg.intents.get(iid)
+        return i if i is not None and i.status == "active" and self.may_use(user, i) else None
+
     async def new_session(self) -> str:
         """A conversation with the base agent and NO tools; /v1/route grants tools once the first message is routed."""
         perms = profiles.permissions(self.reg, {}, self.s, None, self.mail_accounts())
@@ -292,17 +304,14 @@ class Gateway:
                             answer="" if silent else f"Sorry, {', '.join(scopes)} access is limited to the account owner, so I can't help with that here.")
 
         if d.mode == "confirmation":
-            grant_map, hint, new_ctx, cap = dict(state.grants), "", [], 4
+            grant_map, hint, new_ctx, cap, missing = dict(state.grants), "", [], 4, []
         else:
-            if intents and not acting:
-                need = sorted({t for i in blocked for t in i.profile.tools if not self.reg.tools[t].available})
-                msg = ("I can't do that yet. It needs " + (", ".join(need) if need else "an intent that isn't enabled") +
-                       ", which isn't available. I've noted that you asked for it.")
-                self._trace(trace_id=trace_id, session_id=req.session_id, text=req.text[:200], mode=d.mode, chosen=d.intents, outcome="unsupported",
-                            missing=need or d.intents, classifier=d.classifier, latency_ms=d.latency_ms)
-                return Prepared("answer", d, trace_id, req.session_id, answer=msg, state=state)
-            seen = [self.reg.intents[i] for i in (state.intents_seen if state else []) if i in self.reg.intents and self.reg.intents[i].status == "active"
-                    and self.may_use(req.user, self.reg.intents[i])]          # earlier turns by someone else never lend their tools to this user
+            missing: list[str] = []
+            if not acting:                                       # nothing usable matched (or only unbuilt skills): general mode instead of a refusal
+                missing = sorted({t for i in blocked for t in i.profile.tools if not self.reg.tools[t].available}) or [i.id for i in blocked]
+                acting = [self.general_for(req.user)]
+                unsupported = unsupported[len(blocked):]          # the blocked skills are no longer "unsupported": general mode tries them with the tools that exist
+            seen = [x for x in (self._intent(i, req.user) for i in (state.intents_seen if state else [])) if x]       # earlier turns by someone else never lend their tools to this user
             session_intents = list({i.id: i for i in seen + acting}.values())        # tools are the union over the whole conversation, recomputed each turn
             grant_map = profiles.grants(self.reg, session_intents)
             have = set(state.contexts_sent) if state else set()
@@ -329,7 +338,7 @@ class Gateway:
             per_turn["current_time"] = profiles.now_text()
         recent = await previous_scope(self.oc, state.session_id) if (d.mode == "continuation" and known is not None and known.turns) else None
         text = profiles.prompt_text(req.text, new_ctx, hint, self.s, unsupported, per_turn, profiles.style_hint(acting, self.s.protected_devices, any(t.startswith("ha.") and t in self.reg.tools and self.reg.tools[t].risk != "read" for t in tools)), [i.id for i in acting], recent)
-        return Prepared("run", d, trace_id, state.session_id, prompt=text, cap=cap, tools=tools, grants=grant_map, state=state, acting=acting, new_ctx=new_ctx)
+        return Prepared("run", d, trace_id, state.session_id, prompt=text, cap=cap, tools=tools, grants=grant_map, state=state, acting=acting, new_ctx=new_ctx, missing=missing)
 
     def commit(self, p: Prepared, req: AskRequest, outcome: str = "prepared", tool_calls: Optional[int] = None) -> None:
         """Remember what this turn used so follow-ups inherit intents, tools and already-sent context."""
@@ -349,7 +358,7 @@ class Gateway:
         self.store.put(state)
         self._trace(trace_id=p.trace_id, session_id=state.session_id, text=req.text[:200], mode=p.decision.mode, chosen=[i.id for i in p.acting],
                     classifier=p.decision.classifier, latency_ms=p.decision.latency_ms, tool_calls=tool_calls, outcome=outcome, tools=p.tools,
-                    degraded=p.decision.degraded or None)
+                    degraded=p.decision.degraded or None, missing=p.missing or None)
 
     # ---------------------------------------------------------------- self-contained path: prepare + run
     async def ask(self, req: AskRequest) -> AskResponse:

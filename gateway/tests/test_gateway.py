@@ -159,19 +159,34 @@ def test_busy_session_is_steered_not_classified(tmp_path):
     assert len(clf.seen) == 1                                                        # classifier not called for the steer
 
 
-def test_planned_intent_gets_honest_reply_and_no_session(tmp_path):
+def test_planned_intent_falls_back_to_general_mode_not_a_refusal(tmp_path):
     gw, oc, _ = make(tmp_path, {"what's on my calendar?": ["calendar"]})
     r = ask(gw, "what's on my calendar?")
-    assert "can't do that yet" in r.answer and "calendar.list_events" in r.answer
-    assert r.session_id is None and not [c for c in oc.calls if c[0] == "create"]
+    assert r.status == "done" and "can't do that yet" not in r.answer
+    create = next(c for c in oc.calls if c[0] == "create")
+    assert "home-assistant_homeassistant__GetLiveContext" in granted(create)               # reads from every skill are open
+    prompt = next(c for c in oc.calls if c[0] == "prompt")[2]
+    assert "No specific skill matched" in prompt and "not supported yet" not in prompt
+    rows = [json.loads(x) for x in (tmp_path / "traces.jsonl").read_text().splitlines()]
+    assert rows[-1]["chosen"] == ["general"] and "calendar.list_events" in rows[-1]["missing"]      # the gap is still logged as demand
 
 
-def test_unrouted_message_gets_session_with_no_tools(tmp_path):
+def test_unrouted_message_gets_general_mode_with_writes_behind_approval(tmp_path):
     gw, oc, _ = make(tmp_path, {})
     r = ask(gw, "tell me a joke")
     assert r.routing.mode == "fallback" and r.status == "done"
     create = next(c for c in oc.calls if c[0] == "create")
-    assert granted(create) == set()
+    asks = {x["action"] for x in create[2] if x["effect"] == "ask"}
+    assert "home-assistant_intent__HassTurnOff" in asks and "home-assistant_intent__HassTurnOff" not in granted(create)
+    assert not any("send" in a for a in granted(create) | asks)                                 # sending mail is never opened by a session, general mode included
+
+
+def test_general_mode_never_downgrades_a_skills_own_grant():
+    from royva_gateway import profiles, general
+    ctrl = REG.intents["home_control"]
+    g = general.build(REG, [i for i in REG.active()])
+    out = profiles.grants(REG, [g, ctrl])
+    assert out["ha.turn_on"] == "allow" and profiles.grants(REG, [g])["ha.turn_on"] == "ask"
 
 
 def test_session_created_outside_gateway_is_adopted(tmp_path):
@@ -280,12 +295,11 @@ def test_route_followup_inherits_prior_and_skips_context(tmp_path):
     assert clf.seen[-1][1] == {"text": "lights?", "intents": ["home_state"]}
 
 
-def test_route_planned_intent_returns_direct_answer(tmp_path):
+def test_route_planned_intent_runs_in_general_mode(tmp_path):
     gw, oc, _ = make(tmp_path, {"calendar?": ["calendar"]})
     sid = asyncio.run(gw.new_session())
     out = asyncio.run(gw.route_for_bridge(AskRequest(text="calendar?", user="t", session_id=sid)))
-    assert out["kind"] == "answer" and "can't do that yet" in out["answer"]
-    assert gw.store.get(sid).turns == 0                                       # nothing committed for an unsupported request
+    assert out["kind"] == "run" and out["can_act"] and "No specific skill matched" in out["prompt"]
 
 
 # ------------------------------------------------------------------ travel-aware location (per-message, city-level)
@@ -597,3 +611,11 @@ def test_protected_devices_line_only_for_home_writes():
     from royva_gateway import profiles
     assert "Protected devices: Box A" in profiles.style_hint([], ("Box A",), True)
     assert profiles.style_hint([], ("Box A",), False) == "" and profiles.style_hint([], (), True) == ""
+
+
+def test_general_mode_respects_scopes(tmp_path):
+    gw, oc, _ = make(tmp_path, {}, users={"telegram:1": {"person": "", "scopes": [], "mail": ""}})
+    ask(gw, "tell me a joke")
+    create = next(c for c in oc.calls if c[0] == "create")
+    assert not any("gmail" in x["action"] and x["effect"] != "deny" for x in create[2])       # no gmail scope: no mail tools in general mode
+    assert any(x["action"] == "home-assistant_homeassistant__GetLiveContext" for x in create[2])
