@@ -25,7 +25,10 @@
  "negatives": [
   "Turn off the kitchen lights",
   "Email me the thermostat reading",
-  "What's the weather forecast for tomorrow?"
+  "What's the weather forecast for tomorrow?",
+  "How much RAM is this server using right now?",
+  "Which cron jobs are scheduled on this computer?",
+  "Which operating system version is the server running?"
  ],
  "continuations": [
   "how about the downstairs ones?",

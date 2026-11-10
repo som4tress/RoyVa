@@ -23,7 +23,9 @@
  "negatives": [
   "What is the temperature inside the house?",
   "Search my email for the tax return",
-  "Create a price alert for Nvidia"
+  "Create a price alert for Nvidia",
+  "Which kernel is this server running?",
+  "How much free disk space does the computer have?"
  ],
  "continuations": [
   "what about Sunday?",

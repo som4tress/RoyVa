@@ -38,6 +38,8 @@
  ],
  "none": [
   "Hello there",
-  "Send an email to my sister that dinner is at 7"
+  "Send an email to my sister that dinner is at 7",
+  "How much RAM is the server using right now?",
+  "Which operating system version is this computer running?"
  ]
 }
