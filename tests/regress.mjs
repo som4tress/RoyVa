@@ -58,6 +58,7 @@ async function live(step, routed) {
   if (!String(answer).trim()) f.push('empty answer');
   if (/ReferenceError|TypeError|Traceback|undefined/.test(answer)) f.push('crash text in answer');
   if (step.tools_used && !used.some(t => new RegExp(step.tools_used, 'i').test(t))) f.push(`no tool matching /${step.tools_used}/ (used: ${[...new Set(used)].join(',') || 'none'})`);
+  if (step.no_domain_arg) for (const m of msgs) for (const p of (m.content ?? [])) if (p.type === 'tool' && /GetLiveContext|get_live_context/.test(p.name || p.tool || '') && p.state?.input?.domain) f.push(`live-context call filtered by domain: ${JSON.stringify(p.state.input)}`);
   if (step.no_tools_used && used.length) f.push(`used tools: ${[...new Set(used)].join(',')}`);
   if (step.answer_match && !new RegExp(step.answer_match, 'i').test(answer)) f.push(`answer lacks /${step.answer_match}/`);
   if (step.answer_not && new RegExp(step.answer_not, 'i').test(answer)) f.push(`answer matches /${step.answer_not}/`);
