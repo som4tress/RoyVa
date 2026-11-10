@@ -485,6 +485,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       let lastUpdate = 0;
       let rows = [];
       const runStartMark = usageTotals.data.watermarks[sessionID] || '';   // only this request's passes, not earlier turns of the same session
+      const stopMarkup = {inline_keyboard: [[{text: '⏹ Stop', callback_data: 'run:stop'}]]};
       async function updateStatus(finished = false) {
         if (!status) return;
         if (!finished && Date.now() - lastUpdate < 3000) return;
@@ -506,9 +507,9 @@ export async function main({transcriber = createTranscriber()} = {}) {
           usage.passes ? formatUsage(usage) : 'Tokens: awaiting provider usage',
           ...(!finished && pending.length ? [`Current pass: ${live === null ? 'output usage pending' : `~${live} streamed output tokens`} · input usage pending`] : []),
           ...(!finished && tool ? [`Tool: ${tool.name} · ${tool.state?.status || 'running'}`] : []),
-          ...(!finished ? ['Reply to steer · /stop'] : []),
+          ...(!finished ? ['Reply to this to steer · tap Stop to cancel'] : []),
         ];
-        await tg('editMessageText', { chat_id: message.chat.id, message_id: status.message_id, text: lines.join('\n') }).catch(() => {});
+        await tg('editMessageText', { chat_id: message.chat.id, message_id: status.message_id, text: lines.join('\n'), reply_markup: finished ? {inline_keyboard: []} : stopMarkup }).catch(() => {});
       }
       const statusTimer = setInterval(() => { void updateStatus().catch(() => {}); }, 3000);
       try {
@@ -531,7 +532,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
           if (routed.kind === 'run') prompt = routed.prompt;
           console.log(`Routed ${routed.trace_id}: ${routed.mode} ${JSON.stringify(routed.intents)} tools=${routed.tools.length}`);
         }
-        status = await tg('sendMessage', { chat_id: message.chat.id, text: `⏳ Processing · 0s elapsed\n${modelLabel}\nTokens: awaiting provider usage`, reply_parameters: { message_id: run.replyTo.message_id, allow_sending_without_reply: true } });
+        status = await tg('sendMessage', { chat_id: message.chat.id, text: `⏳ Processing · 0s elapsed\n${modelLabel}\nTokens: awaiting provider usage`, reply_markup: stopMarkup, reply_parameters: { message_id: run.replyTo.message_id, allow_sending_without_reply: true } });
         state.messages[`${message.chat.id}:${status.message_id}`] = sessionID; save();
         const answer = await runText(sessionID, prompt, {
           signal: controller.signal, files: prepared.files,
@@ -586,6 +587,21 @@ export async function main({transcriber = createTranscriber()} = {}) {
     });
     queues.set(sessionID, job);
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});
+  }
+  // The Stop button under the "Processing" status message: same effect as /stop for that request.
+  async function stopButton(callback) {
+    const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
+    if (!(await live.has(callback.from?.id))) return;
+    const message = callback.message;
+    if (!message || (message.chat?.type && message.chat.type !== 'private')) return;
+    const sessionID = state.messages[`${message.chat.id}:${message.message_id}`];
+    const run = sessionID && active.get(sessionID);
+    if (!run || run.chat !== message.chat.id) {
+      await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
+      return answer('Nothing is running for this request.');
+    }
+    await answer('Stopping…');
+    await stopSession(sessionID);
   }
   // Approve/Deny buttons under a permission request: same effect as replying /approve or /deny to it.
   async function permissionButton(callback) {
@@ -682,7 +698,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       for (const update of updates) {
         // Record admission before execution; never automatically replay household actions after restart.
         state.offset = update.update_id; save();
-        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
+        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
         if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
       }
     } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }
