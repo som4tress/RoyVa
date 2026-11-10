@@ -39,8 +39,8 @@ test('final footer shows this request and all-time with cached/uncached', () => 
 test('footer shows estimated cost saved from the pricing file, and omits it without one', async () => {
   const { estimateCost } = await import('./usage.mjs');
   const pricing = { model: 'Test Model', usd_per_million: { input: 1, cached_input: 0.1, output: 2 } };
-  const totals = { input: 5000, cached: 4000, output: 300, reasoning: 0, passes: 9, runs: 4 };
-  assert.ok(Math.abs(estimateCost(totals, pricing) - (1000 * 1 + 4000 * 0.1 + 300 * 2) / 1e6) < 1e-12);
-  assert.match(formatFinalUsage({}, totals, '2026-11-08T00:00:00Z', pricing), /\nEst\. saved vs Test Model \(OpenRouter median\): \$0\.0020/);
+  const totals = { input: 5000, cached: 4000, output: 300, reasoning: 100, passes: 9, runs: 4 };
+  assert.ok(Math.abs(estimateCost(totals, pricing) - (1000 * 1 + 4000 * 0.1 + 400 * 2) / 1e6) < 1e-12);
+  assert.match(formatFinalUsage({}, totals, '2026-11-08T00:00:00Z', pricing), /\nEst\. saved vs Test Model \(OpenRouter median\): \$0\.0022/);
   assert.doesNotMatch(formatFinalUsage({}, totals, '2026-11-08T00:00:00Z'), /Est\. saved/);
 });
