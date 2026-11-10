@@ -54,3 +54,12 @@ def test_protected_device_refused_in_a_multi_target_change(monkeypatch):
 def test_big_results_are_capped():
     big = ha._cap({"x": "a" * 50000})
     assert big["truncated"] and len(big["first_chars"]) == ha.MAX_OUT
+
+
+def test_list_results_are_narrowed_on_the_server():
+    devices = [{"id": f"d{i}", "name": "Lamp %d" % i, "area_id": None, "junk": "x" * 500} for i in range(200)] + [{"id": "target", "name": "HAP-603WF-Bedroom", "area_id": None, "junk": "y" * 500}]
+    out = ha.ha_read({"kind": "ws", "type": "config/device_registry/list", "contains": "hap-603wf", "fields": ["id", "name", "area_id"]}, ws=lambda *a: devices)
+    assert out["result"] == {"matched": 1, "shown": 1, "items": [{"id": "target", "name": "HAP-603WF-Bedroom", "area_id": None}]}
+    whole = ha.ha_read({"kind": "ws", "type": "config/device_registry/list"}, ws=lambda *a: devices)
+    assert whole["result"]["matched"] == 201 and whole["result"]["shown"] < 50 and "contains" in whole["result"]["hint"]      # never the whole list by default
+    assert "contains" in ha._cap({"x": "a" * 50000})["hint"]

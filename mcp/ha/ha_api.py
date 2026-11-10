@@ -97,8 +97,36 @@ def _ws(t, params):
 
 
 def _cap(result):
-    text = json.dumps(result)
-    return result if len(text) <= MAX_OUT else {"truncated": True, "first_chars": text[:MAX_OUT]}
+    text = json.dumps(result, separators=(",", ":"))
+    if len(text) <= MAX_OUT:
+        return result
+    return {"truncated": True, "hint": "the result is too big: ask again with contains (text to match), fields (keys to keep) and limit", "first_chars": text[:MAX_OUT]}
+
+
+def shape(result, contains=None, fields=None, limit=50):
+    """Narrow a list result on the server so a big registry never has to travel whole: keep items whose JSON contains the text,
+    keep only the named keys, return at most `limit`. Anything that is not a list is returned unchanged."""
+    if not isinstance(result, list):
+        return result
+    items = result
+    if contains:
+        needles = [str(c).lower() for c in (contains if isinstance(contains, list) else [contains])]
+        items = [i for i in items if all(n in json.dumps(i).lower() for n in needles)]
+    total = len(items)
+    if fields:
+        keep = [str(f) for f in fields]
+        items = [{k: i.get(k) for k in keep if k in i} if isinstance(i, dict) else i for i in items]
+    try:
+        limit = max(1, min(int(limit or 50), 500))
+    except (TypeError, ValueError):
+        limit = 50
+    items = items[:limit]
+    while len(items) > 1 and len(json.dumps(items, separators=(",", ":"))) > MAX_OUT - 500:        # fit the cap by showing fewer, and say so
+        items = items[:len(items) // 2]
+    out = {"matched": total, "shown": len(items), "items": items}
+    if len(items) < total:
+        out["hint"] = "more matched than shown: narrow with contains, or keep fewer fields"
+    return out
 
 
 def _target(args):
@@ -112,7 +140,13 @@ def ha_read(args, ws=_ws, rest=_rest):
     bad = check_read(kind, target, method)
     if bad:
         return {"error": bad}
-    return _cap({"result": ws(target, params)} if kind == "ws" else rest("GET", target))
+    f = {k: args.get(k) for k in ("contains", "fields", "limit")}
+    if kind == "ws":
+        return _cap({"result": shape(ws(target, params), **f)})
+    out = rest("GET", target)
+    if isinstance(out.get("body"), list):
+        out = {**out, "body": shape(out["body"], **f)}
+    return _cap(out)
 
 
 def ha_write(args, ws=_ws, rest=_rest):
@@ -131,12 +165,16 @@ def ha_write(args, ws=_ws, rest=_rest):
 
 READ = {"name": "ha_read",
         "description": "Read anything from Home Assistant's own API that no other tool exposes: registries (areas, devices, entities, floors, labels), "
-                       "automation/script/scene config, services, history. kind 'ws' with type (e.g. config/device_registry/list) or kind 'rest' with path (e.g. /api/config/automation/config/<id>). "
+                       "automation/script/scene config, services, history. Registries are big: always narrow list results with contains (e.g. a device name), fields and limit. kind 'ws' with type (e.g. config/device_registry/list) or kind 'rest' with path (e.g. /api/config/automation/config/<id>). "
                        "Cannot change anything.",
         "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest"]},
                                                          "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
                                                          "path": {"type": "string", "description": "REST path starting with /api/ (kind rest)."},
-                                                         "params": {"type": "object", "description": "Extra command fields (ws) or query-free options."}},
+                                                         "params": {"type": "object", "description": "Extra command fields (ws) or query-free options."},
+                                                         "contains": {"description": "For list results (registries, states): keep only items whose data contains this text (or all of these texts), case-insensitive. Use it, big lists are cut off.",
+                                                                      "oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+                                                         "fields": {"type": "array", "items": {"type": "string"}, "description": "For list results: keep only these keys of each item (e.g. id, name, area_id)."},
+                                                         "limit": {"type": "integer", "description": "For list results: at most this many items (default 50)."}},
                         "required": ["kind"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}}
 WRITE = {"name": "ha_write",
