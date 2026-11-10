@@ -180,8 +180,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
     }
     return send(message, formatPermission(permission, history, live), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live)});
   }
-  // A denied permission ends the request: RoyVa must not carry on and try another way round what the owner just refused.
-  async function stopAfterDeny(sessionID) {
+  // Ends the running request for a session (Stop button, /deny): abort the run loop and interrupt OpenCode. A denied permission also ends the request: RoyVa must not carry on and try another way round what the owner just refused.
+  async function stopSession(sessionID) {
     active.get(sessionID)?.controller.abort();
     await openCodeAPI(`/api/session/${sessionID}/interrupt`, 'POST', {}).catch(error => console.error('Interrupt after deny failed:', error.message || error.name));
   }
@@ -439,7 +439,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         return send(message, `Could not confirm the permission decision: ${error.message}. Retry only if the request is still waiting.`, linked);
       }
       if (text === '/approve') batchApprovals.grant(linked, permissionKeys.get(request.id));
-      else await stopAfterDeny(linked);
+      else await stopSession(linked);
       return send(message, text === '/approve' ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied. Stopped.', linked);
     }
     // RoyVa gateway (optional, ROYVA_GATEWAY_URL): new conversations are created through the gateway (base agent, no tools yet).
@@ -603,7 +603,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (!request) { await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {}); return answer('Already answered or no longer waiting.'); }
       await openCodeAPI(`/api/session/${target.sessionID}/permission/${request.id}/reply`, 'POST', { decision: approve ? 'once' : 'reject' });
       if (approve) batchApprovals.grant(target.sessionID, permissionKeys.get(request.id));
-      else await stopAfterDeny(target.sessionID);
+      else await stopSession(target.sessionID);
       delete state.permissions[`${message.chat.id}:${message.message_id}`]; save();
       await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
       await answer(approve ? (permissionKeys.get(request.id) ? 'Approved for this whole request.' : 'Approved once.') : 'Denied. Stopped.');
