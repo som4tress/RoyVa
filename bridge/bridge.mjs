@@ -547,14 +547,12 @@ export async function main({transcriber = createTranscriber()} = {}) {
           },
           onProgress: async progress => {
             rows = progress;
-            // Round guard (gateway profile cap): too many model rounds (or an absurd number of tool calls) = a runaway loop. Stop it and ask for a wrap-up.
+            // Loop guard (bridge/guard.mjs): stop only a run that is stuck (same call again, repeated failures) or past a high ceiling, then ask for a wrap-up.
             if (routed?.kind === 'run' && !wrapped) {
-              const assistants = rows.filter(row => row.type === 'assistant');
-              const rounds = assistants.filter(row => toolParts(row).length).length;
-              const calls = assistants.reduce((n, row) => n + toolParts(row).length, 0);
-              if (rounds > routed.cap || calls > routed.calls_ceiling) {
+              const why = loopVerdict(rows, {hardRounds: Math.max(HARD_ROUNDS, routed.cap), hardCalls: Math.max(HARD_CALLS, routed.calls_ceiling)});
+              if (why) {
                 wrapped = true;
-                console.log(`Round guard tripped: ${rounds} rounds, ${calls} calls (cap ${routed.cap}); interrupting`);
+                console.log(`Loop guard tripped: ${why}; interrupting`);
                 await openCodeAPI(`/api/session/${sessionID}/interrupt`, 'POST', {});
                 for (let i = 0; i < 20; i++) {
                   await setTimeout(500);

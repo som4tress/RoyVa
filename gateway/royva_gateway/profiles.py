@@ -10,7 +10,7 @@ PER_TURN_PROVIDERS = {"current_location", "current_time"}        # refreshed on 
 PROVIDER_TEXT = {
     # Static placeholders; real generators (home map from HA registry, speaker table, user profile) are separate tasks.
     "home_map": "Home layout: floors and areas are defined in Home Assistant. A floor (for example the upper or lower level) is not an area; "
-                "for a question about a floor, query each of its areas, or fetch the whole home and filter, instead of passing the floor name as an area.",
+                "for a floor, make one query without an area filter and keep the devices in its areas (or send the per-area queries together in one step), instead of passing the floor name as an area or going one area per step.",
     "speakers": "Speakers are Home Assistant media players; use their exact names.",
     "user_profile": "The user is a member of the household. Their email is Gmail.",
 }
