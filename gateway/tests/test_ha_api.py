@@ -72,3 +72,27 @@ def test_home_assistant_refusal_reason_reaches_the_model():
     text = ha_ws.failure_text({"success": False, "error": {"code": "invalid_format", "message": "extra keys not allowed @ data['foo']"}})
     assert "invalid_format" in text and "extra keys not allowed" in text
     assert ha_ws.failure_text({"error": {"code": "not_found"}}).endswith("not_found")
+
+
+def test_params_cannot_override_command_type_or_id():
+    assert ha.check_read("ws", "config/device_registry/list", "GET", {"type": "config/device_registry/remove_config_entry"})
+    assert ha.check_read("ws", "config/device_registry/list", "GET", {"id": 5})
+    assert ha.check_read("ws", "config/device_registry/list", "GET", {"limit": 5}) is None
+    assert ha.check_write("ws", "config/device_registry/update", "GET", {"type": "x"})
+
+
+def test_ws_command_type_wins_over_params():
+    sent = {}
+    class Fake:
+        @staticmethod
+        def call(url, token, cmds, timeout=15):
+            sent["cmd"] = cmds[0]
+            return {1: "ok"}
+    ha_ws_real = ha.ha_ws
+    ha.ha_ws = Fake
+    ha._auth = lambda: ("ws://x", "t", "http://x")
+    try:
+        ha._ws("config/device_registry/list", {"type": "evil"})
+    finally:
+        ha.ha_ws = ha_ws_real
+    assert sent["cmd"]["type"] == "config/device_registry/list"

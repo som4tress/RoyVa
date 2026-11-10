@@ -36,8 +36,10 @@ def is_read_ws(t: str) -> bool:
     return last in READ_LAST or last.startswith("get_") or last.startswith("list_")
 
 
-def check_read(kind: str, target: str, method: str = "GET"):
+def check_read(kind: str, target: str, method: str = "GET", params: dict = None):
     """None if allowed, else the reason. Pure."""
+    if params and ({"type", "id"} & set(params)):
+        return "params may not set 'type' or 'id'; the command is given by the target"
     if REFUSED.search(target):
         return "that call can expose secrets or streams and is never allowed"
     if kind == "ws":
@@ -50,6 +52,8 @@ def check_read(kind: str, target: str, method: str = "GET"):
 
 
 def check_write(kind: str, target: str, method: str, params: dict):
+    if params and ({"type", "id"} & set(params)):
+        return "params may not set 'type' or 'id'; the command is given by the target"
     if REFUSED.search(target):
         return "that call can expose secrets or streams and is never allowed"
     if kind == "rest" and not target.startswith("/api/"):
@@ -92,7 +96,7 @@ def _maybe_json(raw: str):
 
 def _ws(t, params):
     url, token, _ = _auth()
-    out = ha_ws.call(url, token, [{"id": 1, "type": t, **(params or {})}], timeout=15)
+    out = ha_ws.call(url, token, [{**(params or {}), "id": 1, "type": t}], timeout=15)
     return out.get(1)
 
 
