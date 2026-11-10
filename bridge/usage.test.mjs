@@ -33,5 +33,5 @@ test('final footer shows this request and all-time with cached/uncached', () => 
   const run = tokenUsage([row('m1', 100, 900, 50, 10)]);
   const out = formatFinalUsage(run, { input: 5000, cached: 4000, output: 300, reasoning: 0, passes: 9, runs: 4 }, '2026-11-08T00:00:00Z');
   assert.doesNotMatch(out, /This request/);
-  assert.match(out, /Tokens, all time \(since 2026-11-08\): 5,300 total$/);
+  assert.match(out, /All time \(since 2026-11-08\): in 5,000 \(cached 4,000 · uncached 1,000\) · out 300 · 5,300 total · 4 requests/);
 });
