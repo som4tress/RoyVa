@@ -322,6 +322,11 @@ export async function main({transcriber = createTranscriber()} = {}) {
     // After a Gmail connection OpenCode must reload; wait (up to 10 min) until no run is active so nobody's answer is cut off, then restart it.
     restartWhenIdle: async () => { for (let i = 0; i < 120 && active.size; i++) await new Promise(r => setTimeout(r, 5000)); try { await gatewayCall('/v1/admin/restart-opencode'); } catch (error) { console.log(`OpenCode restart request failed: ${error.message}`); } },
   });
+  // Acknowledge a steering reply immediately: a 👀 reaction, or a short message if reactions are unavailable.
+  async function ackSteer(message) {
+    try { await tg('setMessageReaction', {chat_id: message.chat.id, message_id: message.message_id, reaction: [{type: 'emoji', emoji: '👀'}]}); }
+    catch { await tg('sendMessage', {chat_id: message.chat.id, text: 'Got it, adjusting the current request.', reply_parameters: {message_id: message.message_id, allow_sending_without_reply: true}}).catch(() => {}); }
+  }
   async function send(message, text, sessionID, feedback = false, permissionID, opts = {}) {
     const points = Array.from(text);
     const feedbackData = feedback && typeof feedback === 'object' ? feedback : {};
@@ -457,6 +462,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     state.messages[`${message.chat.id}:${message.message_id}`] = sessionID; save();
     const running = linked && active.get(sessionID);
     if (running?.accepting) {
+      void ackSteer(message);                       // the owner sees at once that the reply was taken as a steer, before the run has even admitted it
       running.revision++;
       running.steering = running.steering.then(async () => {
         const {prompt, replyTo, files} = await preparePrompt(message, text, sessionID);
@@ -464,6 +470,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
         if (await running.ready && !running.controller.signal.aborted) {
           await steerText(sessionID, prompt, {files});
           running.replyTo = replyTo;
+        } else if (!running.controller.signal.aborted) {
+          await send(message, 'That request did not start, so your reply was not applied. Send it again as a new message.', sessionID);
         }
       }).catch(async error => {
         console.error('Steering failed:', error.name);
