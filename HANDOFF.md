@@ -121,3 +121,6 @@ Open findings from the 2026-11-10 audit, not fixed (need an owner decision or mo
 * Files: runtime binary `~/llm-server/sdcpp/master-1086` (sd-cli), models in `~/llm-server/models/image/qwen-image-2.1` (denoiser Q8, Qwen3-VL-8B Q8 encoder, VAE, mmproj for editing). Smoke test: `~/llm-server/sdcpp/test-image.sh`.
 * MCP server `image-gen` (`mcp/image/image_gen.py`): `generate_image`, `edit_image` (reads photos only from `runtime/data/inbox`, writes to `runtime/data/images`, one render at a time, 900 s timeout). Intent `image_generate` (also web.search/fetch for news memes). Bridge: `images.mjs` sends the picture, `media.mjs` saves incoming photos and adds a `[Attached photo: path]` line.
 * Needs `scripts/deploy.sh` (OpenCode restart loads the MCP server). Text-to-image smoke-tested by hand; photo restyle and the live tool path are NOT yet verified end to end. Regression: route cases `image-*`, live case `image-live-draw`.
+
+## 13. Latest handoff
+See `docs/handoff-2026-11-11-image-and-agents.md`: image skill as shipped (30 steps, cfg 4.0, EasyCache), latest fixes, open owner decisions (3090/ComfyUI, PG&E data, Hyderabad job finder), and the autonomous scheduled-agents design (runner vs NemoClaw).
