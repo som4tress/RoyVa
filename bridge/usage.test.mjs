@@ -54,3 +54,13 @@ test('backfill is merged once, moves the since date back, ', async () => {
   const again = new UsageTotals(f, b);
   assert.equal(again.lifetime.input, 110); assert.equal(again.lifetime.runs, 4); assert.equal(again.since, '2026-10-26T00:00:00Z');
 });
+
+test('pictures: encoder tokens join the input total, counted once per file even when a session is replayed', async () => {
+  const { imageRuns } = await import('./images.mjs');
+  const rows = [{ type: 'assistant', content: [{ type: 'tool', name: 'image-gen_generate_image', state: { status: 'completed', content: [{ type: 'text', text: JSON.stringify({ ok: true, image_path: '/x/a.png', secs: 100, encoder_tokens: 230 }) }] } }] }];
+  const f = join(mkdtempSync(join(tmpdir(), 'usage-')), 'u.json'); const t = new UsageTotals(f);
+  assert.deepEqual(t.recordImages(imageRuns(rows)), { images: 1, secs: 100, tokens: 230 });
+  assert.equal(t.recordImages(imageRuns(rows)).images, 0);
+  assert.equal(t.lifetime.input, 230); assert.equal(t.lifetime.images, 1);
+  assert.match(formatFinalUsage({}, t.lifetime, '2026-11-08T00:00:00Z'), /Pictures: 1 · 2 min rendering · 230 text-encoder tokens/);
+});

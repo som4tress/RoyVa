@@ -7,7 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
-import { generatedImages, sendPhotos } from './images.mjs';
+import { generatedImages, imageRuns, sendPhotos } from './images.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
@@ -595,6 +595,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
+        usageTotals.recordImages(imageRuns(rows));
         // The picture goes first and on its own, so a failed or rate-limited text reply can never lose it.
         const pictures = generatedImages(rows);
         if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }

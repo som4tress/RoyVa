@@ -54,6 +54,19 @@ export class UsageTotals {
     try { mkdirSync(dirname(this.file), { recursive: true }); const tmp = `${this.file}.tmp`; writeFileSync(tmp, JSON.stringify(this.data), { mode: 0o600 }); renameSync(tmp, this.file); }
     catch (error) { console.error('Could not save usage totals:', error.message); }
   }
+  // Pictures: count render time and the text-encoder tokens once per file; the tokens also join the input total.
+  recordImages(runs) {
+    const seen = this.data.images_seen ||= [], t = this.data.totals, run = { images: 0, secs: 0, tokens: 0 };
+    for (const r of runs) {
+      if (seen.includes(r.file)) continue;
+      seen.push(r.file); run.images++; run.secs += r.secs; run.tokens += r.tokens;
+    }
+    if (seen.length > 500) seen.splice(0, seen.length - 500);
+    t.images = (t.images || 0) + run.images; t.image_secs = (t.image_secs || 0) + run.secs; t.image_tokens = (t.image_tokens || 0) + run.tokens;
+    t.input += run.tokens;
+    if (run.images) this.#save();
+    return run;
+  }
   get lifetime() { return this.data.totals; }
   get since() { return this.data.since; }
 }
@@ -75,7 +88,8 @@ export function formatFinalUsage(run, totals, since, pricing = null) {
   const line = u => `in ${fmt(u.input)} (cached ${fmt(u.cached)} · uncached ${fmt(u.input - u.cached)}) · out ${fmt(u.output)}${u.reasoning ? ` + thinking ${fmt(u.reasoning)}` : ''}`;
   const cost = estimateCost(totals, pricing);
   const saved = cost === null ? '' : `\nEst. saved vs ${pricing.model}: ${money(cost)}`;
-  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${saved}`;
+  const pics = totals.images ? `\nPictures: ${fmt(totals.images)} · ${fmt(Math.round((totals.image_secs || 0) / 60))} min rendering · ${fmt(totals.image_tokens || 0)} text-encoder tokens (counted in input)` : '';
+  return `\n\n— Tokens —\nAll time (since ${String(since).slice(0, 10)}): ${line(totals)} · ${fmt(totals.input + totals.output)} total · ${fmt(totals.runs)} requests${pics}${saved}`;
 }
 
 export async function streamingTokens(text) {

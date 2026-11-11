@@ -5,6 +5,7 @@ Honors the dry-run flag. Paths can be overridden with ROYVA_SD_BIN / ROYVA_IMAGE
 import fcntl
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -139,7 +140,7 @@ def _render(prompt, steps, seed, width, height, ref, label):
             return {"ok": False, "error": "another picture is still being generated; try again in a minute"}
         cmd = [str(SD_DIR / "sd-cli"), "--diffusion-model", str(MODELS / FILES["diffusion"]), "--vae", str(MODELS / FILES["vae"]), "--llm", str(MODELS / FILES["llm"]),
                "-p", prompt, "--steps", str(steps), "--cfg-scale", "6.0", "--sampling-method", "euler", "-W", str(width), "-H", str(height),
-               "--diffusion-fa", "--seed", str(seed), "-o", str(out)]
+               "--diffusion-fa", "--seed", str(seed), "-v", "-o", str(out)]
         if CACHE:                                           # skips steps that barely change the picture: about 2x faster, same look (measured)
             cmd += ["--cache-mode", CACHE]
         if ref is not None:
@@ -154,7 +155,8 @@ def _render(prompt, steps, seed, width, height, ref, label):
         return {"ok": False, "error": "image generation failed: " + (run.stderr or run.stdout or "no output")[-300:].strip()}
     _prune()
     secs = round(time.time() - started)
-    return {"ok": True, "did": f"{label} in {secs}s (seed {seed}); it is sent to the chat.", "image_path": str(out), "seed": seed}
+    tokens = sum(int(n) for n in re.findall(r'split prompt .* to (\d+) tokens', (run.stderr or "") + (run.stdout or "")))   # what the Qwen3-VL text encoder read
+    return {"ok": True, "did": f"{label} in {secs}s (seed {seed}); it is sent to the chat.", "image_path": str(out), "seed": seed, "secs": secs, "encoder_tokens": tokens}
 
 
 FUNCS = {"generate_image": generate_image, "edit_image": edit_image}

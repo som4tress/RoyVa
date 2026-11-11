@@ -39,7 +39,7 @@ def env(tmp_path, monkeypatch):
     calls = []
 
     class Done:
-        returncode, stdout, stderr = 0, "", ""
+        returncode, stdout, stderr = 0, "", '[V] split prompt "a" to 14 tokens [x]\n[V] split prompt "b" to 30 tokens [y]\n'
 
     def fake_run(cmd, **kw):
         calls.append(cmd)
@@ -54,6 +54,7 @@ def test_generate_builds_command_and_returns_picture(env):
     _, calls = env
     r = g.generate_image({"prompt": "a sloth", "width": 1280, "height": 704, "steps": 99})
     assert r["ok"] and Path(r["image_path"]).exists() and r["image_path"].startswith(str(g.OUT_DIR))
+    assert r["encoder_tokens"] == 44 and "secs" in r
     cmd = calls[0]
     assert cmd[cmd.index("--steps") + 1] == str(g.MAX_STEPS) and "-r" not in cmd
     assert cmd[cmd.index("-W") + 1] == "1280" and cmd[cmd.index("-H") + 1] == "704"

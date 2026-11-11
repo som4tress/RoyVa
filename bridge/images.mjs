@@ -29,6 +29,22 @@ export function generatedImages(rows, dir = IMAGE_DIR) {
   return out;
 }
 
+// Cost of each picture the tool reported (render seconds, tokens the text encoder read), keyed by file so a replayed session is never counted twice.
+export function imageRuns(rows) {
+  const out = [];
+  for (const row of rows) {
+    if (row.type !== 'assistant') continue;
+    for (const part of row.content || []) {
+      if (part.type !== 'tool' || !/(generate|edit)_image$/.test(part.name || '') || part.state?.status !== 'completed') continue;
+      for (const text of resultTexts(part)) {
+        let value; try { value = JSON.parse(text); } catch { continue; }
+        if (value?.ok === true && typeof value.image_path === 'string') out.push({ file: value.image_path, secs: Number(value.secs) || 0, tokens: Number(value.encoder_tokens) || 0 });
+      }
+    }
+  }
+  return out;
+}
+
 export const retryMs = result => Math.min(30, Number(result.parameters?.retry_after ?? 5)) * 1000 + 500;
 export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetch) {
   for (const file of files) {
