@@ -157,6 +157,7 @@ async function testFile(path) {
 export async function main({transcriber = createTranscriber()} = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const modelLabel = process.env.OPENCODE_TG_MODEL_LABEL || 'Qwen3.8 27B Q8_0 · reasoning off · MTP 6';
+  const imageModelLabel = process.env.OPENCODE_TG_IMAGE_MODEL_LABEL || 'Qwen-Image-2.1 Q8_0 · 20 steps · stable-diffusion.cpp (Vulkan)';   // shown while a picture is rendering
   const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
   if (!token || !allowed.size) throw new Error('Telegram token and explicit allowed user IDs are required.');
   // Who may talk to RoyVa: the env owners plus people enrolled through the gateway (live, so approvals and revocations apply without a restart).
@@ -509,13 +510,14 @@ export async function main({transcriber = createTranscriber()} = {}) {
         const partial = pending.flatMap(row => (row.content || []).filter(part => part.type === 'text' || part.type === 'reasoning').map(part => part.text || '')).join('');
         const live = finished ? null : await streamingTokens(partial).catch(() => null);
         const tool = rows.flatMap(row => row.content || []).filter(part => part.type === 'tool').at(-1);
+        const imageRunning = !finished && /image.?gen|generate_image|edit_image/.test(tool?.name || '') && !['completed', 'error'].includes(tool?.state?.status);
         const elapsed = Math.round((Date.now() - started) / 1000);
         const blocks = Math.max(1, Math.ceil(elapsed / 3));
         const localBar = '▰'.repeat(blocks);
         const hourglass = Math.floor(elapsed / 3) % 2 ? '⌛' : '⏳';
         const lines = [
           `${finished ? '✓ Finished' : `${hourglass} Processing`} · ${Math.round((Date.now() - started) / 1000)}s elapsed`,
-          modelLabel,
+          imageRunning ? imageModelLabel : modelLabel,
           `${localBar} · ${elapsed}s`,
           'Each block ≈ 3s',
           usage.passes ? formatUsage(usage) : 'Tokens: awaiting provider usage',

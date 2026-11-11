@@ -23,13 +23,14 @@ FILES = {"diffusion": "qwen-image-2.1-Q8_0.gguf", "llm": "Qwen3-VL-8B-Instruct-Q
 VISION = "mmproj-Qwen3-VL-8B-F16.gguf"        # only needed for editing a photo
 INBOX = Path(os.environ.get("ROYVA_INBOX_DIR", ROOT / "runtime" / "data" / "inbox"))   # photos the bridge saved from chat; the only place edit_image reads from
 MAX_PROMPT, MIN_SIDE, MAX_SIDE, MIN_STEPS, MAX_STEPS, KEEP = 1500, 512, 1280, 8, 40, 60
+CACHE = os.environ.get("ROYVA_IMAGE_CACHE", "easycache")      # "" turns it off
 TIMEOUT = int(os.environ.get("ROYVA_IMAGE_TIMEOUT", "900"))
 HINT = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 
 TOOLS = [{
     "name": "generate_image",
     "description": ("Generate one picture from a text description and send it to the chat. Takes one to a few minutes and the GPU is shared with chat, so call it once per request. "
-                    "Write the prompt in English as a concrete visual description (subject, style, setting, lighting, any text that must appear in quotes). Width and height are multiples of 64 "
+                    "Write the prompt in English as a concrete visual description (subject, style, setting, lighting, any text that must appear in quotes). Width and height are multiples of 16 "
                     f"between {MIN_SIDE} and {MAX_SIDE} (default 1024x1024)."),
     "inputSchema": {"type": "object", "properties": {
         "prompt": {"type": "string", "description": "What the picture should show."},
@@ -50,8 +51,8 @@ TOOLS = [{
 
 def _side(value, name):
     v = int(value)
-    if not MIN_SIDE <= v <= MAX_SIDE or v % 64:
-        raise ValueError(f"{name} must be a multiple of 64 between {MIN_SIDE} and {MAX_SIDE}")
+    if not MIN_SIDE <= v <= MAX_SIDE or v % 16:
+        raise ValueError(f"{name} must be a multiple of 16 between {MIN_SIDE} and {MAX_SIDE}")
     return v
 
 
@@ -139,6 +140,8 @@ def _render(prompt, steps, seed, width, height, ref, label):
         cmd = [str(SD_DIR / "sd-cli"), "--diffusion-model", str(MODELS / FILES["diffusion"]), "--vae", str(MODELS / FILES["vae"]), "--llm", str(MODELS / FILES["llm"]),
                "-p", prompt, "--steps", str(steps), "--cfg-scale", "6.0", "--sampling-method", "euler", "-W", str(width), "-H", str(height),
                "--diffusion-fa", "--seed", str(seed), "-o", str(out)]
+        if CACHE:                                           # skips steps that barely change the picture: about 2x faster, same look (measured)
+            cmd += ["--cache-mode", CACHE]
         if ref is not None:
             cmd += ["-r", str(ref), "--llm_vision", str(MODELS / VISION)]
         started = time.time()

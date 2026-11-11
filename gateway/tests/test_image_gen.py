@@ -59,6 +59,16 @@ def test_generate_builds_command_and_returns_picture(env):
     assert cmd[cmd.index("-W") + 1] == "1280" and cmd[cmd.index("-H") + 1] == "704"
 
 
+def test_720p_and_speed_cache(env, monkeypatch):
+    _, calls = env
+    assert g.generate_image({"prompt": "a sloth", "width": 1280, "height": 720})["ok"]
+    cmd = calls[0]
+    assert cmd[cmd.index("-H") + 1] == "720" and cmd[cmd.index("--cache-mode") + 1] == "easycache"
+    monkeypatch.setattr(g, "CACHE", "")
+    g.generate_image({"prompt": "a sloth"})
+    assert "--cache-mode" not in calls[1]
+
+
 @pytest.mark.parametrize("args", [{"prompt": ""}, {"prompt": "x" * 2000}, {"prompt": "a", "width": 1000}, {"prompt": "a", "height": 64}])
 def test_generate_rejects_bad_input(env, args):
     try:
