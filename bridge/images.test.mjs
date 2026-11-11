@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { generatedImages, sendPhotos } from './images.mjs';
+import { generatedImages, sendPhotos, retryMs } from './images.mjs';
 
 const dir = mkdtempSync(join(tmpdir(), 'imgs-'));
 const good = join(dir, 'a.png'); writeFileSync(good, Buffer.alloc(2000));
@@ -28,4 +28,13 @@ test('sendPhotos posts each file to sendPhoto with the reply target, and throws 
   await sendPhotos('TOKEN', 42, [good], 7, async (url, init) => { seen.push([url, init.body.get('chat_id'), init.body.get('reply_parameters'), init.body.get('photo').type]); return { json: async () => ({ ok: true }) }; });
   assert.deepEqual(seen, [['https://api.telegram.org/botTOKEN/sendPhoto', '42', JSON.stringify({ message_id: 7, allow_sending_without_reply: true }), 'image/png']]);
   await assert.rejects(sendPhotos('T', 1, [good], 0, async () => ({ json: async () => ({ ok: false, error_code: 400 }) })), /sendPhoto: 400/);
+});
+test('retries a Telegram rate limit (429) after the requested wait, then succeeds; gives up after a few tries', async () => {
+  let calls = 0;
+  await sendPhotos('T', 1, [good], 0, async () => ({ json: async () => (++calls < 2 ? { ok: false, error_code: 429, parameters: { retry_after: 0 } } : { ok: true }) }));
+  assert.equal(calls, 2);
+  let tries = 0;
+  await assert.rejects(sendPhotos('T', 1, [good], 0, async () => { tries++; return { json: async () => ({ ok: false, error_code: 429, parameters: { retry_after: 0 } }) }; }), /sendPhoto: 429/);
+  assert.equal(tries, 5);
+  assert.equal(retryMs({ parameters: { retry_after: 999 } }), 30500);
 });

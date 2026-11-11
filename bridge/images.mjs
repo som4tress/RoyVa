@@ -29,14 +29,19 @@ export function generatedImages(rows, dir = IMAGE_DIR) {
   return out;
 }
 
+export const retryMs = result => Math.min(30, Number(result.parameters?.retry_after ?? 5)) * 1000 + 500;
 export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetch) {
   for (const file of files) {
     const form = new FormData();
     form.set('chat_id', String(chatId));
     if (replyTo) form.set('reply_parameters', JSON.stringify({ message_id: replyTo, allow_sending_without_reply: true }));
     form.set('photo', new Blob([readFileSync(file)], { type: 'image/png' }), basename(file));
-    const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
-    const result = await response.json();
-    if (!result.ok) throw new Error(`Telegram sendPhoto: ${result.error_code}`);
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
+      const result = await response.json();
+      if (!result.ok && result.error_code === 429 && attempt < 4) { await new Promise(done => setTimeout(done, retryMs(result))); continue; }
+      if (!result.ok) throw new Error(`Telegram sendPhoto: ${result.error_code}`);
+      break;
+    }
   }
 }

@@ -309,12 +309,16 @@ export async function main({transcriber = createTranscriber()} = {}) {
     };
   }
   async function tg(method, payload) {
-    const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(65000),
-    });
-    const result = await response.json();
-    if (!result.ok) throw new Error(`Telegram ${method}: ${result.error_code}`);
-    return result.result;
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(65000),
+      });
+      const result = await response.json();
+      // Telegram rate limit (several runs finishing at once): wait the time it asks for, then try again, a few times.
+      if (!result.ok && result.error_code === 429 && attempt < 4) { await setTimeout(Math.min(30, Number(result.parameters?.retry_after) || 5) * 1000 + 500); continue; }
+      if (!result.ok) throw new Error(`Telegram ${method}: ${result.error_code}`);
+      return result.result;
+    }
   }
   const enroll = makeEnrollment({
     call: async (path, body) => { try { return await gatewayCall(path, body); } catch { return { ok: false, error: 'Enrollment is unavailable right now. Try again in a minute.' }; } },
@@ -589,9 +593,10 @@ export async function main({transcriber = createTranscriber()} = {}) {
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
-        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+        // The picture goes first and on its own, so a failed or rate-limited text reply can never lose it.
         const pictures = generatedImages(rows);
         if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
+        await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);
