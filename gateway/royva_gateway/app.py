@@ -110,6 +110,17 @@ async def new_session():
         raise HTTPException(502, f"assistant backend error: {type(e).__name__}")
 
 
+class ForgetReq(BaseModel):
+    session_id: str
+
+
+@app.post("/v1/forget", dependencies=[Depends(require_token)])
+async def forget(req: ForgetReq):
+    """Drop the gateway's record of a conversation the user chose to forget (the bridge deletes the OpenCode session itself)."""
+    gw: Gateway = app.state.gw
+    return {"removed": gw.store.delete(req.session_id)}
+
+
 @app.post("/v1/route", dependencies=[Depends(require_token)])
 async def route(req: AskRequest):
     """Route a message and prepare its session (tool grants + context). Does NOT run the model; the caller runs the turn.

@@ -91,7 +91,7 @@ def test_route_table_is_exactly_the_documented_api():
     have = {(m, r.path) for r in app_mod.app.routes if hasattr(r, "methods") for m in r.methods if m not in ("HEAD", "OPTIONS")}
     api = {(m, p) for m, p in have if (p.startswith("/v1") and not p.startswith(("/v1/enroll", "/v1/admin"))) or p == "/healthz"}     # enrollment is pinned below
     assert api == {("GET", "/healthz"), ("GET", "/v1/registry"), ("GET", "/v1/stats"),
-                   ("POST", "/v1/ask"), ("POST", "/v1/session"), ("POST", "/v1/route"), ("POST", "/v1/reload"), ("POST", "/v1/resolve-ids")}
+                   ("POST", "/v1/ask"), ("POST", "/v1/session"), ("POST", "/v1/route"), ("POST", "/v1/reload"), ("POST", "/v1/resolve-ids"), ("POST", "/v1/forget")}
 
 
 def test_enrollment_route_table_is_pinned():
@@ -100,3 +100,12 @@ def test_enrollment_route_table_is_pinned():
     for path in ("/v1/enroll/allowed", "/v1/enroll/invite", "/v1/enroll/join", "/v1/enroll/decide", "/v1/enroll/people",
                  "/v1/enroll/revoke", "/v1/enroll/gmail/start", "/v1/enroll/gmail/finish", "/v1/enroll/gmail/stop", "/v1/enroll/is-signin", "/v1/admin/restart-opencode"):
         assert path in have
+
+
+def test_forget_drops_the_session_record_and_is_idempotent(tmp_path):
+    c, gw = client(tmp_path, {"lights?": ["home_state"]})
+    sid = c.post("/v1/session").json()["session_id"]
+    assert gw.store.get(sid) is not None
+    assert c.post("/v1/forget", json={"session_id": sid}).json() == {"removed": True}
+    assert gw.store.get(sid) is None
+    assert c.post("/v1/forget", json={"session_id": sid}).json() == {"removed": False}

@@ -43,6 +43,15 @@ class SessionStore:
                 self._write()
         return removed
 
+    def delete(self, sid: Optional[str]) -> bool:
+        """Forget one session record. Returns whether it existed."""
+        with self._lock:
+            if not sid or sid not in self._data:
+                return False
+            del self._data[sid]
+            self._write()
+            return True
+
     def _write(self) -> None:
         fd, tmp = tempfile.mkstemp(dir=self.path.parent)
         with os.fdopen(fd, "w") as f:

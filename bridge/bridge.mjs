@@ -343,9 +343,12 @@ export async function main({transcriber = createTranscriber()} = {}) {
         chat_id: message.chat.id, text: points.slice(offset, offset + 3900).join(''),
         reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true },
         ...(permissionID && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: [opts.unverified ? [{text: '❌ Deny', callback_data: 'perm:deny'}] : [{text: '✅ Approve', callback_data: 'perm:approve'}, {text: '❌ Deny', callback_data: 'perm:deny'}]]}} : {}),
-        ...(feedback && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: feedbackData.incorrectOnly
-          ? [[{text: '👎 Incorrect', callback_data: 'feedback:reject'}]]
-          : [[{text: '👍 Accept & learn', callback_data: 'feedback:accept'}, {text: '👎 Incorrect', callback_data: 'feedback:reject'}]]}} : {}),
+        ...(feedback && offset + 3900 >= points.length ? {reply_markup: {inline_keyboard: [
+          ...(feedbackData.incorrectOnly
+            ? [[{text: '👎 Incorrect', callback_data: 'feedback:reject'}]]
+            : [[{text: '👍 Accept & learn', callback_data: 'feedback:accept'}, {text: '👎 Incorrect', callback_data: 'feedback:reject'}]]),
+          ...(sessionID || feedbackData.sessionID ? [[{text: '🗑 Forget this chat', callback_data: 'forget:session'}]] : []),
+        ]}} : {}),
       });
       first ??= result;
       console.log(`Sent reply part to chat (message ${result.message_id}, ${points.length} chars)`);
@@ -623,6 +626,28 @@ export async function main({transcriber = createTranscriber()} = {}) {
     await answer('Stopping…');
     await stopSession(sessionID);
   }
+  // The "Forget this chat" button under an answer: deletes the OpenCode session and the gateway/bridge records of it.
+  async function forgetButton(callback) {
+    const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
+    if (!(await live.has(callback.from?.id))) return;
+    const message = callback.message;
+    if (!message || (message.chat?.type && message.chat.type !== 'private')) return;
+    const key = `${message.chat.id}:${message.message_id}`;
+    const sessionID = state.answers[key]?.sessionID || state.messages[key];
+    if (!sessionID) return answer('This chat is no longer known.');
+    try {
+      if (active.has(sessionID)) await stopSession(sessionID);
+      await openCodeAPI(`/api/session/${encodeURIComponent(sessionID)}`, 'DELETE').catch(error => { if (!String(error.message).includes('404')) throw error; });
+      await gatewayCall('/v1/forget', {session_id: sessionID}).catch(error => console.error('Gateway forget failed:', error.message));
+      for (const table of [state.messages, state.answers, state.permissions]) for (const [k, v] of Object.entries(table)) if ((typeof v === 'string' ? v : v?.sessionID) === sessionID) delete table[k];
+      save();
+      await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
+      await answer('Forgotten. This chat can no longer be continued.');
+    } catch (error) {
+      console.error('Forget button failed:', error.message || error.name);
+      await answer('Could not delete this chat. Try again later.');
+    }
+  }
   // Approve/Deny buttons under a permission request: same effect as replying /approve or /deny to it.
   async function permissionButton(callback) {
     const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
@@ -718,7 +743,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       for (const update of updates) {
         // Record admission before execution; never automatically replay household actions after restart.
         state.offset = update.update_id; save();
-        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
+        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : update.callback_query.data === 'forget:session' ? forgetButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
         if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
       }
     } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }
