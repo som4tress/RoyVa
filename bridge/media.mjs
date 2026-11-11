@@ -19,3 +19,26 @@ export async function withVideoFrames(files, text) {
   await expandVideos(event);
   return {files: event.prompt.files, text: event.prompt.text};
 }
+// Photos sent in chat are also saved to runtime/data/inbox so the image-edit tool can read them; the prompt names the saved path.
+import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+export const INBOX_DIR = process.env.ROYVA_INBOX_DIR || fileURLToPath(new URL('../runtime/data/inbox', import.meta.url));
+const KEEP_INBOX = 30;
+export function saveInboxImages(files, text, dir = INBOX_DIR) {
+  const lines = [];
+  for (const file of files) {
+    const match = /^data:image\/(jpeg|jpg|png);base64,(.+)$/s.exec(file.uri || '');
+    if (!match) continue;
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const path = join(dir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(2).toString('hex')}.${match[1] === 'png' ? 'png' : 'jpg'}`);
+    writeFileSync(path, Buffer.from(match[2], 'base64'), { mode: 0o600 });
+    lines.push(`[Attached photo: ${path}]`);
+  }
+  if (lines.length) {
+    const old = readdirSync(dir).map(n => join(dir, n)).sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs);
+    for (const path of old.slice(0, Math.max(0, old.length - KEEP_INBOX))) try { unlinkSync(path); } catch {}
+  }
+  return lines.length ? `${text}\n\n${lines.join('\n')}` : text;
+}

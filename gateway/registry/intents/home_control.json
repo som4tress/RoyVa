@@ -3,6 +3,7 @@
  "status": "active",
  "description": "Change the state of a home device: turn lights, fans or locks on or off, dim lights, set the thermostat. Changes things in the house.",
  "examples": [
+  "Take a snapshot from the living room camera",
   "Turn off the kitchen lights",
   "Turn on the porch light",
   "Set the living room lights to 40 percent",

@@ -31,6 +31,7 @@ async function checkRoute(step, routed) {
   const f = [];
   if (routed.kind !== 'run') { f.push(`kind=${routed.kind} (${String(routed.answer || '').slice(0, 80)})`); return f; }
   if (step.intents && !same(routed.intents, step.intents)) f.push(`intents ${JSON.stringify(routed.intents)} want ${JSON.stringify(step.intents)}`);
+  if (step.intents_exclude && routed.intents.includes(step.intents_exclude)) f.push(`intents ${JSON.stringify(routed.intents)} must not include ${step.intents_exclude}`);
   if (step.intents_include && !routed.intents.includes(step.intents_include)) f.push(`intents ${JSON.stringify(routed.intents)} lack ${step.intents_include}`);
   if (step.mode && routed.mode !== step.mode) f.push(`mode ${routed.mode} want ${step.mode}`);
   if (step.no_write && Object.keys(routed.write_tools || {}).length) f.push(`write tools granted: ${Object.keys(routed.write_tools).join(',')}`);

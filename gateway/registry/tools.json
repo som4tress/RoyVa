@@ -424,6 +424,22 @@
   "available": true
  },
  {
+  "id": "image.generate",
+  "action": "image-gen_generate_image",
+  "server": "image-gen",
+  "risk": "write",
+  "description": "Generate one picture from a text description (Qwen-Image-2.1, local GPU) and send it to the chat.",
+  "available": true
+ },
+ {
+  "id": "image.edit",
+  "action": "image-gen_edit_image",
+  "server": "image-gen",
+  "risk": "write",
+  "description": "Restyle or edit a photo the user sent (painting, canvas, Ghibli, new background) and send the result to the chat.",
+  "available": true
+ },
+ {
   "id": "ha_speakers.play_stream",
   "action": "ha-speakers_play_stream",
   "server": "ha-speakers",

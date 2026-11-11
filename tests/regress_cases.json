@@ -727,5 +727,59 @@
   "no_domain_arg": true,
   "answer_match": "Shivi Bedroom Light",
   "answer_not": "can.?t|cannot|don.?t have access"
+ },
+ {
+  "id": "image-draw",
+  "q": "Draw me a cartoon sloth waving",
+  "intents": [
+   "image_generate"
+  ]
+ },
+ {
+  "id": "image-logo",
+  "q": "Make a logo for a bakery called Sweet Crumbs",
+  "intents": [
+   "image_generate"
+  ]
+ },
+ {
+  "id": "image-not-web",
+  "q": "Show me pictures of the Eiffel Tower",
+  "intents_exclude": "image_generate"
+ },
+ {
+  "id": "image-meme-news",
+  "q": "Make a funny meme picture about the latest news on Nvidia",
+  "intents_include": "image_generate"
+ },
+ {
+  "id": "image-live-draw",
+  "q": "Draw a cartoon sloth waving",
+  "intents": [
+   "image_generate"
+  ],
+  "live": true,
+  "tools_used": "generate_image",
+  "answer_not": "can.?t|cannot|don.?t have access|failed",
+  "expect_permission": false
+ },
+ {
+  "id": "image-edit-ghibli",
+  "q": "Turn this photo into a Studio Ghibli style painting\n\n[Attached photo: /home/somdutta/RoyVa/runtime/data/inbox/x.jpg]",
+  "intents": [
+   "image_generate"
+  ]
+ },
+ {
+  "id": "image-edit-stadium",
+  "q": "Put a stadium background behind us in this picture",
+  "intents": [
+   "image_generate"
+  ]
+ },
+ {
+  "id": "photo-describe-not-image",
+  "q": "What is in this photo?",
+  "intents_exclude": "image_generate"
  }
 ]

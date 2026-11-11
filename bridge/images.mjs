@@ -1,0 +1,42 @@
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { resolve, sep, basename } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Pictures made by the image tool are the only files the bridge will ever upload, and only from this folder.
+export const IMAGE_DIR = process.env.ROYVA_IMAGE_DIR || fileURLToPath(new URL('../runtime/data/images', import.meta.url));
+const MAX_BYTES = 10 * 1024 * 1024;   // Telegram's sendPhoto limit
+
+const resultTexts = part => {
+  const raw = part.state?.content;
+  const items = typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch { return []; } })() : raw;
+  return (Array.isArray(items) ? items : []).filter(item => item?.type === 'text').map(item => item.text);
+};
+
+// Image files named by completed generate_image calls in a run, in order, without duplicates; anything outside IMAGE_DIR is ignored.
+export function generatedImages(rows, dir = IMAGE_DIR) {
+  const base = resolve(dir) + sep, out = [];
+  for (const row of rows) {
+    if (row.type !== 'assistant') continue;
+    for (const part of row.content || []) {
+      if (part.type !== 'tool' || !/(generate|edit)_image$/.test(part.name || '') || part.state?.status !== 'completed') continue;
+      for (const text of resultTexts(part)) {
+        let value; try { value = JSON.parse(text); } catch { continue; }
+        const file = value?.ok === true && typeof value.image_path === 'string' ? resolve(value.image_path) : '';
+        if (file.startsWith(base) && file.endsWith('.png') && existsSync(file) && statSync(file).size <= MAX_BYTES && !out.includes(file)) out.push(file);
+      }
+    }
+  }
+  return out;
+}
+
+export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetch) {
+  for (const file of files) {
+    const form = new FormData();
+    form.set('chat_id', String(chatId));
+    if (replyTo) form.set('reply_parameters', JSON.stringify({ message_id: replyTo, allow_sending_without_reply: true }));
+    form.set('photo', new Blob([readFileSync(file)], { type: 'image/png' }), basename(file));
+    const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendPhoto`, { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
+    const result = await response.json();
+    if (!result.ok) throw new Error(`Telegram sendPhoto: ${result.error_code}`);
+  }
+}

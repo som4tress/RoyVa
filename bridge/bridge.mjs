@@ -1,4 +1,4 @@
-import {telegramMedia, withVideoFrames} from './media.mjs';
+import {telegramMedia, withVideoFrames, saveInboxImages} from './media.mjs';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -7,6 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
+import { generatedImages, sendPhotos } from './images.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
@@ -378,7 +379,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     const files = message._test_file ? await testFile(message._test_file) : await telegramMedia(message, tg, token);
     if (message._test_file && files.length && !prompt.trim()) prompt = /^data:video/.test(files[0].uri) ? 'Describe this video.' : 'Describe this image.';
     else if (files.length && !prompt.trim()) prompt = message.video || message.video_note || /^video\//.test(message.document?.mime_type || '') ? 'Describe this video.' : 'Describe this image.';
-    const expanded = await withVideoFrames(files, prompt);
+    const expanded = await withVideoFrames(files, saveInboxImages(files, prompt));
     return {prompt: expanded.text, replyTo, files: expanded.files};
   }
   async function handle(message) {
@@ -589,6 +590,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
         await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
         await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
+        const pictures = generatedImages(rows);
+        if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
         await send(run.replyTo, `Request failed: ${error.message.includes('http') ? error.name : error.message}`, sessionID);

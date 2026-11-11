@@ -192,6 +192,14 @@
         ],
         "codemode": false
       },
+      "image-gen": {
+        "type": "local",
+        "command": [
+          "/usr/bin/python3",
+          "/home/somdutta/RoyVa/mcp/image/image_gen.py"
+        ],
+        "codemode": false
+      },
       "ha-speakers": {
         "type": "local",
         "command": [

@@ -169,7 +169,7 @@ def test_reload_swaps_registry_rebuilds_classifiers_and_rejects_bad_registry(tmp
     async def go():
         return await gw.reload()
     out = run(go())
-    assert out["intents"] == 11 and Rebuildable.rebuilt == 1
+    assert out["intents"] == 12 and Rebuildable.rebuilt == 1
     assert "Is the thermostat on a schedule right now" in gw.reg.intents["home_state"].examples
     good = gw.reg
     (root / "intents" / "home_state.json").write_text("{ not json")
@@ -370,9 +370,9 @@ def test_readiness_follows_the_live_mcp_status(tmp_path):
     gw, oc, _ = make(tmp_path, {})
     assert gw.ready is False
     assert run(gw.check_ready_once()) is True and gw.ready is True
-    oc.mcp = {"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}   # OpenCode restarted
+    oc.mcp = {"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"}   # OpenCode restarted
     assert run(gw.check_ready_once()) is False and gw.ready is False                  # requests get 503 instead of running with missing tools
-    oc.mcp = {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}
+    oc.mcp = {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"}
     assert run(gw.check_ready_once()) is True
 
 

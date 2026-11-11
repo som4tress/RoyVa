@@ -20,7 +20,7 @@ class FakeOC:
     """Scripted stand-in for OpenCode. Normal turns finish at once; `runaway` makes the first prompt loop on tools until interrupted."""
     def __init__(self, runaway=False, mcp=None, fanout=0):
         self.sessions, self.msgs, self.calls = {}, {}, []
-        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"}
+        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"}
         self.clock = itertools.count(100, 10)
         self.n = 0
 
@@ -210,7 +210,7 @@ def test_runaway_tool_loop_is_cut_off_and_wrapped_up(tmp_path):
 
 # ------------------------------------------------------------------ readiness (bug B3) and persistence
 def test_ready_only_when_all_mcp_connected(tmp_path):
-    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected"})
+    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"})
     assert asyncio.run(gw.wait_ready(timeout=0.2, poll=0.05)) is False
     gw2, _, _ = make(tmp_path, {})
     assert asyncio.run(gw2.wait_ready(timeout=1, poll=0.05)) is True
