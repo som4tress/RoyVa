@@ -60,6 +60,13 @@ def test_generate_builds_command_and_returns_picture(env):
     assert cmd[cmd.index("-W") + 1] == "1280" and cmd[cmd.index("-H") + 1] == "704"
 
 
+def test_default_quality_settings(env):
+    _, calls = env
+    g.generate_image({"prompt": "a sloth"})
+    cmd = calls[0]
+    assert cmd[cmd.index("--steps") + 1] == "30" and cmd[cmd.index("--cfg-scale") + 1] == "4.0"
+
+
 def test_720p_and_speed_cache(env, monkeypatch):
     _, calls = env
     assert g.generate_image({"prompt": "a sloth", "width": 1280, "height": 720})["ok"]

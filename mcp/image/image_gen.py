@@ -24,6 +24,8 @@ FILES = {"diffusion": "qwen-image-2.1-Q8_0.gguf", "llm": "Qwen3-VL-8B-Instruct-Q
 VISION = "mmproj-Qwen3-VL-8B-F16.gguf"        # only needed for editing a photo
 INBOX = Path(os.environ.get("ROYVA_INBOX_DIR", ROOT / "runtime" / "data" / "inbox"))   # photos the bridge saved from chat; the only place edit_image reads from
 MAX_PROMPT, MIN_SIDE, MAX_SIDE, MIN_STEPS, MAX_STEPS, KEEP = 1500, 512, 1280, 8, 40, 60
+DEFAULT_STEPS = int(os.environ.get("ROYVA_IMAGE_STEPS", "30"))   # measured: 20 steps leaves halos/noise, 30 with EasyCache is clean and ~120s
+CFG = os.environ.get("ROYVA_IMAGE_CFG", "4.0")                 # 6.0 over-saturated the pictures
 CACHE = os.environ.get("ROYVA_IMAGE_CACHE", "easycache")      # "" turns it off
 TIMEOUT = int(os.environ.get("ROYVA_IMAGE_TIMEOUT", "900"))
 HINT = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
@@ -36,7 +38,7 @@ TOOLS = [{
     "inputSchema": {"type": "object", "properties": {
         "prompt": {"type": "string", "description": "What the picture should show."},
         "width": {"type": "integer", "default": 1024}, "height": {"type": "integer", "default": 1024},
-        "steps": {"type": "integer", "default": 20, "description": f"{MIN_STEPS}-{MAX_STEPS}; 20 is the recommended quality."},
+        "steps": {"type": "integer", "default": DEFAULT_STEPS, "description": f"{MIN_STEPS}-{MAX_STEPS}; {DEFAULT_STEPS} is the measured sweet spot (fewer steps leave halos and noise)."},
         "seed": {"type": "integer", "description": "Optional, for a repeatable result."}}, "required": ["prompt"], "additionalProperties": False},
     "annotations": HINT},
     {"name": "edit_image",
@@ -46,7 +48,7 @@ TOOLS = [{
      "inputSchema": {"type": "object", "properties": {
          "image": {"type": "string", "description": "Path of the attached photo."},
          "prompt": {"type": "string", "description": "The edit to make."},
-         "steps": {"type": "integer", "default": 20}, "seed": {"type": "integer"}}, "required": ["image", "prompt"], "additionalProperties": False},
+         "steps": {"type": "integer", "default": DEFAULT_STEPS}, "seed": {"type": "integer"}}, "required": ["image", "prompt"], "additionalProperties": False},
      "annotations": HINT}]
 
 
@@ -70,7 +72,7 @@ def generate_image(args):
     if len(prompt) > MAX_PROMPT:
         return {"ok": False, "error": f"prompt is too long ({len(prompt)} > {MAX_PROMPT} characters)"}
     width, height = _side(args.get("width", 1024), "width"), _side(args.get("height", 1024), "height")
-    steps = max(MIN_STEPS, min(MAX_STEPS, int(args.get("steps", 20))))
+    steps = max(MIN_STEPS, min(MAX_STEPS, int(args.get("steps", DEFAULT_STEPS))))
     seed = int(args["seed"]) if args.get("seed") is not None else secrets.randbelow(2**31)
     if DRY():
         return {"ok": True, "did": f"[DRY RUN, nothing happened] Would generate a {width}x{height} picture: {prompt[:80]}"}
@@ -114,7 +116,7 @@ def edit_image(args):
     src = Path(str(args.get("image", ""))).expanduser().resolve()
     if INBOX.resolve() not in src.parents or src.suffix.lower() not in (".jpg", ".jpeg", ".png") or not src.is_file():
         return {"ok": False, "error": "image must be a photo attached to the request (use the path from the 'Attached photo' line)"}
-    steps = max(MIN_STEPS, min(MAX_STEPS, int(args.get("steps", 20))))
+    steps = max(MIN_STEPS, min(MAX_STEPS, int(args.get("steps", DEFAULT_STEPS))))
     seed = int(args["seed"]) if args.get("seed") is not None else secrets.randbelow(2**31)
     dims = _size(src) or (1024, 1024)
     scale = min(1.0, 1024 / max(dims))                      # keep the longest side at most 1024 and sides divisible by 32
@@ -139,7 +141,7 @@ def _render(prompt, steps, seed, width, height, ref, label):
         except OSError:
             return {"ok": False, "error": "another picture is still being generated; try again in a minute"}
         cmd = [str(SD_DIR / "sd-cli"), "--diffusion-model", str(MODELS / FILES["diffusion"]), "--vae", str(MODELS / FILES["vae"]), "--llm", str(MODELS / FILES["llm"]),
-               "-p", prompt, "--steps", str(steps), "--cfg-scale", "6.0", "--sampling-method", "euler", "-W", str(width), "-H", str(height),
+               "-p", prompt, "--steps", str(steps), "--cfg-scale", CFG, "--sampling-method", "euler", "-W", str(width), "-H", str(height),
                "--diffusion-fa", "--seed", str(seed), "-v", "-o", str(out)]
         if CACHE:                                           # skips steps that barely change the picture: about 2x faster, same look (measured)
             cmd += ["--cache-mode", CACHE]

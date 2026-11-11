@@ -157,7 +157,7 @@ async function testFile(path) {
 export async function main({transcriber = createTranscriber()} = {}) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const modelLabel = process.env.OPENCODE_TG_MODEL_LABEL || 'Qwen3.8 27B Q8_0 · reasoning off · MTP 6';
-  const imageModelLabel = process.env.OPENCODE_TG_IMAGE_MODEL_LABEL || 'Qwen-Image-2.1 Q8_0 · 20 steps · stable-diffusion.cpp (Vulkan)';   // shown while a picture is rendering
+  const imageModelLabel = process.env.OPENCODE_TG_IMAGE_MODEL_LABEL || 'Qwen-Image-2.1 Q8_0 · stable-diffusion.cpp (Vulkan)';   // shown while a picture is rendering
   const allowed = new Set((process.env.TELEGRAM_ALLOWED_USER_IDS || '').split(',').map(value => value.trim()).filter(Boolean));
   if (!token || !allowed.size) throw new Error('Telegram token and explicit allowed user IDs are required.');
   // Who may talk to RoyVa: the env owners plus people enrolled through the gateway (live, so approvals and revocations apply without a restart).
