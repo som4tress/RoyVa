@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 // Serial, repeatable suite over the Telegram path. Each prompt is injected (mirrored into the owner's chat), then we wait for
 // the new OpenCode session to go idle, and record tool use / answer / proxy stats for that window.
 // Usage: node tests/suite.mjs <label> [reps=3] [promptIds=P1,P2,...]
@@ -6,7 +7,7 @@ import { join } from 'node:path';
 import { openCodeAPI } from '../bridge/opencode.mjs';
 
 process.env.OPENCODE_TG_URL ||= `http://127.0.0.1:${process.env.ROYVA_PORT_OPENCODE || 49380}`;
-const R = '/home/somdutta/RoyVa';
+const R = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '');
 const INJECT = join(R, 'runtime/inject');
 const [label = 'run', repsArg = '3', onlyArg = ''] = process.argv.slice(2);
 const reps = Number(repsArg);

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# One-time setup so the whole RoyVa stack starts on boot. Run by you:  ! /home/somdutta/RoyVa/scripts/install-units.sh
+# One-time setup so the whole RoyVa stack starts on boot. Run by you:  ! scripts/install-units.sh
 set -e
-R=/home/somdutta/RoyVa
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p ~/.config/systemd/user
 for u in royva-proxy.service royva-opencode.service royva-router-9b.service royva-gateway.service royva-bridge.service royva.target; do
   ln -sf $R/systemd/$u ~/.config/systemd/user/$u

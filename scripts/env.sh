@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Shared environment for the RoyVa stack. Secrets are sourced from existing private files by path; never copied.
-R=/home/somdutta/RoyVa
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Product/assistant names and deployment values come from lares.toml (see lares.example.toml); an already-set variable wins.
+eval "$(python3 "$R/scripts/lares_config.py")" || return 1
 export XDG_CONFIG_HOME=$R/runtime/config-root XDG_DATA_HOME=$R/runtime/data
 export XDG_STATE_HOME=$R/runtime/state XDG_CACHE_HOME=$R/runtime/cache
 export OPENCODE_CONFIG_DIR=$R/runtime/config OPENCODE_CONFIG_PROJECT_DISABLE=1 OPENCODE_DISABLE_CLAUDE_CODE=1
-export PATH=/home/somdutta/.nvm/versions/node/v24.22.1/bin:/home/somdutta/.local/bin:/usr/local/bin:/usr/bin:/bin
-set -a; . /home/somdutta/llm-server/api.env; . /home/somdutta/llm-server/ha.env; set +a
+export PATH=${LARES_NODE_BIN:+$LARES_NODE_BIN:}$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+set -a; . "${LARES_LLM_DIR:-$HOME/llm-server}/api.env"; . "${LARES_LLM_DIR:-$HOME/llm-server}/ha.env"; set +a
 if [ ! -f "$R/runtime/server.env" ]; then
   ( umask 077; printf 'OPENCODE_SERVER_PASSWORD=%s\n' "$(python3 -c 'import secrets;print(secrets.token_urlsafe(24))')" > "$R/runtime/server.env" )
 fi
@@ -14,10 +16,4 @@ export ROYVA_PORT_PROXY=8100 ROYVA_PORT_OPENCODE=49380
 mkdir -p "$R/runtime/config" "$R/runtime/workspace" "$R/runtime/state" "$R/captures"
 ln -sf "$R/config/opencode.json" "$R/runtime/config/opencode.json"
 
-# Product/assistant names and deployment values come from lares.toml (see lares.example.toml); an already-set variable wins.
-eval "$(python3 "$R/scripts/lares_config.py")" || return 1
-
-# Deployment config (fallbacks used when lares.toml does not set them): which Home Assistant person is the asking user (single-user for now; per-user mapping is a later step)
-export ROYVA_DEFAULT_PERSON=${ROYVA_DEFAULT_PERSON-somdutta}
-export ROYVA_PROTECTED_DEVICES=${ROYVA_PROTECTED_DEVICES-Shivi Linux Box}   # approval first, never in a bulk change (it hosts Home Assistant)
-export ROYVA_REMOTE_HOSTS=${ROYVA_REMOTE_HOSTS-somdutta@somdutta-linux.local}   # hosts the machine door may ssh to (owner-only tool)
+# Household and deployment values (default person, protected devices, remote hosts, remote transcription) live in lares.toml, not here.

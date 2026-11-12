@@ -2,7 +2,7 @@
 # The safe way to load changes: run every check first, and only if they pass restart the stack in dependency order, then wait until it is healthy.
 # Run as yourself in a normal terminal (Claude cannot run systemctl).
 set -e
-R=/home/somdutta/RoyVa
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$R/scripts/check.sh"
 echo "== restarting (opencode -> gateway -> bridge)"
 systemctl --user restart royva-opencode

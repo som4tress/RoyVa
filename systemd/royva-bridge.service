@@ -9,8 +9,8 @@ Conflicts=opencode-telegram-vanilla.service
 
 [Service]
 Type=simple
-Environment=ROYVA_INJECT_DIR=/home/somdutta/RoyVa/runtime/inject
-ExecStart=/home/somdutta/RoyVa/scripts/run-bridge.sh
+Environment=ROYVA_INJECT_DIR=%h/RoyVa/runtime/inject
+ExecStart=%h/RoyVa/scripts/run-bridge.sh
 Restart=always
 RestartSec=5
 UMask=0077

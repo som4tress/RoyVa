@@ -2,7 +2,7 @@
 for the period before the footer's own counting began. The bridge merges it once at startup.
 Usage: python3 -I scripts/make_usage_backfill.py [usage_totals.json]   (reads the OpenCode DB read-only)"""
 import json, os, sqlite3, sys, datetime
-state = os.environ.get("XDG_STATE_HOME", "/home/somdutta/RoyVa/runtime/state")
+state = os.environ.get("XDG_STATE_HOME", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "runtime", "state"))
 totals_file = sys.argv[1] if len(sys.argv) > 1 else os.path.join(state, "usage_totals.json")
 db = os.environ.get("OPENCODE_DB", os.path.expanduser("~/.local/share/opencode/opencode.db"))
 LOCAL = {"evo-agent", "vllm"}

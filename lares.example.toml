@@ -12,3 +12,12 @@ protected_devices = []       # device names that are always asked about first an
 
 [remote]
 hosts = []                   # ssh hosts the owner-only machine tool may reach, e.g. ["me@box.local"]
+
+[voice]
+whisper_remote = ""         # "user@host" if whisper.cpp runs on another machine; empty = transcribe locally
+
+[paths]
+node_bin = ""                # directory of the node binary if it is not on the default PATH (e.g. an nvm install)
+llm_server = ""              # directory with api.env, ha.env, llamacpp/ and models/ (default ~/llm-server)
+opencode_bin = ""            # default ~/.opencode/bin/opencode
+telegram_env = ""            # file with the Telegram bot variables (default ~/.config/opencode/telegram/bot.env)

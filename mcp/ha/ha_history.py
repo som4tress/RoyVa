@@ -7,16 +7,20 @@ TZ=dt.datetime.now().astimezone().tzinfo
 from ha_context import TOOL as CONTEXT_TOOL, collect as collect_context
 from ha_device_status import TOOL as STATUS_TOOL, collect as collect_status
 from ha_status_report import TOOL as REPORT_TOOL, collect as collect_report
-PEOPLE={'somdutta':'Somdutta','shobha':'Shobha','shivangsh':'Shivangsh'}
-TOOL={'name':'get_visited_locations','description':'Read recorded named-zone visits for a household person over the entire requested time range in ONE call. Supply start and optional end as timezone-aware ISO datetimes; omit end for now. Do not split a requested range into daily calls. Default view=places returns all distinct recorded places with counts and first/last observations. Use view=intervals only when the user needs a detailed chronological timeline, including transit/unknown gaps. Available history depends on HA recorder retention; this tool imposes no seven-day limit. Zone crossings are not proof of stops.','inputSchema':{'type':'object','properties':{'person':{'type':'string','enum':['somdutta','shobha','shivangsh'],'description':'Which household member.'},'start':{'type':'string','description':'Inclusive ISO datetime with timezone offset for the beginning of the full requested range.'},'end':{'type':'string','description':'Exclusive ISO datetime with timezone offset. Omit to query through now.'},'view':{'type':'string','enum':['places','intervals'],'default':'places','description':'places lists every distinct place compactly; intervals returns the detailed timeline.'}},'required':['person','start'],'additionalProperties':False},'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}}
+def people(read=None):
+ '''Household people as {person object id: display name}, read live from the Home Assistant person entities (never hardcoded).'''
+ rows=(read or read_api)('/api/states')
+ return {r['entity_id'].split('.',1)[1]:(r.get('attributes') or {}).get('friendly_name') or r['entity_id'].split('.',1)[1] for r in rows if str(r.get('entity_id','')).startswith('person.')}
+TOOL={'name':'get_visited_locations','description':'Read recorded named-zone visits for a household person over the entire requested time range in ONE call. Supply start and optional end as timezone-aware ISO datetimes; omit end for now. Do not split a requested range into daily calls. Default view=places returns all distinct recorded places with counts and first/last observations. Use view=intervals only when the user needs a detailed chronological timeline, including transit/unknown gaps. Available history depends on HA recorder retention; this tool imposes no seven-day limit. Zone crossings are not proof of stops.','inputSchema':{'type':'object','properties':{'person':{'type':'string','description':'Which household member: the Home Assistant person object id (the part after person.), for example the lowercase first name.'},'start':{'type':'string','description':'Inclusive ISO datetime with timezone offset for the beginning of the full requested range.'},'end':{'type':'string','description':'Exclusive ISO datetime with timezone offset. Omit to query through now.'},'view':{'type':'string','enum':['places','intervals'],'default':'places','description':'places lists every distinct place compactly; intervals returns the detailed timeline.'}},'required':['person','start'],'additionalProperties':False},'annotations':{'readOnlyHint':True,'destructiveHint':False,'idempotentHint':True,'openWorldHint':False}}
 def get_history(args):
  if set(args)-{'person','start','end','view'}:raise ValueError('Use person, start, optional end and view for the complete requested range.')
  view=args.get('view','places')
  if view not in ('places','intervals'):raise ValueError('view must be places or intervals.')
  person=args.get('person','').strip().lower()
- if person not in PEOPLE:raise ValueError('person must be one of: '+', '.join(PEOPLE))
+ known=people()
+ if person not in known:raise ValueError('person must be one of: '+', '.join(sorted(known)))
  entity='person.'+person
- who=PEOPLE[person]
+ who=known[person]
  now=dt.datetime.now(TZ)
  if not args.get('start'):raise ValueError('start is required for the complete requested range.')
  start=dt.datetime.fromisoformat(args['start'])

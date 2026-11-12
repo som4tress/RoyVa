@@ -17,12 +17,9 @@ export const WHISPER_MODEL =
   process.env.WHISPER_MODEL || join(WHISPER_ROOT, "models/ggml-large-v3-turbo-q5_0.bin");
 export const WHISPER_LANG = process.env.WHISPER_LANG || "auto";
 export const WHISPER_PROMPT = "";
-// Remote transcription: whisper.cpp lives on the OTHER machine (somdutta-linux),
-// not on this box. Set WHISPER_REMOTE="" to force local-only.
-export const WHISPER_REMOTE =
-  process.env.WHISPER_REMOTE === undefined
-    ? "somdutta@somdutta-linux.local"
-    : process.env.WHISPER_REMOTE.trim();
+// Remote transcription: set WHISPER_REMOTE (lares.toml [voice] whisper_remote, "user@host") when whisper.cpp lives on another machine.
+// Empty or unset means local-only.
+export const WHISPER_REMOTE = (process.env.WHISPER_REMOTE ?? "").trim();
 export const WHISPER_REMOTE_ROOT =
   process.env.WHISPER_REMOTE_ROOT || ".local/share/opencode/whisper";
 export const FFMPEG_BIN = process.env.FFMPEG_BIN || "ffmpeg";

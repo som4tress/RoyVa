@@ -21,6 +21,11 @@ MAP = {
     ("household", "default_person"): "ROYVA_DEFAULT_PERSON",
     ("household", "protected_devices"): "ROYVA_PROTECTED_DEVICES",
     ("remote", "hosts"): "ROYVA_REMOTE_HOSTS",
+    ("voice", "whisper_remote"): "WHISPER_REMOTE",
+    ("paths", "node_bin"): "LARES_NODE_BIN",
+    ("paths", "llm_server"): "LARES_LLM_DIR",
+    ("paths", "opencode_bin"): "LARES_OPENCODE_BIN",
+    ("paths", "telegram_env"): "LARES_TELEGRAM_ENV",
 }
 
 

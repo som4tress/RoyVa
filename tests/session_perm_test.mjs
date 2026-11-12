@@ -1,13 +1,14 @@
+import { fileURLToPath } from 'node:url';
 // Does a per-session `permissions` list control which tools the model receives, and can PATCH widen it mid-session?
 // Reads tool lists from the proxy captures (captures/index.jsonl). Read-only prompts only.
 import { readFileSync } from 'node:fs';
 import { openCodeAPI, runText } from '../bridge/opencode.mjs';
 
 process.env.OPENCODE_TG_URL ||= `http://127.0.0.1:${process.env.ROYVA_PORT_OPENCODE || 49380}`;
-const dir = '/home/somdutta/RoyVa/runtime/workspace';
+const dir = fileURLToPath(new URL('../runtime/workspace', import.meta.url));
 const allow = names => names.map(action => ({ action, resource: '*', effect: 'allow' }));
 const lastToolNames = () => {
-  const rows = readFileSync('/home/somdutta/RoyVa/captures/index.jsonl', 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(r => r.type === 'req' && r.n_tools > 0);
+  const rows = readFileSync(fileURLToPath(new URL('../captures/index.jsonl', import.meta.url)), 'utf8').trim().split('\n').map(l => JSON.parse(l)).filter(r => r.type === 'req' && r.n_tools > 0);
   return rows.at(-1)?.tool_names ?? [];
 };
 const HA = ['home-assistant_homeassistant__GetLiveContext', 'home-assistant_llm__GetDateTime'];

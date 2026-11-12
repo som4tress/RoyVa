@@ -3,7 +3,7 @@
  "status": "active",
  "description": "Answer questions about what happened over a past time window at home or with connected devices and vehicles: where family members have been (location history), distance a vehicle travelled (odometer change), how often or when a sensor, camera, doorbell or door last triggered (event counts, last activity), durations and numeric trends. Find the entity first, then read its history over the window.",
  "examples": [
-  "How many miles did the Mustang drive yesterday?",
+  "How many miles did the car drive yesterday?",
   "How long was the garage door open last night?",
   "What was the temperature in the nursery overnight?",
   "When did the front door last open?",

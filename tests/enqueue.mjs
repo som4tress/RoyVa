@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 // Queue test prompts for the running RoyVa bridge. Each is mirrored into the owner's Telegram chat and run through
 // the bridge's normal handle() path, so every test is watchable on Telegram.
 // Usage: node tests/enqueue.mjs "P1" "What is the status of lights upstairs?" ["P2" "..."]   (label/text pairs)
@@ -5,7 +6,7 @@
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const dir = process.env.ROYVA_INJECT_DIR || '/home/somdutta/RoyVa/runtime/inject';
+const dir = process.env.ROYVA_INJECT_DIR || fileURLToPath(new URL('../runtime/inject', import.meta.url));
 mkdirSync(dir, { recursive: true, mode: 0o700 });
 
 const SUITE = [

@@ -4,7 +4,8 @@ Usage: python3 -I tests/replay.py [N=20] [arms=A,A0,B,C,D] [prompts=P1,P2,...]""
 import json, os, re, sys, time, urllib.request, collections
 from concurrent.futures import ThreadPoolExecutor
 
-R = '/home/somdutta/RoyVa'
+import os
+R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAP = R + '/captures'
 KEY = open(os.path.expanduser('~/.local/state/llamacpp/api-key')).read().strip()
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 20

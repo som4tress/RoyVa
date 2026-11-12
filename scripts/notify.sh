@@ -3,9 +3,10 @@
 # are routed to the inbox (runtime/claude/inbox.jsonl) instead of starting an OpenCode session.
 # Usage: scripts/notify.sh "text"
 set -e
-set -a; . /home/somdutta/.config/opencode/telegram/bot.env; set +a
-export PATH=/home/somdutta/.nvm/versions/node/v24.22.1/bin:$PATH
-export NOTIFY_TEXT="${NOTIFY_PREFIX-🤖 Claude: }$1" CLAUDE_DIR=/home/somdutta/RoyVa/runtime/claude
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+. "$R/scripts/env.sh"
+set -a; . "${LARES_TELEGRAM_ENV:-$HOME/.config/opencode/telegram/bot.env}"; set +a
+export NOTIFY_TEXT="${NOTIFY_PREFIX-🤖 Claude: }$1" CLAUDE_DIR=$R/runtime/claude
 mkdir -p "$CLAUDE_DIR"
 exec node --input-type=module -e '
 import { readFileSync, writeFileSync } from "node:fs";

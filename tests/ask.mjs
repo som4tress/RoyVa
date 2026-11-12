@@ -1,9 +1,10 @@
+import { fileURLToPath } from 'node:url';
 // Ask one or more prompts through the same OpenCode session API the Telegram bridge uses. No Telegram involved.
 // Usage: . scripts/env.sh; node tests/ask.mjs "prompt 1" "prompt 2"
 import { openCodeAPI, runText } from '../bridge/opencode.mjs';
 
 process.env.OPENCODE_TG_URL ||= `http://127.0.0.1:${process.env.ROYVA_PORT_OPENCODE || 49380}`;
-const dir = process.env.OPENCODE_TG_DIR || '/home/somdutta/RoyVa/runtime/workspace';
+const dir = process.env.OPENCODE_TG_DIR || fileURLToPath(new URL('../runtime/workspace', import.meta.url));
 
 for (const prompt of process.argv.slice(2)) {
   const t0 = Date.now();

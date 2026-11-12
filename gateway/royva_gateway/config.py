@@ -14,7 +14,7 @@ class Settings:
     state_dir: Path = ROOT.parent / "runtime" / "gateway"
     opencode_url: str = os.environ.get("ROYVA_OPENCODE_URL", "http://127.0.0.1:49380")
     opencode_password: str = os.environ.get("OPENCODE_SERVER_PASSWORD", "")
-    opencode_dir: str = os.environ.get("ROYVA_OPENCODE_DIR", "/home/somdutta/RoyVa/runtime/workspace")
+    opencode_dir: str = os.environ.get("ROYVA_OPENCODE_DIR", str(ROOT.parent / "runtime" / "workspace"))
     router_url: str = os.environ.get("ROYVA_ROUTER_URL", "http://127.0.0.1:8203")
     router_name: str = os.environ.get("ROYVA_ROUTER_NAME", "9B+fs")          # "+fs" = few-shot prompt
     router_fallback_url: str = os.environ.get("ROYVA_ROUTER_FALLBACK_URL", "http://127.0.0.1:8100")

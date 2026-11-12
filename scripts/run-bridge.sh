@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-. /home/somdutta/RoyVa/scripts/env.sh || exit 1
-set -a; . /home/somdutta/.config/opencode/telegram/bot.env; set +a
+. "$(dirname "$(readlink -f "$0")")/env.sh" || exit 1
+set -a; . "${LARES_TELEGRAM_ENV:-$HOME/.config/opencode/telegram/bot.env}"; set +a
 export OPENCODE_TG_URL=http://127.0.0.1:$ROYVA_PORT_OPENCODE OPENCODE_TG_DIR=$R/runtime/workspace
 export OPENCODE_TG_STATE_FILE=$R/runtime/state/telegram.json WHISPER_TMP=$R/runtime/state/voice
 export OPENCODE_TG_MODEL_LABEL='RoyVa test · Qwen3.6 35B-A3B Q8_0 · vanilla OpenCode v2.2.5'

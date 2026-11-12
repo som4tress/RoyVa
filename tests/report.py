@@ -1,6 +1,7 @@
 """Per-prompt report from proxy captures. Usage: python3 -I tests/report.py [since-stamp YYYYMMDDHHMMSS (UTC)]"""
 import json, os, sys, collections
-D = '/home/somdutta/RoyVa/captures'
+import os
+D = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'captures')
 since = sys.argv[1] if len(sys.argv) > 1 else '0'
 rows = [json.loads(l) for l in open(os.path.join(D, 'index.jsonl'))]
 resp = {r['id']: r for r in rows if r['type'] == 'resp'}

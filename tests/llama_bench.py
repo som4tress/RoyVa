@@ -1,9 +1,11 @@
 """Benchmark llama-server flag variants / builds on a spare port (8010), leaving the live server alone.
 Usage: LB=llama-b12250/llama-b12250 python3 -I tests/llama_bench.py base ngram-mod   (LB = build dir under ~/llm-server/llamacpp)"""
 import json,subprocess,time,urllib.request,os,random,sys,signal
-L="/home/somdutta/llm-server/llamacpp"
+import os
+LLM=os.environ.get("LARES_LLM_DIR") or os.path.expanduser("~/llm-server")
+L=LLM+"/llamacpp"
 env=dict(os.environ,LD_LIBRARY_PATH=f"{L}/compat/usr/lib/x86_64-linux-gnu:{L}/"+os.environ.get("LB","llama-b12110")+"")
-BASE=["--model","/home/somdutta/llm-server/models/Qwen3.6-35B-A3B-Q8_0.gguf","--host","127.0.0.1","--port","8010","--n-gpu-layers","999","--flash-attn","on","--ctx-size","32768","--parallel","1","--threads","8","--threads-batch","16","--jinja","--reasoning","off","--temp","0","--no-cache-prompt","--fit","off","--load-mode","mmap"]
+BASE=["--model",LLM+"/models/Qwen3.6-35B-A3B-Q8_0.gguf","--host","127.0.0.1","--port","8010","--n-gpu-layers","999","--flash-attn","on","--ctx-size","32768","--parallel","1","--threads","8","--threads-batch","16","--jinja","--reasoning","off","--temp","0","--no-cache-prompt","--fit","off","--load-mode","mmap"]
 VARIANTS={
  "base(b2048,ub1024)":["--batch-size","2048","--ubatch-size","1024"],
  "kv-q8":["--batch-size","2048","--ubatch-size","1024","-ctk","q8_0","-ctv","q8_0"],

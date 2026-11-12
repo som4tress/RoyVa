@@ -2,7 +2,7 @@
 # Listener for messages the owner sends to Claude over Telegram. Run under Claude Code's Monitor.
 # - replays anything not yet shown (offset file), then follows new lines, so a restart/expiry never loses a message
 # - writes a heartbeat so the bridge can tell the user whether Claude is listening right now
-D=/home/somdutta/RoyVa/runtime/claude
+D="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/runtime/claude"
 mkdir -p "$D"; touch "$D/inbox.jsonl"
 OFF="$D/inbox.offset"
 [ -f "$OFF" ] || stat -c %s "$D/inbox.jsonl" > "$OFF"
