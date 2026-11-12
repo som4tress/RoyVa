@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-. /home/somdutta/RoyVa/scripts/env.sh
+. /home/somdutta/RoyVa/scripts/env.sh || exit 1
 set -a; . /home/somdutta/.config/opencode/telegram/bot.env; set +a
 export OPENCODE_TG_URL=http://127.0.0.1:$ROYVA_PORT_OPENCODE OPENCODE_TG_DIR=$R/runtime/workspace
 export OPENCODE_TG_STATE_FILE=$R/runtime/state/telegram.json WHISPER_TMP=$R/runtime/state/voice

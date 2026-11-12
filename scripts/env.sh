@@ -14,7 +14,10 @@ export ROYVA_PORT_PROXY=8100 ROYVA_PORT_OPENCODE=49380
 mkdir -p "$R/runtime/config" "$R/runtime/workspace" "$R/runtime/state" "$R/captures"
 ln -sf "$R/config/opencode.json" "$R/runtime/config/opencode.json"
 
-# Deployment config: which Home Assistant person is the asking user (single-user for now; per-user mapping is a later step)
+# Product/assistant names and deployment values come from lares.toml (see lares.example.toml); an already-set variable wins.
+eval "$(python3 "$R/scripts/lares_config.py")" || return 1
+
+# Deployment config (fallbacks used when lares.toml does not set them): which Home Assistant person is the asking user (single-user for now; per-user mapping is a later step)
 export ROYVA_DEFAULT_PERSON=${ROYVA_DEFAULT_PERSON-somdutta}
 export ROYVA_PROTECTED_DEVICES=${ROYVA_PROTECTED_DEVICES-Shivi Linux Box}   # approval first, never in a bulk change (it hosts Home Assistant)
 export ROYVA_REMOTE_HOSTS=${ROYVA_REMOTE_HOSTS-somdutta@somdutta-linux.local}   # hosts the machine door may ssh to (owner-only tool)

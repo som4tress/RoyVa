@@ -1,0 +1,14 @@
+# Lares deployment config. Copy to lares.toml (git-ignored) and edit.
+# An environment variable that is already set always wins over this file; missing keys fall back to built-in defaults.
+
+[brand]
+product = "Lares"            # the product name (docs, API title)
+assistant_name = "Roy"       # what your household calls the assistant (greeting, /status, "back to ...")
+command = "roy"              # chat command to switch back to the assistant (/roy); /royva stays as a legacy alias
+
+[household]
+default_person = ""          # Home Assistant person object id of the asking user, e.g. "alex"
+protected_devices = []       # device names that are always asked about first and never bundled (e.g. the machine that hosts Home Assistant)
+
+[remote]
+hosts = []                   # ssh hosts the owner-only machine tool may reach, e.g. ["me@box.local"]
