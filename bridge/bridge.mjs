@@ -14,6 +14,7 @@ const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('..
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
 import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
+import {BRAND} from './brand.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
 
 // RoyVa gateway client (only used when ROYVA_GATEWAY_URL is set; otherwise the bridge behaves exactly as before).
@@ -232,7 +233,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       list('What it did', review.actions_taken, 3),
       list('Evidence', review.evidence, 3),
       toolSummary,
-      `What RoyVa should learn\n${item(lesson)}`,
+      `What ${BRAND.assistant} should learn\n${item(lesson)}`,
       list('Fixes', review.fixes, 2),
       review.unknowns?.length ? list('Still unknown', review.unknowns, 2) : '',
     ].filter(Boolean).join('\n\n');
@@ -243,7 +244,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     const selected = (target.assistantIDs || []).slice(0, 100);
     if (!selected.length) throw new Error('No assistant messages were linked to this Telegram answer.');
     const assistant = (await Promise.all(selected.map(id => openCodeAPI(`${base}/${encodeURIComponent(id)}`)))).filter(Boolean);
-    if (!assistant.length) throw new Error('Could not find the linked RoyVa answer in its session.');
+    if (!assistant.length) throw new Error(`Could not find the linked ${BRAND.assistant} answer in its session.`);
     assistant.sort((a, b) => (a.time?.created || 0) - (b.time?.created || 0));
     const firstTime = assistant[0].time?.created || 0, lastTime = assistant.at(-1).time?.created || Date.now();
     const users = await openCodeAPI(`${base}?type=user&limit=200&order=asc`);
@@ -410,7 +411,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const chatKey = String(message.chat.id);
       state.mode ||= {};
       const reply = text => tg('sendMessage', { chat_id: message.chat.id, text, reply_parameters: { message_id: message.message_id, allow_sending_without_reply: true } });
-      if (/^\s*\/royva(?:@\w+)?\s*$/i.test(body)) { state.mode[chatKey] = 'royva'; save(); return reply('↩️ Back to RoyVa.'); }
+      if (BRAND.backPattern.test(body)) { state.mode[chatKey] = 'royva'; save(); return reply(`↩️ Back to ${BRAND.assistant}.`); }
       const cmd = /^\s*(?:\/claude(?:@\w+)?|@claude|cc:|claude:)\s*/i.exec(body);
       let toClaude = false, text = body;
       if (cmd) {
@@ -429,8 +430,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
     }
     const linked = replySession(state, message);
     const text = message.text || message.caption || '';
-    if (text === '/start' || text === '/help') return send(message, 'RoyVa: send text, a voice note, a photo or a video. Each standalone message starts a new conversation; reply to one to continue or steer it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.\n\nGmail: /connect-gmail connects your own Gmail, /disconnect-gmail removes it. Owner only: /invite <name> [gmail], /people, /accept <name>, /decline <name>, /revoke <name>.\n\nTo talk to Claude (the developer assistant) instead: /claude (stay in that mode until /royva), /claude <message> for one message, or start a message with cc: or claude:, or reply to one of his messages.');
-    if (text === '/status') return send(message, `RoyVa test build on vanilla OpenCode v2.2.5. ${modelLabel}. Routing gateway: ${process.env.ROYVA_GATEWAY_URL ? 'on' : 'off'}. Talking to: ${(state.mode || {})[String(message.chat.id)] === 'claude' ? 'Claude (/royva to go back)' : 'RoyVa'}.`);
+    if (text === '/start' || text === '/help') return send(message, `${BRAND.assistant}: send text, a voice note, a photo or a video. Each standalone message starts a new conversation; reply to one to continue or steer it. /stop stops a running request. Reply with /approve or /deny to answer a permission request. /status shows the connection.\n\nGmail: /connect-gmail connects your own Gmail, /disconnect-gmail removes it. Owner only: /invite <name> [gmail], /people, /accept <name>, /decline <name>, /revoke <name>.\n\nTo talk to Claude (the developer assistant) instead: /claude (stay in that mode until /${BRAND.command}), /claude <message> for one message, or start a message with cc: or claude:, or reply to one of his messages.`);
+    if (text === '/status') return send(message, `${BRAND.assistant} (${BRAND.product}) test build on vanilla OpenCode v2.2.5. ${modelLabel}. Routing gateway: ${process.env.ROYVA_GATEWAY_URL ? 'on' : 'off'}. Talking to: ${(state.mode || {})[String(message.chat.id)] === 'claude' ? `Claude (/${BRAND.command} to go back)` : BRAND.assistant}.`);
     if (text === '/stop') {
       const runs = linked ? [active.get(linked)] : [...active.values()].filter(run => run.chat === message.chat.id && run.user === message.from.id);
       runs.filter(Boolean).forEach(run => run.controller.abort());
@@ -718,7 +719,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
   await tg('deleteWebhook' , { drop_pending_updates: false });
   const me = await tg('getMe', {});
   console.log(`Telegram connected as @${me.username}; standalone messages create native sessions.`);
-  await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: 'royva', description: 'Talk to RoyVa (default)' }, { command: 'status', description: 'Connection and mode' }, { command: 'approve', description: 'Approve the pending request (reply to it)' }, { command: 'deny', description: 'Deny the pending request (reply to it)' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
+  await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: BRAND.command, description: `Talk to ${BRAND.assistant} (default)` }, { command: 'status', description: 'Connection and mode' }, { command: 'approve', description: 'Approve the pending request (reply to it)' }, { command: 'deny', description: 'Deny the pending request (reply to it)' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
   // RoyVa test hook (additive): ROYVA_INJECT_DIR holds {label,text}.json jobs. Each is mirrored into the owner's chat
   // as a visible "test" message, then fed to handle() as if the owner typed it, so the whole run is watchable on Telegram.
   if (process.env.ROYVA_INJECT_DIR) {

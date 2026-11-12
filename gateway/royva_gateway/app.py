@@ -11,6 +11,8 @@ from . import registry as registry_mod
 from .classifiers import LLMClassifier, RulesClassifier
 from pathlib import Path
 
+import os
+
 from pydantic import BaseModel
 
 from .config import Settings
@@ -47,7 +49,7 @@ async def lifespan(app: FastAPI):
     await gw.oc.aclose()
 
 
-app = FastAPI(title="RoyVa gateway", lifespan=lifespan)
+app = FastAPI(title=f'{os.environ.get("LARES_PRODUCT", "Lares")} gateway', lifespan=lifespan)
 
 
 async def require_token(authorization: str = Header(default="")):

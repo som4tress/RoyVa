@@ -1,4 +1,6 @@
-# RoyVa gateway
+# Lares gateway
+
+Part of **Lares**, a self-hosted household assistant. The assistant's own name (default "Roy") and the product name are deployment config: copy `lares.example.toml` to `lares.toml` (git-ignored). `scripts/env.sh` loads it through `scripts/lares_config.py`; an environment variable that is already set wins, then the file, then built-in defaults. A malformed file stops the service start instead of being ignored.
 
 Sits between a front end (the Telegram bridge) and OpenCode. For each message it decides **what kind of request it is** (an *intent*),
 grants the conversation **only the tools that intent needs**, adds a little generated context, and lets OpenCode do the work.
