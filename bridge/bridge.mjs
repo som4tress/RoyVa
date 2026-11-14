@@ -188,7 +188,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const input = permission.metadata?.input || {};
       hash = callHash(input);
       // Compare with what Home Assistant has saved right now (only when the target has a readable stored version).
-      try { const d = await gatewayCall('/v1/diff', {kind: input.kind, method: input.method, path: input.kind === 'ws' ? input.type : input.path, params: input.params || {}}); extra.diff = d.available ? d.lines : undefined; if (d.available) extra.diffUnchanged = d.unchanged; } catch { extra.diff = null; }
+      try { const d = await gatewayCall('/v1/diff', {kind: input.kind, method: input.method, path: input.kind === 'ws' ? input.type : input.path, params: input.params || {}}); extra.diff = d.available ? (d.failed ? null : d.lines) : undefined; } catch { extra.diff = null; }
       const file = fullCallFile(permission);
       if (file) { try { await sendDocument(token, message.chat.id, file.name, file.content, message.message_id); extra.attached = true; } catch (error) { console.error('Could not attach the full call:', error.message); extra.attached = false; } }
     }

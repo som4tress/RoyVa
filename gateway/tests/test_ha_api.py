@@ -81,6 +81,19 @@ def test_params_cannot_override_command_type_or_id():
     assert ha.check_write("ws", "config/device_registry/update", "GET", {"type": "x"})
 
 
+def test_a_stored_automation_can_be_sent_back_with_its_own_id_but_no_other_id(monkeypatch):
+    """First hop of the Ford edit: GET returns the config with its id; the natural read-modify-write sends it back. Same id on its own path is fine."""
+    monkeypatch.setenv("ROYVA_DRY_RUN", "1")
+    path = "/api/config/automation/config/1792893750683"
+    stored = {"id": "1792893750683", "alias": "A", "actions": []}
+    out = ha.ha_write({"kind": "rest", "path": path, "params": stored}, rest=lambda *a: 1 / 0)
+    assert out.get("dry_run") and "error" not in out
+    assert "id" in ha.ha_write({"kind": "rest", "path": path, "params": {**stored, "id": "other"}})["error"]
+    assert "id" in ha.ha_write({"kind": "rest", "path": "/api/services/light/turn_on", "params": {"id": "1792893750683"}})["error"]
+    assert "type" in ha.ha_write({"kind": "rest", "path": path, "params": {**stored, "type": "x"}})["error"]
+    assert ha.check_write("ws", "config/device_registry/update", "POST", {"id": 5})           # websocket: id is still the command id, never allowed
+
+
 def test_ws_command_type_wins_over_params():
     sent = {}
     class Fake:

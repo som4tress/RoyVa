@@ -75,5 +75,5 @@ def compare(kind: str, method: str, path: str, params: dict, fetch) -> dict:
         return {"available": False, "lines": [], "unchanged": 0}
     stored = fetch(path)
     if not isinstance(stored, dict) or not isinstance(params, dict):
-        return {"available": False, "lines": [], "unchanged": 0}
+        return {"available": True, "failed": True, "lines": [], "unchanged": 0}      # a saveable path whose saved copy could not be read: say so, do not stay silent
     return {"available": True, **json_diff(stored, params)}

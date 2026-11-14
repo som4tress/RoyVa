@@ -33,7 +33,8 @@ def test_only_rest_saves_under_api_config_are_diffable():
 def test_compare_uses_the_stored_copy_and_degrades_quietly():
     ok = d.compare("rest", "POST", "/api/config/automation/config/1", {"alias": "B"}, lambda p: {"alias": "A"})
     assert ok["available"] and ok["lines"] == ["~ alias: 'A' -> 'B'"]
-    assert d.compare("rest", "POST", "/api/config/automation/config/1", {}, lambda p: None)["available"] is False
+    nothing = d.compare("rest", "POST", "/api/config/automation/config/1", {}, lambda p: None)
+    assert nothing["available"] and nothing["failed"]
     assert d.compare("rest", "POST", "/api/states/x", {}, lambda p: {})["available"] is False
 
 

@@ -54,8 +54,20 @@ def check_read(kind: str, target: str, method: str = "GET", params: dict = None)
 MAX_CALL = 100_000
 
 
+CONFIG_ITEM = re.compile(r"^/api/config/[a-z_]+/config/([^/?#]+)$")
+
+
+def _stored_id_ok(kind: str, target: str, params: dict) -> bool:
+    """A saved config object carries its own id. Sending it back unchanged (REST save to /api/config/<kind>/config/<same id>) is fine; any other id is not."""
+    m = CONFIG_ITEM.match(target) if kind == "rest" else None
+    return bool(m) and params.get("id") == m.group(1)
+
+
 def check_write(kind: str, target: str, method: str, params: dict):
-    if params and ({"type", "id"} & set(params)):
+    forbidden = {"type", "id"} & set(params or {})
+    if forbidden == {"id"} and _stored_id_ok(kind, target, params):
+        forbidden = set()
+    if forbidden:
         return "params may not set 'type' or 'id'; the command is given by the target"
     if REFUSED.search(target):
         return "that call can expose secrets or streams and is never allowed"

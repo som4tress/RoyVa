@@ -121,7 +121,7 @@ export function formatPermission(permission, rows = [], live = undefined, extra 
     const tooLong = body.length > FULL_LIMIT;
     const out = ['Approve?', FULL_CALL[tool], ...names];
     if (!tooLong) out.push(body);
-    else if (extra.attached) out.push(`The full call (${body.length} characters, id ${callHash(args).slice(0, 8)}) is attached above as a file. Read it before approving: exactly that call will run.`);
+    else if (extra.attached) out.push(`The full call (${body.length} characters, id ${callHash(args).slice(0, 8)}) is attached above as a file. Read it before approving: that call will run (secret-looking values are shown as [redacted] here but are sent as they are).`);
     else out.push(`⚠ The full call is ${body.length} characters and could not be attached, so it cannot be reviewed here. Approve is disabled: /deny`);
     if (Array.isArray(extra.diff)) {
       if (extra.diff.length) out.push('Changes compared with what is saved now:', ...extra.diff.slice(0, DIFF_SHOWN), ...(extra.diff.length > DIFF_SHOWN ? [`… and ${extra.diff.length - DIFF_SHOWN} more (see the attached file)`] : []));
