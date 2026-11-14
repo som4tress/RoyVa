@@ -136,5 +136,13 @@ def test_config_item_is_found_by_name_with_its_id_resolved_server_side():
     assert scr["config_path"] == "/api/config/script/config/ford_update_now"          # scripts are keyed by object id
     two = ha.ha_read({"kind": "config", "domain": "automation", "name": ""}, rest=rest)
     assert len(two["matches"]) == 2 and "read" not in two
-    assert "no automation" in ha.ha_read({"kind": "config", "domain": "automation", "name": "zzz"}, rest=rest)["error"]
+    miss = ha.ha_read({"kind": "config", "domain": "automation", "name": "zzz"}, rest=rest)
+    assert "no automation" in miss["error"] and miss["all_names"] == ["Ford Update", "Other"] and "ask the owner" in miss["hint"]
+    assert ha.ha_read({"kind": "config", "domain": "automation", "name": "update ford"}, rest=rest)["id"] == "1792893750683"      # word order does not matter
     assert "domain" in ha.ha_read({"kind": "config", "domain": "light", "name": "x"}, rest=rest)["error"]
+
+
+def test_contains_inside_params_still_filters():
+    items = [{"entity_id": "automation.a"}, {"entity_id": "light.b"}]
+    out = ha.ha_read({"kind": "rest", "path": "/api/states", "params": {"contains": "automation."}}, rest=lambda *a: {"http_status": 200, "body": items})
+    assert out["body"]["matched"] == 1

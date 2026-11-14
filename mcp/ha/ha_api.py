@@ -168,18 +168,21 @@ def find_config(domain, name, rest=_rest):
     body = states.get("body")
     if not isinstance(body, list):
         return {"error": "could not read entity states", "detail": states}
-    want = norm(name)
-    hits = []
+    words = [norm(w) for w in re.split(r"\s+", str(name).strip()) if norm(w)]      # every word must appear, in any order, in the name or entity id
+    hits, everything = [], []
     for st in body:
         eid = st.get("entity_id", "")
         if not eid.startswith(domain + "."):
             continue
         attrs = st.get("attributes") or {}
-        if want and want not in norm(attrs.get("friendly_name", "")) and want not in norm(eid):
-            continue
-        hits.append({"entity_id": eid, "name": attrs.get("friendly_name"), "id": attrs.get("id") or eid.split(".", 1)[1], "state": st.get("state")})
-    if not hits:
-        return {"error": f"no {domain} matches '{name}'", "hint": f"try fewer words of the name, or list the {domain} entities with ha_read rest /api/states and contains '{domain}.'"}
+        item = {"entity_id": eid, "name": attrs.get("friendly_name"), "id": attrs.get("id") or eid.split(".", 1)[1], "state": st.get("state")}
+        everything.append(item)
+        hay = norm(attrs.get("friendly_name", "")) + norm(eid)
+        if all(w in hay for w in words):
+            hits.append(item)
+    if not hits:      # show every name so the model picks one itself instead of guessing more paths
+        return {"error": f"no {domain} matches '{name}'", "all_names": [i["name"] or i["entity_id"] for i in everything][:200],
+                "hint": "pick the closest name from all_names and call again with it. If none fits, stop and ask the owner which one they mean; do not look anywhere else."}
     if len(hits) > 1:
         return {"matches": hits[:20], "hint": "several matched: call again with a more exact name"}
     hit = hits[0]
@@ -194,6 +197,10 @@ def ha_read(args, ws=_ws, rest=_rest):
     bad = check_read(kind, target, method)
     if bad:
         return {"error": bad}
+    for k in ("contains", "fields", "limit"):      # models often put these inside params; they are our options, not Home Assistant fields
+        if k in params and args.get(k) is None:
+            args = {**args, k: params[k]}
+        params.pop(k, None)
     f = {k: args.get(k) for k in ("contains", "fields", "limit")}
     if kind == "ws":
         return _cap({"result": shape(ws(target, params), **f)})
