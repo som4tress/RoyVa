@@ -68,3 +68,11 @@ def test_edit_preview_uses_the_same_rules_as_the_tool_server():
     assert not unreadable["ok"] and "could not read" in unreadable["problem"]
     bad = diffing.preview_edit(args, lambda p: stored, lambda t: {"ok": False, "error": "from_json got invalid input"})
     assert not bad["ok"] and "does not render" in bad["problem"] and bad["lines"]          # the diff is still shown, Approve is not offered
+
+
+def test_a_long_string_changed_at_the_start_and_the_end_lists_both_places():
+    mid = "x" * 300
+    old = {"m": mid}
+    new = {"m": "{% set gps = 1 %}" + mid + " Map: https://maps?q=1,2"}
+    (line,) = d.json_diff(old, new)["lines"]
+    assert "2 places" in line and "{% set gps = 1 %}" in line and "Map: https://maps?q=1,2" in line and len(line) < 400

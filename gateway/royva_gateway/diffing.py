@@ -31,11 +31,34 @@ def _change(old: str, new: str) -> str:
     b = 0
     while b < min(len(old), len(new)) - a and old[-1 - b] == new[-1 - b]:
         b += 1
+    if len(old) - a - b > 160 or len(new) - a - b > 160:
+        hunks = _hunks(old, new)
+        if hunks:
+            return hunks
     ctx = 30
     head = ("…" if a > ctx else "") + old[max(0, a - ctx):a]
     tail = old[len(old) - b: len(old) - b + ctx] + ("…" if b > ctx else "")
     o, n = old[a: len(old) - b], new[a: len(new) - b]
     return f"…{head}[{_clip(o, 160)!r} -> {_clip(n, 160)!r}]{tail}…"
+
+
+def _hunks(old: str, new: str, shown: int = 4) -> str:
+    """For a long string changed in several places (text added at the start AND the end, say): list each place separately instead of one clipped blob."""
+    import difflib
+    ops = [o for o in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes() if o[0] != "equal"]
+    if not ops or len(ops) > 12:
+        return ""
+    parts = []
+    for tag, i1, i2, j1, j2 in ops[:shown]:
+        before = ("…" if i1 > 15 else "") + old[max(0, i1 - 15):i1]
+        if tag == "insert":
+            parts.append(f"{before!r} + {_clip(new[j1:j2], 160)!r}")
+        elif tag == "delete":
+            parts.append(f"{before!r} - {_clip(old[i1:i2], 160)!r}")
+        else:
+            parts.append(f"{before!r} {_clip(old[i1:i2], 120)!r} -> {_clip(new[j1:j2], 120)!r}")
+    more = f" (+{len(ops) - shown} more places)" if len(ops) > shown else ""
+    return f"{len(ops)} place{'s' if len(ops) != 1 else ''}: " + " | ".join(parts) + more
 
 
 def _walk(old: Any, new: Any, path: str, out: list[str], counts: dict) -> None:
