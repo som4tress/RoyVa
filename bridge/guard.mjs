@@ -6,7 +6,7 @@ export const HARD_ROUNDS = 25;        // absolute ceiling on model rounds, whate
 export const HARD_CALLS = 80;
 export const BLOCK_STREAK = 2;       // this many policy refusals in a row from approval-gated tools = blocked: stop and report, never look for another way round
 export const MISS_STREAK = 4;        // this many results in a row that found nothing (404, no match, unknown command, empty output) = lost: stop and ask the owner, not keep searching
-const GATED = new Set(['ha-api_ha_write', 'machine_run', 'machine_run_approved', 'machine_remote_run', 'machine_remote_run_approved']);
+const GATED = new Set(['ha-api_ha_write', 'ha-api_ha_edit', 'machine_run', 'machine_run_approved', 'machine_remote_run', 'machine_remote_run_approved']);
 // A tool-level refusal comes back as a result that is only {"error": ...} (size, credentials, protected device, root...). Home Assistant's own answers carry http_status instead.
 const refused = part => { try { const o = JSON.parse((part.state?.content || []).find(b => b.type === 'text')?.text ?? ''); return !!o && typeof o === 'object' && Object.keys(o).length === 1 && typeof o.error === 'string'; } catch { return false; } };
 

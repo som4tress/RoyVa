@@ -37,6 +37,7 @@
    "ha.climate_set_temperature",
    "ha.fan_set_speed",
    "ha_api.read",
+   "ha_api.edit",
    "ha_api.write"
   ],
   "context": [

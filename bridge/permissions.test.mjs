@@ -103,7 +103,7 @@ test('the remote takeover config never contains the owner-only doors', () => {
 });
 
 // ---- big approval calls: attached as a file, never refused for size, approval tied to the exact call
-import {fullCallFile, callHash} from './permissions.mjs';
+import {fullCallFile, callHash, editBlocked} from './permissions.mjs';
 const bigWrite = text => ({id: 'p1', action: 'ha-api_ha_write', metadata: {input: {kind: 'rest', method: 'POST', path: '/api/config/automation/config/1', params: {alias: 'A', variables: {decision: text}}}}});
 
 test('a long ha_write is attached as a file (with the full content), a short one is not', () => {
@@ -139,4 +139,39 @@ test('the call fingerprint ignores key order and changes with any content change
   const a = {kind: 'rest', params: {x: 1, y: [1, 2]}};
   assert.equal(callHash(a), callHash({params: {y: [1, 2], x: 1}, kind: 'rest'}));
   assert.notEqual(callHash(a), callHash({kind: 'rest', params: {x: 1, y: [1, 3]}}));
+});
+
+// ---- ha_edit: the card shows the edits, the diff and how the added template renders; no good preview = no Approve
+const editCall = {id: 'p9', action: 'ha-api_ha_edit', metadata: {input: {domain: 'automation', id: '17', version: 'abc', edits: [{op: 'append', path: 'variables.msg', text: ' x'}]}}};
+const goodPreview = {ok: true, problem: null, edits: ['append variables.msg: x'], lines: ["~ variables.msg: …'Parked.' -> 'Parked. x'…"],
+  renders: [{path: 'variables.msg', status: 'ok', rendered: 'https://maps?q=1,2'}]};
+
+test('an edit card lists the edits, the diff and the rendered text, and offers Approve', () => {
+  const text = formatPermission(editCall, [], undefined, {preview: goodPreview});
+  assert.match(text, /Edit a saved Home Assistant automation: 17/);
+  assert.match(text, /append variables\.msg/);
+  assert.match(text, /Changes compared with what is saved now/);
+  assert.match(text, /Renders now at variables\.msg: https:\/\/maps\?q=1,2/);
+  assert.match(text, /\/approve or \/deny \(this edit only\)/);
+  assert.equal(editBlocked({preview: goodPreview}), false);
+});
+
+test('an edit with a failing template, a stale version, or no preview cannot be approved', () => {
+  const failing = {...goodPreview, ok: false, problem: 'the template added at variables.msg does not render: from_json', renders: [{path: 'variables.msg', status: 'error', error: 'from_json got invalid input'}]};
+  const text = formatPermission(editCall, [], undefined, {preview: failing});
+  assert.match(text, /fails: from_json/);
+  assert.match(text, /Approve is disabled/);
+  assert.equal(editBlocked({preview: failing}), true);
+  const none = formatPermission(editCall, [], undefined, {preview: null});
+  assert.match(none, /Could not build a preview/);
+  assert.match(none, /Approve is disabled/);
+  assert.equal(editBlocked({preview: null}), true);
+  assert.equal(editBlocked({}), true);
+});
+
+test('template text that needs the automation\'s own variables is reported, not blamed', () => {
+  const ctx = {...goodPreview, renders: [{path: 'variables.msg', status: 'needs_context'}]};
+  const text = formatPermission(editCall, [], undefined, {preview: ctx});
+  assert.match(text, /could not be tested alone/);
+  assert.match(text, /\/approve or \/deny/);
 });

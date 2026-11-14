@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ha_registry                                                   # noqa: E402
 import ha_ws                                                         # noqa: E402
+import config_edit                                                   # noqa: E402
 
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", Path(__file__).resolve().parents[2] / "runtime" / "gateway" / "dry_run"))
 MAX_OUT = 20000
@@ -156,7 +157,7 @@ def _target(args):
     return kind, str(t or ""), str(args.get("method") or "GET").upper(), dict(args.get("params") or {})
 
 
-CONFIG_DOMAINS = ("automation", "script", "scene")
+CONFIG_DOMAINS = config_edit.CONFIG_DOMAINS
 
 
 def find_config(domain, name, rest=_rest):
@@ -187,7 +188,9 @@ def find_config(domain, name, rest=_rest):
         return {"matches": hits[:20], "hint": "several matched: call again with a more exact name"}
     hit = hits[0]
     cfg = rest("GET", f"/api/config/{domain}/config/{hit['id']}")
-    return _cap({**hit, "config_path": f"/api/config/{domain}/config/{hit['id']}", "read": cfg})
+    ver = config_edit.version(cfg["body"]) if cfg.get("http_status") == 200 and isinstance(cfg.get("body"), dict) else None
+    return _cap({**hit, "version": ver, "config_path": f"/api/config/{domain}/config/{hit['id']}", "read": cfg,
+                 "next": "to change it use ha_edit with this domain, id and version and a list of small edits; do not retype the whole config"})
 
 
 def ha_read(args, ws=_ws, rest=_rest):
@@ -210,9 +213,49 @@ def ha_read(args, ws=_ws, rest=_rest):
     return _cap(out)
 
 
+def render_template(text, rest=_rest):
+    """Render a piece of template through Home Assistant against live states. {"ok": bool, "text" | "error"}."""
+    out = rest("POST", "/api/template", {"template": text})
+    body = out.get("body")
+    if out.get("http_status") == 200:
+        return {"ok": True, "text": body if isinstance(body, str) else json.dumps(body)}
+    return {"ok": False, "error": str(body)[:300]}
+
+
+def ha_edit(args, rest=_rest):
+    """Apply small exact edits to a saved automation/script/scene and save the result. The owner approved this call after seeing the same
+    preview (built by the gateway from the same module); everything is rebuilt here from what is stored right now, and refused if it differs."""
+    try:
+        domain, item_id = str(args.get("domain") or ""), str(args.get("id") or "")
+        path = config_edit.config_path(domain, item_id)
+        got = rest("GET", path)
+        if got.get("http_status") != 200 or not isinstance(got.get("body"), dict):
+            return {"error": f"could not read {domain} {item_id} (http {got.get('http_status')}); nothing was changed"}
+        blob = norm(json.dumps(args.get("edits")))
+        if any(n in blob for n in protected_names()):
+            return {"error": "an edit names a protected device; change that on its own with ha_write so the owner approves it explicitly"}
+        plan = config_edit.plan(got["body"], args.get("version"), args.get("edits"), lambda t: render_template(t, rest))
+    except config_edit.EditError as exc:
+        return {"error": str(exc)}
+    if plan["problems"]:
+        return {"error": "not saved: " + "; ".join(plan["problems"]), "changes": plan["changes"]}
+    call = {"domain": domain, "id": item_id, "changes": plan["changes"]}
+    if os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists():
+        return {"dry_run": True, "did": f"[DRY RUN, nothing happened] {json.dumps(call)}", "renders": plan["renders"]}
+    saved = rest("POST", path, plan["config"])
+    if saved.get("http_status") not in (200, 201):
+        return {"error": f"Home Assistant did not accept the save (http {saved.get('http_status')}): {str(saved.get('body'))[:200]}", "saved": False}
+    back = rest("GET", path)
+    ok = back.get("http_status") == 200 and isinstance(back.get("body"), dict) and \
+        {k: v for k, v in back["body"].items() if k != "id"} == {k: v for k, v in plan["config"].items() if k != "id"}
+    return {"done": call, "saved": ok, "read_back": "matches what was sent" if ok else "differs from what was sent: check it with ha_read kind config", "renders": plan["renders"]}
+
+
 def ha_write(args, ws=_ws, rest=_rest):
     kind, target, method, params = _target(args)
     if kind == "rest" and method == "GET":
+        method = "POST"
+    if kind == "rest" and method == "PUT" and CONFIG_ITEM.match(target):      # Home Assistant saves a config item with POST only; PUT is the same intent
         method = "POST"
     bad = check_write(kind, target, method, params)
     if bad:
@@ -241,9 +284,29 @@ READ = {"name": "ha_read",
                                                          "limit": {"type": "integer", "description": "For list results: at most this many items (default 50)."}},
                         "required": ["kind"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}}
+EDIT = {"name": "ha_edit",
+        "description": "Change an EXISTING automation, script or scene with small exact edits; the server loads the saved config, applies your edits and saves it, so never retype the whole config. "
+                       "First call ha_read with kind 'config' (domain + name) to get its id, version and current config. Then send edits, each {op, path, ...}: "
+                       "append or prepend (path, text) add text to a string field; replace (path, find, text) swaps one piece of text that occurs exactly once; set (path, value) replaces a value. "
+                       "path is dotted with list positions, e.g. variables.notification_message or actions.0.then.1.data.message, and must already exist (copy it from the config you read). "
+                       "Templates you add are rendered by Home Assistant before the owner is asked. The owner approves the exact edits first. "
+                       "If a call is refused, do not try another route and never look for tokens or credentials: fix the edit or stop and tell the owner what is blocked.",
+        "inputSchema": {"type": "object", "properties": {
+            "domain": {"type": "string", "enum": list(CONFIG_DOMAINS)},
+            "id": {"type": "string", "description": "The item's id exactly as ha_read kind config returned it."},
+            "version": {"type": "string", "description": "The version ha_read kind config returned; the edit is refused if the item changed since."},
+            "edits": {"type": "array", "minItems": 1, "maxItems": config_edit.MAX_EDITS, "items": {"type": "object", "properties": {
+                "op": {"type": "string", "enum": list(config_edit.OPS)},
+                "path": {"type": "string", "description": "Dotted path with list positions, e.g. variables.notification_message"},
+                "text": {"type": "string", "description": "append / prepend / replace: the text to add or the replacement."},
+                "find": {"type": "string", "description": "replace: the existing text to swap; it must occur exactly once in the field."},
+                "value": {"description": "set: the new value (any JSON)."}},
+                "required": ["op", "path"], "additionalProperties": False}}},
+            "required": ["domain", "id", "version", "edits"], "additionalProperties": False},
+        "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False}}
 WRITE = {"name": "ha_write",
          "description": "Change something through Home Assistant's own API: assign a device to an area (config/device_registry/update with device_id and area_id), "
-                        "create or edit an automation (rest POST /api/config/automation/config/<id>), rename an entity, call a service. The owner approves the exact call first; "
+                        "create a new automation (rest POST /api/config/automation/config/<id>; to change an EXISTING automation, script or scene use ha_edit instead), rename an entity, call a service. The owner approves the exact call first; "
                         "look up ids with ha_read before calling, and read the result back afterwards to verify. A save REPLACES the whole stored config, so send the complete config with your change in it (a long one is fine: the owner gets it as an attached file with a list of the changes). If a call is refused, do not try another route and never look for tokens or credentials: stop and tell the owner what is blocked.",
          "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest"]},
                                                           "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
@@ -260,11 +323,11 @@ def handle(msg):
         result = {"protocolVersion": msg.get("params", {}).get("protocolVersion", "2025-03-26"), "capabilities": {"tools": {}},
                   "serverInfo": {"name": "ha-api", "version": "1.0.0"}}
     elif method == "tools/list":
-        result = {"tools": [READ, WRITE]}
+        result = {"tools": [READ, EDIT, WRITE]}
     elif method == "tools/call":
         p = msg.get("params", {})
         try:
-            fn = {"ha_read": ha_read, "ha_write": ha_write}[p.get("name")]
+            fn = {"ha_read": ha_read, "ha_write": ha_write, "ha_edit": ha_edit}[p.get("name")]
             result = {"content": [{"type": "text", "text": json.dumps(fn(p.get("arguments", {})))}]}
         except Exception as e:                                          # noqa: BLE001
             result = {"content": [{"type": "text", "text": json.dumps({"error": str(e)[:300]})}], "isError": True}

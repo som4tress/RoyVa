@@ -12,7 +12,7 @@ import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
-import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified, fullCallFile, callHash} from './permissions.mjs';
+import {withoutOwnerDoors, formatPermission, editBlocked, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified, fullCallFile, callHash} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {BRAND} from './brand.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
@@ -188,12 +188,15 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const input = permission.metadata?.input || {};
       hash = callHash(input);
       // Compare with what Home Assistant has saved right now (only when the target has a readable stored version).
+      if (canonTool(permission.action) === 'ha-api_ha_edit') {
+        try { extra.preview = await gatewayCall('/v1/preview-edit', {domain: input.domain, id: input.id, version: input.version, edits: input.edits}); } catch { extra.preview = null; }
+      } else
       try { const d = await gatewayCall('/v1/diff', {kind: input.kind, method: input.method, path: input.kind === 'ws' ? input.type : input.path, params: input.params || {}}); extra.diff = d.available ? (d.failed ? null : d.lines) : undefined; } catch { extra.diff = null; }
       const file = fullCallFile(permission);
       if (file) { try { await sendDocument(token, message.chat.id, file.name, file.content, message.message_id); extra.attached = true; } catch (error) { console.error('Could not attach the full call:', error.message); extra.attached = false; } }
     }
     const tooBigUnattached = extra.attached === false;
-    return send(message, formatPermission(permission, history, live, extra), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live) || tooBigUnattached, hash});
+    return send(message, formatPermission(permission, history, live, extra), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live) || tooBigUnattached || (canonTool(permission.action) === 'ha-api_ha_edit' && editBlocked(extra)), hash});
   }
   // The call that is waiting must still be the one the owner was shown (same fingerprint taken when the card was sent).
   const sameCall = (target, request) => !target.hash || callHash(request.metadata?.input || {}) === target.hash;

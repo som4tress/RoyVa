@@ -1,0 +1,107 @@
+"""Exact edits to a stored automation/script/scene: what is allowed, what is refused, and that nothing else is touched."""
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+SPEC = importlib.util.spec_from_file_location("config_edit", Path(__file__).resolve().parents[2] / "mcp" / "ha" / "config_edit.py")
+ce = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(ce)
+
+AUTOMATION = {"id": "1", "alias": "Ford", "triggers": [{"trigger": "state", "entity_id": "sensor.x"}], "conditions": [],
+              "actions": [{"if": [{"condition": "template", "value_template": "{{ true }}"}], "then": [{"action": "notify.phone", "data": {"message": "{{ msg }}"}}]}],
+              "variables": {"msg": "Parked. Battery: {{ 5 }}%.", "n": 3}, "mode": "queued"}
+
+
+def edit(*edits, cfg=AUTOMATION):
+    return ce.apply_edits(cfg, list(edits))
+
+
+def test_append_changes_only_that_field_and_leaves_everything_else_identical():
+    out = edit({"op": "append", "path": "variables.msg", "text": " Map: {{ 1 }}"})
+    new = out["config"]
+    assert new["variables"]["msg"] == "Parked. Battery: {{ 5 }}%. Map: {{ 1 }}"
+    new["variables"]["msg"] = AUTOMATION["variables"]["msg"]
+    assert new == AUTOMATION                                         # nothing else moved
+    assert AUTOMATION["variables"]["msg"].endswith("%.")             # the input was not modified
+    assert out["templates"] == [{"path": "variables.msg", "text": " Map: {{ 1 }}"}]
+
+
+def test_prepend_replace_and_set():
+    assert edit({"op": "prepend", "path": "alias", "text": "[x] "})["config"]["alias"] == "[x] Ford"
+    assert edit({"op": "replace", "path": "variables.msg", "find": "Parked", "text": "Stopped"})["config"]["variables"]["msg"].startswith("Stopped.")
+    assert edit({"op": "set", "path": "mode", "value": "single"})["config"]["mode"] == "single"
+    assert edit({"op": "set", "path": "variables.extra", "value": "x"})["config"]["variables"]["extra"] == "x"       # new key below the top level
+
+
+def test_list_indexes_reach_into_nested_actions():
+    out = edit({"op": "append", "path": "actions.0.then.0.data.message", "text": " https://example.test"})
+    assert out["config"]["actions"][0]["then"][0]["data"]["message"] == "{{ msg }} https://example.test"
+
+
+@pytest.mark.parametrize("bad", [
+    {"op": "append", "path": "variable.msg", "text": "x"},                     # the 2026-11-14 slip: variable vs variables
+    {"op": "append", "path": "variables.missing", "text": "x"},
+    {"op": "append", "path": "variables.n", "text": "x"},                      # not text
+    {"op": "replace", "path": "variables.msg", "find": "zzz", "text": "x"},    # find occurs 0 times
+    {"op": "replace", "path": "variables.msg", "find": "a", "text": "x"},      # find occurs more than once
+    {"op": "set", "path": "newtop", "value": 1},                               # new top-level key
+    {"op": "set", "path": "id", "value": "9"},
+    {"op": "append", "path": "id", "text": "9"},
+    {"op": "append", "path": "alias", "text": ""},
+    {"op": "wipe", "path": "alias"},
+    {"op": "set", "path": "variables"},                                        # no value
+    {"op": "append", "path": "actions.7.x", "text": "x"},
+])
+def test_refused(bad):
+    with pytest.raises(ce.EditError):
+        edit(bad)
+
+
+def test_edits_must_be_a_short_nonempty_list():
+    for bad in (None, [], "x", [1], [{"op": "set", "path": "mode", "value": "a"}] * (ce.MAX_EDITS + 1)):
+        with pytest.raises(ce.EditError):
+            ce.apply_edits(AUTOMATION, bad)
+
+
+def test_scripts_and_scenes_use_the_same_edits_and_their_own_paths():
+    script = {"alias": "Goodnight", "sequence": [{"delay": "00:10:00"}], "mode": "single"}
+    assert edit({"op": "set", "path": "sequence.0.delay", "value": "00:20:00"}, cfg=script)["config"]["sequence"][0]["delay"] == "00:20:00"
+    scene = {"name": "Movie", "entities": {"light.a": {"state": "on", "brightness": 255}}}
+    assert ce.config_path("script", "goodnight") == "/api/config/script/config/goodnight"
+    assert ce.config_path("scene", "1700000000") == "/api/config/scene/config/1700000000"
+    for bad in (("light", "x"), ("automation", "../x"), ("automation", "")):
+        with pytest.raises(ce.EditError):
+            ce.config_path(*bad)
+
+
+def test_version_changes_with_content_not_with_key_order():
+    assert ce.version(AUTOMATION) == ce.version(json.loads(json.dumps(AUTOMATION, sort_keys=True)))
+    assert ce.version(AUTOMATION) != ce.version({**AUTOMATION, "mode": "single"})
+
+
+def test_a_stale_version_is_refused():
+    with pytest.raises(ce.EditError, match="changed since"):
+        ce.plan(AUTOMATION, "stale", [{"op": "set", "path": "mode", "value": "single"}])
+
+
+def test_template_pieces_are_rendered_alone_and_failures_are_sorted_into_kinds():
+    def render(text):
+        if "from_json" in text:
+            return {"ok": False, "error": "ValueError: Template error: from_json got invalid input 'x'"}
+        if "trigger" in text:
+            return {"ok": False, "error": "UndefinedError: 'trigger' is undefined"}
+        return {"ok": True, "text": "https://maps?q=1,2"}
+    ok = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": " {{ 1 }}"}], render)
+    assert ok["problems"] == [] and ok["renders"][0]["status"] == "ok" and "maps" in ok["renders"][0]["rendered"]
+    ctx = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": " {{ trigger.x }}"}], render)
+    assert ctx["problems"] == [] and ctx["renders"][0]["status"] == "needs_context"          # cannot be rendered alone: not a fault
+    bad = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": " {{ from_json(gps) }}"}], render)
+    assert bad["problems"] and "from_json" in bad["problems"][0]
+
+
+def test_plain_text_edits_are_not_rendered():
+    called = []
+    out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "set", "path": "alias", "value": "New name"}], lambda t: called.append(t) or {"ok": True, "text": ""})
+    assert not called and out["renders"] == []

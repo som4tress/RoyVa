@@ -83,7 +83,7 @@ export function verifyIds(args, live) {
   return {lines, verified};
 }
 export const permissionVerified = (permission, live) => !FULL_CALL[canonTool(permission.action)] || verifyIds(permission.metadata?.input || {}, live).verified;
-export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
+export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'ha-api_ha_edit': 'Edit a saved Home Assistant item:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
 const FULL_LIMIT = 3500;
 // A stable fingerprint of exactly what will run. It is taken when the card is shown and checked again when the owner approves, so what was reviewed is what runs.
 const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
@@ -97,6 +97,24 @@ export function fullCallFile(permission) {
   return body.length > FULL_LIMIT ? {name: `call-${callHash(input).slice(0, 8)}.json`, content: body} : null;
 }
 const DIFF_SHOWN = 25;
+// extra.preview comes from the gateway (/v1/preview-edit): {ok, problem, lines, edits, renders}, or null when it could not be built. Without a good preview there is no Approve.
+export const editBlocked = extra => !extra?.preview || extra.preview.ok !== true;
+function formatEdit(args, extra) {
+  const pv = extra?.preview;
+  const out = ['Approve?', `Edit a saved Home Assistant ${line(args.domain)}: ${line(args.id)}`];
+  const edits = Array.isArray(pv?.edits) && pv.edits.length ? pv.edits : (Array.isArray(args.edits) ? args.edits.map(e => `${line(e?.op)} ${line(e?.path)}`) : []);
+  out.push('Edits:', ...edits.slice(0, 10).map(e => `• ${line(e).slice(0, 200)}`));
+  if (pv?.lines) out.push(pv.lines.length ? 'Changes compared with what is saved now:' : 'No difference from what is saved now.', ...pv.lines.slice(0, DIFF_SHOWN), ...(pv.lines.length > DIFF_SHOWN ? [`… and ${pv.lines.length - DIFF_SHOWN} more`] : []));
+  for (const r of pv?.renders || []) {
+    if (r.status === 'ok') out.push(`Renders now at ${line(r.path)}: ${line(r.rendered).slice(0, 200)}`);
+    else if (r.status === 'needs_context') out.push(`Added text at ${line(r.path)} uses the automation's own variables, so it could not be tested alone.`);
+    else if (r.status === 'error') out.push(`⚠ Added text at ${line(r.path)} fails: ${line(r.error).slice(0, 200)}`);
+  }
+  if (!pv) out.push('⚠ Could not build a preview of this edit, so it cannot be reviewed.');
+  else if (pv.problem) out.push(`⚠ ${line(pv.problem).slice(0, 300)}`);
+  out.push(editBlocked(extra) ? 'Approve is disabled: /deny' : '/approve or /deny (this edit only)');
+  return out.join('\n');
+}
 // extra: {attached: bool|undefined, diff: string[]|null|undefined}. attached=false means the file was needed but could not be sent: Approve must stay disabled.
 export function formatPermission(permission, rows = [], live = undefined, extra = {}) {
   const input = permission.metadata?.input;
@@ -114,6 +132,7 @@ export function formatPermission(permission, rows = [], live = undefined, extra 
     } else what = `every email matching: ${line(args.query).slice(0, 200)} (up to ${Number(args.limit) || 2000})`;
     return ['Approve?', `${verb}: ${what}`, '/approve (covers the whole request) or /deny'].join('\n');
   }
+  if (tool === 'ha-api_ha_edit') return formatEdit(args, extra);
   if (FULL_CALL[tool]) {
     const check = verifyIds(args, live);
     const names = check.lines;                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one

@@ -6,7 +6,14 @@ import json
 from typing import Any
 
 MAX_LINES = 200
-IGNORED_TOP_KEYS = {"id"}            # a save is addressed by the path; the stored copy carries an id the write does not
+IGNORED_TOP_KEYS = {"id", "trace"}   # a save is addressed by the path; the stored copy carries an id (and a trace setting) the write does not
+ALIASES = {"trigger": "triggers", "condition": "conditions", "action": "actions"}      # Home Assistant accepts both spellings and means the same; do not show a rename as a change
+
+
+def _canon(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {ALIASES.get(k, k): v for k, v in obj.items()}
+    return obj
 
 
 def _clip(text: str, n: int = 90) -> str:
@@ -60,7 +67,7 @@ def _walk(old: Any, new: Any, path: str, out: list[str], counts: dict) -> None:
 def json_diff(old: Any, new: Any) -> dict:
     out: list[str] = []
     counts = {"unchanged": 0}
-    _walk(old, new, "", out, counts)
+    _walk(_canon(old), _canon(new), "", out, counts)
     return {"lines": out[:MAX_LINES] + ([f"… {len(out) - MAX_LINES} more"] if len(out) > MAX_LINES else []), "unchanged": counts["unchanged"]}
 
 
@@ -77,3 +84,31 @@ def compare(kind: str, method: str, path: str, params: dict, fetch) -> dict:
     if not isinstance(stored, dict) or not isinstance(params, dict):
         return {"available": True, "failed": True, "lines": [], "unchanged": 0}      # a saveable path whose saved copy could not be read: say so, do not stay silent
     return {"available": True, **json_diff(stored, params)}
+
+
+def _config_edit():
+    import sys
+    from pathlib import Path
+    d = str(Path(__file__).resolve().parent.parent.parent / "mcp" / "ha")
+    if d not in sys.path:
+        sys.path.insert(0, d)
+    import config_edit                                              # shared with the ha-api tool server: the card and the save must agree
+    return config_edit
+
+
+def preview_edit(args: dict, fetch, render) -> dict:
+    """What an ha_edit call would do, for the approval card. Same code as the tool server runs at execution.
+    {"ok": bool, "lines": [...changes vs saved...], "edits": [...one line per edit...], "renders": [...], "problem": str|None}.
+    ok False means the call cannot be saved as written (stale version, bad path, template that fails): the card must not offer Approve."""
+    ce = _config_edit()
+    try:
+        path = ce.config_path(str(args.get("domain") or ""), str(args.get("id") or ""))
+        stored = fetch(path)
+        if not isinstance(stored, dict):
+            return {"ok": False, "problem": "could not read the saved config from Home Assistant", "lines": [], "edits": [], "renders": []}
+        plan = ce.plan(stored, args.get("version"), args.get("edits"), render)
+    except ce.EditError as exc:
+        return {"ok": False, "problem": str(exc), "lines": [], "edits": [], "renders": []}
+    problems = plan["problems"]
+    return {"ok": not problems, "problem": "; ".join(problems) or None, "lines": json_diff(stored, plan["config"])["lines"],
+            "edits": plan["changes"], "renders": plan["renders"]}

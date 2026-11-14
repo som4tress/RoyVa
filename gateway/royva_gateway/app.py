@@ -138,6 +138,21 @@ async def diff(req: DiffReq):
     return await asyncio.to_thread(diffing.compare, req.kind, req.method, req.path, req.params, home_context._rest_get)
 
 
+class EditPreviewReq(BaseModel):
+    domain: str = ""
+    id: str = ""
+    version: str = ""
+    edits: list = []
+
+
+@app.post("/v1/preview-edit", dependencies=[Depends(require_token)])
+async def preview_edit(req: EditPreviewReq):
+    """What an ha_edit call would change and how its templates render, for the approval card. Read-only."""
+    import asyncio
+    from . import diffing, home_context
+    return await asyncio.to_thread(diffing.preview_edit, req.model_dump(), home_context._rest_get, home_context._render_template)
+
+
 @app.post("/v1/route", dependencies=[Depends(require_token)])
 async def route(req: AskRequest):
     """Route a message and prepare its session (tool grants + context). Does NOT run the model; the caller runs the turn.

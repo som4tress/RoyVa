@@ -146,3 +146,82 @@ def test_contains_inside_params_still_filters():
     items = [{"entity_id": "automation.a"}, {"entity_id": "light.b"}]
     out = ha.ha_read({"kind": "rest", "path": "/api/states", "params": {"contains": "automation."}}, rest=lambda *a: {"http_status": 200, "body": items})
     assert out["body"]["matched"] == 1
+
+
+def test_put_to_a_config_item_is_sent_as_post(monkeypatch):
+    monkeypatch.delenv("ROYVA_DRY_RUN", raising=False)
+    monkeypatch.setattr(ha, "DRY_FLAG", Path("/nonexistent/dry"))
+    seen = []
+    out = ha.ha_write({"kind": "rest", "method": "PUT", "path": "/api/config/automation/config/1", "params": {"alias": "t"}}, rest=lambda m, p, b=None: seen.append(m) or {"http_status": 200, "body": {}})
+    assert seen == ["POST"] and out["done"]["method"] == "POST"
+
+
+# ---- ha_edit: small exact edits, rebuilt from what is stored right now
+class FakeHA:
+    def __init__(self, cfg, render_ok=True, save_status=200):
+        self.cfg, self.calls, self.render_ok, self.save_status = cfg, [], render_ok, save_status
+
+    def __call__(self, method, path, body=None):
+        self.calls.append((method, path))
+        if method == "GET":
+            return {"http_status": 200, "body": json.loads(json.dumps(self.cfg))}
+        if path == "/api/template":
+            return {"http_status": 200, "body": "https://maps?q=1,2"} if self.render_ok else {"http_status": 400, "body": "ValueError: from_json got invalid input"}
+        if self.save_status == 200:
+            self.cfg = body
+        return {"http_status": self.save_status, "body": {"result": "ok"}}
+
+
+STORED = {"id": "17", "alias": "Ford", "triggers": [], "variables": {"msg": "Parked."}, "actions": []}
+
+
+def _edit_args(**over):
+    from_mod = ha.config_edit
+    return {"domain": "automation", "id": "17", "version": from_mod.version(STORED), "edits": [{"op": "append", "path": "variables.msg", "text": " {{ 1 }}"}], **over}
+
+
+def test_ha_edit_saves_the_edited_config_and_reads_it_back(monkeypatch):
+    monkeypatch.delenv("ROYVA_DRY_RUN", raising=False)
+    monkeypatch.setattr(ha, "DRY_FLAG", Path("/nonexistent/dry"))
+    fake = FakeHA(STORED)
+    out = ha.ha_edit(_edit_args(), rest=fake)
+    assert out["saved"] is True and out["done"]["id"] == "17"
+    assert fake.cfg["variables"]["msg"] == "Parked. {{ 1 }}" and fake.cfg["alias"] == "Ford" and fake.cfg["id"] == "17"
+    assert ("POST", "/api/config/automation/config/17") in fake.calls
+
+
+def test_ha_edit_refuses_without_saving(monkeypatch):
+    monkeypatch.delenv("ROYVA_DRY_RUN", raising=False)
+    monkeypatch.setattr(ha, "DRY_FLAG", Path("/nonexistent/dry"))
+    for args, word in ((_edit_args(version="old"), "changed since"),
+                       (_edit_args(edits=[{"op": "append", "path": "variable.msg", "text": "x"}]), "nothing at"),
+                       (_edit_args(domain="light"), "domain")):
+        fake = FakeHA(STORED)
+        out = ha.ha_edit(args, rest=fake)
+        assert word in out["error"] and not any(m == "POST" and p != "/api/template" for m, p in fake.calls), (args, out)
+    broken = FakeHA(STORED, render_ok=False)
+    out = ha.ha_edit(_edit_args(), rest=broken)
+    assert "does not render" in out["error"] and not any(p.startswith("/api/config") and m == "POST" for m, p in broken.calls)
+
+
+def test_ha_edit_dry_run_and_failed_save(monkeypatch):
+    monkeypatch.setenv("ROYVA_DRY_RUN", "1")
+    fake = FakeHA(STORED)
+    out = ha.ha_edit(_edit_args(), rest=fake)
+    assert out["dry_run"] and "DRY RUN" in out["did"] and fake.cfg == STORED
+    monkeypatch.delenv("ROYVA_DRY_RUN")
+    monkeypatch.setattr(ha, "DRY_FLAG", Path("/nonexistent/dry"))
+    out = ha.ha_edit(_edit_args(), rest=FakeHA(STORED, save_status=500))
+    assert out["saved"] is False and "did not accept" in out["error"]
+
+
+def test_ha_edit_will_not_name_a_protected_device(monkeypatch):
+    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Shivi Linux Box")
+    out = ha.ha_edit(_edit_args(edits=[{"op": "append", "path": "variables.msg", "text": " switch.shivi_linux_box off"}]), rest=FakeHA(STORED))
+    assert "protected" in out["error"]
+
+
+def test_config_lookup_returns_the_version_needed_for_an_edit():
+    states = [{"entity_id": "automation.ford", "state": "on", "attributes": {"friendly_name": "Ford", "id": "17"}}]
+    out = ha.ha_read({"kind": "config", "domain": "automation", "name": "ford"}, rest=lambda m, p, b=None: {"http_status": 200, "body": states if p == "/api/states" else STORED})
+    assert out["version"] == ha.config_edit.version(STORED) and "ha_edit" in out["next"]

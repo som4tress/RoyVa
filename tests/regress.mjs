@@ -17,7 +17,7 @@ const cases = JSON.parse(readFileSync(new URL('./regress_cases.json', import.met
 
 // Always true for every routed session, whatever the question was.
 const ALWAYS_DENIED = ['shell', 'edit', 'write', 'read', 'glob', 'grep', 'subagent', 'execute', 'question', 'skill', 'gmail_send_message', 'gmail_send_draft'];
-const NEVER_ALLOWED = ['ha-api_ha_write', 'machine_run_approved', 'machine_remote_run_approved', 'gmail-tidy_tidy_ids', 'gmail-tidy_tidy_matching'];
+const NEVER_ALLOWED = ['ha-api_ha_write', 'ha-api_ha_edit', 'machine_run_approved', 'machine_remote_run_approved', 'gmail-tidy_tidy_ids', 'gmail-tidy_tidy_matching'];
 
 async function route(text, user, session_id, is_reply) {
   const r = await fetch(`${GATEWAY}/v1/route`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, user, session_id: session_id || null, is_reply: Boolean(is_reply) }), signal: AbortSignal.timeout(180000) });

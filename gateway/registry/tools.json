@@ -520,7 +520,18 @@
   "risk": "write",
   "scope": "admin",
   "approval": true,
-  "description": "Change something through Home Assistant's own API (assign a device to an area, create or edit an automation, rename an entity). Owner approves each exact call.",
+  "description": "Change something through Home Assistant's own API (assign a device to an area, create a new automation, rename an entity). Owner approves each exact call.",
+  "available": true,
+  "door": true
+ },
+ {
+  "id": "ha_api.edit",
+  "action": "ha-api_ha_edit",
+  "server": "ha-api",
+  "risk": "write",
+  "scope": "admin",
+  "approval": true,
+  "description": "Change an existing automation, script or scene with small exact edits (the server builds the full config). Owner approves the exact edits after seeing the diff and rendered templates.",
   "available": true,
   "door": true
  },

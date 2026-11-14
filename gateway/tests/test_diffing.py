@@ -43,3 +43,28 @@ def test_diff_endpoint_exists_and_reports_unavailable_for_other_paths(tmp_path):
     c, _ = client(tmp_path)
     r = c.post("/v1/diff", json={"kind": "rest", "method": "POST", "path": "/api/states/x", "params": {}})
     assert r.status_code == 200 and r.json()["available"] is False
+
+
+def test_plural_and_singular_section_names_are_not_a_change_and_trace_is_ignored():
+    from royva_gateway import diffing
+    old = {"id": "1", "alias": "A", "triggers": [{"x": 1}], "conditions": [], "actions": [{"y": 2}], "trace": {"stored_traces": 5}}
+    new = {"alias": "A", "trigger": [{"x": 1}], "condition": [], "action": [{"y": 2}]}
+    assert diffing.json_diff(old, new)["lines"] == []
+    new["action"] = [{"y": 3}]
+    assert [l for l in diffing.json_diff(old, new)["lines"] if "actions" in l]
+
+
+def test_edit_preview_uses_the_same_rules_as_the_tool_server():
+    from royva_gateway import diffing
+    stored = {"id": "1", "alias": "A", "variables": {"msg": "Parked."}}
+    ce = diffing._config_edit()
+    args = {"domain": "automation", "id": "1", "version": ce.version(stored), "edits": [{"op": "append", "path": "variables.msg", "text": " {{ 1 }}"}]}
+    out = diffing.preview_edit(args, lambda p: stored, lambda t: {"ok": True, "text": "https://maps?q=1,2"})
+    assert out["ok"] and len(out["lines"]) == 1 and "variables.msg" in out["lines"][0]
+    assert out["renders"][0]["status"] == "ok"
+    stale = diffing.preview_edit({**args, "version": "old"}, lambda p: stored, None)
+    assert not stale["ok"] and "changed since" in stale["problem"]
+    unreadable = diffing.preview_edit(args, lambda p: None, None)
+    assert not unreadable["ok"] and "could not read" in unreadable["problem"]
+    bad = diffing.preview_edit(args, lambda p: stored, lambda t: {"ok": False, "error": "from_json got invalid input"})
+    assert not bad["ok"] and "does not render" in bad["problem"] and bad["lines"]          # the diff is still shown, Approve is not offered

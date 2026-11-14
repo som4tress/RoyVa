@@ -74,6 +74,7 @@ def load(place: str = "", user_person: str = "") -> dict[str, str]:
 
 # ---------------------------------------------------------------- where the user is right now (per-message context; privacy: city-level only)
 import json as _json
+import urllib.error as _urlerr
 import urllib.request as _urlreq
 
 
@@ -89,6 +90,23 @@ def _rest_get(path: str):
             return _json.load(r)
     except Exception:                                               # noqa: BLE001
         return None
+
+
+def _render_template(text: str) -> dict:
+    """Render a template through Home Assistant (same connection as _rest_get). {"ok": bool, "text" | "error"}."""
+    sys.path.insert(0, str(HA_HELPER_DIR))
+    import ha_registry                                              # noqa: E401
+    ws_url, token = ha_registry._connection()
+    base = ws_url.replace("wss://", "https://").replace("ws://", "http://").replace("/api/websocket", "")
+    req = _urlreq.Request(base + "/api/template", data=_json.dumps({"template": text}).encode(), method="POST",
+                          headers={"Authorization": f"Bearer {token}", "content-type": "application/json"})
+    try:
+        with _urlreq.urlopen(req, timeout=10) as r:
+            return {"ok": True, "text": r.read().decode("utf-8", "replace")}
+    except _urlerr.HTTPError as e:
+        return {"ok": False, "error": e.read().decode("utf-8", "replace")[:300]}
+    except Exception as e:                                          # noqa: BLE001
+        return {"ok": False, "error": f"could not reach Home Assistant: {str(e)[:120]}"}
 
 
 def person_place(person: str, fetch=_rest_get, sensor: str = "") -> dict:
