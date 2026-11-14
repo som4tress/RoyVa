@@ -145,3 +145,16 @@ def test_value_is_accepted_for_text_operations_but_text_is_never_taken_for_set()
     assert edit({"op": "append", "path": "alias", "value": "!"})["config"]["alias"] == "Ford!"
     with pytest.raises(ce.EditError):
         edit({"op": "set", "path": "mode", "text": "single"})                      # set still needs value
+
+
+def test_an_unknown_function_is_reported_as_such_not_hidden_behind_a_placeholder():
+    def render(text):
+        if "{% set from_dict" in text:
+            return {"ok": False, "error": "TypeError: 'dict' object is not callable"}          # what a placeholder would have turned it into
+        return {"ok": False, "error": "UndefinedError: 'from_dict' is undefined"}
+    out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ from_dict(x) }}"}], render)
+    assert out["renders"][0]["status"] == "error" and "not a Home Assistant template function" in out["problems"][0]
+    assert "value | from_dict" in out["problems"][0] and "dict" not in out["problems"][0].replace("from_dict", "")
+    var = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ decision.basis }}"}],
+                  lambda t: {"ok": True, "text": "x"} if "{% set decision" in t else {"ok": False, "error": "UndefinedError: 'decision' is undefined"})
+    assert var["renders"][0]["status"] == "ok" and var["renders"][0]["placeholders"] == ["decision"]          # a variable is still given a placeholder

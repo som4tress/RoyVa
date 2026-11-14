@@ -311,6 +311,7 @@ EDIT = {"name": "ha_edit",
         "description": "Change an EXISTING automation, script or scene with small exact edits; the server loads the saved config, applies your edits and saves it, so never retype the whole config. "
                        "First call ha_read with kind 'config' (domain + name) to get its id, version and current config, then ha_read kind 'check_edit' with your edits and fix anything it reports; call this tool only when the check has no problems. Send edits, each {op, path, ...}: "
                        "append or prepend (path, text) add text to a string field; replace (path, find, text) swaps one piece of text that occurs exactly once; set (path, value) replaces a value. "
+                       "To add something at the start and at the end of a field, use two edits, a prepend and an append, with short text. Keep `find` to a few distinctive words, never the whole field: copying a long text exactly is how edits fail. "
                        "path is dotted with list positions, e.g. variables.notification_message or actions.0.then.1.data.message, and must already exist (copy it from the config you read). "
                        "Templates you add are rendered by Home Assistant before the owner is asked. The owner approves the exact edits first. "
                        "If a call is refused, do not try another route and never look for tokens or credentials: fix the edit or stop and tell the owner what is blocked.",

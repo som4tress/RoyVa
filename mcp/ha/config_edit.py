@@ -186,6 +186,11 @@ def _render_with_placeholders(text: str, render: Callable[[str], dict]):
         m = UNDEFINED_NAME.search(str(r.get("error", "")))
         if not m or m.group(1) in names:
             return r, names
+        if re.search(r"(?<![\w.])" + re.escape(m.group(1)) + r"\s*\(", text):
+            # It is CALLED, so it is a function that does not exist, not a missing variable. A placeholder would turn the error into the
+            # misleading "dict is not callable", so report it as what it is. (No word "undefined" in the message: that word means "needs context".)
+            n = m.group(1)
+            return {"ok": False, "error": f"{n}(...) is not a Home Assistant template function; if {n} exists as a filter, write it as: value | {n}"}, names
         names.append(m.group(1))
     return r, names
 
