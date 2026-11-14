@@ -170,6 +170,26 @@ def _exists(node: Any, steps: list) -> bool:
         return False
 
 
+UNDEFINED_NAME = re.compile(r"'(\w+)' is undefined")
+LINK_THEN_PUNCT = re.compile(r"https?://\S*[.,;:!?)\]}'\"]+(?=\s|$)")
+
+
+def _render_with_placeholders(text: str, render: Callable[[str], dict]):
+    """A piece of template that uses the automation's own variables (current, decision, trigger...) cannot render alone. Give each such name an empty
+    placeholder and try again, so the piece can still be rendered and its output read. Returns (result, [placeholder names])."""
+    names: list = []
+    r: dict = {}
+    for _ in range(8):
+        r = render("".join("{% set " + n + " = {} %}" for n in names) + text)
+        if r.get("ok"):
+            return r, names
+        m = UNDEFINED_NAME.search(str(r.get("error", "")))
+        if not m or m.group(1) in names:
+            return r, names
+        names.append(m.group(1))
+    return r, names
+
+
 def check_templates(templates: list, render: Optional[Callable[[str], dict]]) -> dict:
     """Render each inserted piece of template on its own through `render(text) -> {"ok": bool, "text"|"error": str}`.
     A piece that refers to variables that only exist inside the automation (trigger, current...) cannot be rendered alone: that is reported, not blamed.
@@ -180,15 +200,17 @@ def check_templates(templates: list, render: Optional[Callable[[str], dict]]) ->
             out.append({**t, "status": "skipped"})
             continue
         try:
-            r = render(t["text"])
+            r, stubs = _render_with_placeholders(t["text"], render)
         except Exception as exc:                                      # noqa: BLE001
-            r = {"ok": False, "error": str(exc)[:200]}
+            r, stubs = {"ok": False, "error": str(exc)[:200]}, []
+        if r.get("ok") and LINK_THEN_PUNCT.search(str(r.get("text", ""))):
+            warnings.append(f"a link in the text added at {t['path']} is followed by a punctuation character, which becomes part of the link when it is tapped")
         if r.get("ok") and not str(r.get("text", "")).strip():
             # Renders fine but to nothing: legal, yet usually means the entity or attribute it reads does not exist (an 'ok' that shows blank is not a pass).
             out.append({**t, "status": "empty", "rendered": ""})
             warnings.append(f"the text added at {t['path']} renders to nothing right now: if that is not intended, the sensor or attribute it reads may not exist (read its real state first)")
         elif r.get("ok"):
-            out.append({**t, "status": "ok", "rendered": str(r.get("text", ""))[:300]})
+            out.append({**t, "status": "ok", "rendered": str(r.get("text", ""))[:300], **({"placeholders": stubs} if stubs else {})})
         elif re.search(r"undefined", str(r.get("error", "")), re.I):
             out.append({**t, "status": "needs_context", "error": str(r.get("error", ""))[:200]})
         else:

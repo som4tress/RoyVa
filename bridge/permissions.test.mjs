@@ -183,3 +183,12 @@ test('a blank render is shown as a warning on the edit card but does not disable
   assert.match(text, /\/approve or \/deny/);
   assert.equal(editBlocked({preview: blank}), false);
 });
+
+test('placeholders and link warnings appear on the edit card', () => {
+  const pv = {...goodPreview, warnings: ['a link in the text added at variables.msg is followed by a punctuation character'],
+    renders: [{path: 'variables.msg', status: 'ok', rendered: 'In PARK.\nhttps://maps?q=1,2.', placeholders: ['decision', 'current']}]};
+  const text = formatPermission(editCall, [], undefined, {preview: pv});
+  assert.match(text, /with empty placeholders for decision, current/);
+  assert.match(text, /followed by a punctuation character/);
+  assert.match(text, /\/approve or \/deny/);
+});

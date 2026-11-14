@@ -106,11 +106,12 @@ function formatEdit(args, extra) {
   out.push('Edits:', ...edits.slice(0, 10).map(e => `• ${line(e).slice(0, 200)}`));
   if (pv?.lines) out.push(pv.lines.length ? 'Changes compared with what is saved now:' : 'No difference from what is saved now.', ...pv.lines.slice(0, DIFF_SHOWN), ...(pv.lines.length > DIFF_SHOWN ? [`… and ${pv.lines.length - DIFF_SHOWN} more`] : []));
   for (const r of pv?.renders || []) {
-    if (r.status === 'ok') out.push(`Renders now at ${line(r.path)}: ${line(r.rendered).slice(0, 200)}`);
+    if (r.status === 'ok') out.push(`Renders now at ${line(r.path)}${r.placeholders?.length ? ` (with empty placeholders for ${r.placeholders.map(line).join(', ')})` : ''}: ${line(r.rendered).slice(0, 240)}`);
     else if (r.status === 'empty') out.push(`⚠ Added text at ${line(r.path)} renders to NOTHING right now: the sensor or attribute it reads may not exist. Consider denying.`);
     else if (r.status === 'needs_context') out.push(`Added text at ${line(r.path)} uses the automation's own variables, so it could not be tested alone.`);
     else if (r.status === 'error') out.push(`⚠ Added text at ${line(r.path)} fails: ${line(r.error).slice(0, 200)}`);
   }
+  for (const w of pv?.warnings || []) out.push(`⚠ ${line(w).slice(0, 300)}`);
   if (!pv) out.push('⚠ Could not build a preview of this edit, so it cannot be reviewed.');
   else if (pv.problem) out.push(`⚠ ${line(pv.problem).slice(0, 300)}`);
   out.push(editBlocked(extra) ? 'Approve is disabled: /deny' : '/approve or /deny (this edit only)');

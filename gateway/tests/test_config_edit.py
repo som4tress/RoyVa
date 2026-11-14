@@ -116,3 +116,24 @@ def test_templates_inside_a_whole_section_value_are_still_collected_and_the_card
 def test_an_ok_render_that_is_blank_is_a_warning_not_a_pass():
     out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": " {{ state_attr('sensor.x', 'lat') or '' }}"}], lambda t: {"ok": True, "text": " "})
     assert out["problems"] == [] and out["renders"][0]["status"] == "empty" and "renders to nothing" in out["warnings"][0]
+
+
+def test_text_that_uses_the_automations_own_variables_is_rendered_with_placeholders_and_a_trailing_dot_after_a_link_is_flagged():
+    seen = []
+    def render(text):
+        seen.append(text)
+        for name in ("decision", "current"):
+            if name in text.split("%}")[-1] and "{% set " + name not in text:
+                return {"ok": False, "error": "UndefinedError: '" + name + "' is undefined"}
+        return {"ok": True, "text": "In PARK. Battery: 77%.\nhttps://www.google.com/maps?q=37.4,-121.9."}
+    out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ decision.basis }}{{ current }}"}], render)
+    r = out["renders"][0]
+    assert r["status"] == "ok" and r["placeholders"] == ["decision", "current"] and "37.4" in r["rendered"]
+    assert out["problems"] == [] and any("punctuation" in w for w in out["warnings"])          # the 2026-11-14 'extra character at the end' bug
+    clean = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ 1 }}"}], lambda t: {"ok": True, "text": "see https://maps?q=1,2\nBattery 5%."})
+    assert clean["warnings"] == []
+
+
+def test_a_name_that_stays_undefined_is_still_reported_as_needing_context():
+    out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ x }}"}], lambda t: {"ok": False, "error": "UndefinedError: 'x' is undefined"})
+    assert out["renders"][0]["status"] == "needs_context" and out["problems"] == []
