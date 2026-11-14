@@ -119,3 +119,22 @@ def test_a_large_automation_write_is_not_refused_for_size(monkeypatch):
     assert out.get("dry_run") and "error" not in out
     huge = {"alias": "t", "variables": {"decision": "x" * 120_000}}
     assert "larger than" in ha.ha_write({"kind": "rest", "path": "/api/config/automation/config/x", "params": huge})["error"]
+
+
+def test_config_item_is_found_by_name_with_its_id_resolved_server_side():
+    states = [{"entity_id": "automation.ford_update", "state": "on", "attributes": {"friendly_name": "Ford Update", "id": "1792893750683"}},
+              {"entity_id": "automation.other", "state": "on", "attributes": {"friendly_name": "Other", "id": "2"}},
+              {"entity_id": "script.ford_update_now", "state": "off", "attributes": {"friendly_name": "Ford update now"}}]
+    seen = []
+    def rest(method, path, body=None):
+        seen.append((method, path))
+        return {"http_status": 200, "body": states if path == "/api/states" else {"id": "1792893750683", "alias": "Ford Update"}}
+    out = ha.ha_read({"kind": "config", "domain": "automation", "name": "ford update"}, rest=rest)
+    assert out["id"] == "1792893750683" and out["read"]["body"]["alias"] == "Ford Update"
+    assert seen == [("GET", "/api/states"), ("GET", "/api/config/automation/config/1792893750683")]          # reads only
+    scr = ha.ha_read({"kind": "config", "domain": "script", "name": "ford update"}, rest=rest)
+    assert scr["config_path"] == "/api/config/script/config/ford_update_now"          # scripts are keyed by object id
+    two = ha.ha_read({"kind": "config", "domain": "automation", "name": ""}, rest=rest)
+    assert len(two["matches"]) == 2 and "read" not in two
+    assert "no automation" in ha.ha_read({"kind": "config", "domain": "automation", "name": "zzz"}, rest=rest)["error"]
+    assert "domain" in ha.ha_read({"kind": "config", "domain": "light", "name": "x"}, rest=rest)["error"]

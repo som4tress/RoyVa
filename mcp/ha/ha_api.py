@@ -48,7 +48,9 @@ def check_read(kind: str, target: str, method: str = "GET", params: dict = None)
         if method.upper() != "GET":
             return "only GET is allowed here; use ha_write for anything else"
         return None if target.startswith("/api/") else "REST paths must start with /api/"
-    return "kind must be 'ws' or 'rest'"
+    if kind == "config":
+        return None
+    return "kind must be 'ws', 'rest' or 'config'"
 
 
 MAX_CALL = 100_000
@@ -154,8 +156,41 @@ def _target(args):
     return kind, str(t or ""), str(args.get("method") or "GET").upper(), dict(args.get("params") or {})
 
 
+CONFIG_DOMAINS = ("automation", "script", "scene")
+
+
+def find_config(domain, name, rest=_rest):
+    """Home Assistant has no list endpoint for automation/script/scene configs and the config path needs an id the model cannot guess.
+    Resolve it here: match entity states by name, take the stored id, read the saved config. Several matches are returned as a short list to choose from."""
+    if domain not in CONFIG_DOMAINS:
+        return {"error": f"domain must be one of {', '.join(CONFIG_DOMAINS)}"}
+    states = rest("GET", "/api/states")
+    body = states.get("body")
+    if not isinstance(body, list):
+        return {"error": "could not read entity states", "detail": states}
+    want = norm(name)
+    hits = []
+    for st in body:
+        eid = st.get("entity_id", "")
+        if not eid.startswith(domain + "."):
+            continue
+        attrs = st.get("attributes") or {}
+        if want and want not in norm(attrs.get("friendly_name", "")) and want not in norm(eid):
+            continue
+        hits.append({"entity_id": eid, "name": attrs.get("friendly_name"), "id": attrs.get("id") or eid.split(".", 1)[1], "state": st.get("state")})
+    if not hits:
+        return {"error": f"no {domain} matches '{name}'", "hint": f"try fewer words of the name, or list the {domain} entities with ha_read rest /api/states and contains '{domain}.'"}
+    if len(hits) > 1:
+        return {"matches": hits[:20], "hint": "several matched: call again with a more exact name"}
+    hit = hits[0]
+    cfg = rest("GET", f"/api/config/{domain}/config/{hit['id']}")
+    return _cap({**hit, "config_path": f"/api/config/{domain}/config/{hit['id']}", "read": cfg})
+
+
 def ha_read(args, ws=_ws, rest=_rest):
     kind, target, method, params = _target(args)
+    if kind == "config":
+        return find_config(str(args.get("domain") or ""), str(args.get("name") or ""), rest)
     bad = check_read(kind, target, method)
     if bad:
         return {"error": bad}
@@ -185,9 +220,11 @@ def ha_write(args, ws=_ws, rest=_rest):
 READ = {"name": "ha_read",
         "description": "Read anything from Home Assistant's own API that no other tool exposes: registries (areas, devices, entities, floors, labels), "
                        "automation/script/scene config, services, history. Registries are big: always narrow list results with contains (e.g. a device name), fields and limit. kind 'ws' with type (e.g. config/device_registry/list) or kind 'rest' with path (e.g. /api/config/automation/config/<id>). "
-                       "There is NO list endpoint for automation/script/scene config: find the item's id first as the 'id' attribute of its entity (rest /api/states, narrowed with contains, or the entity's state), then read /api/config/automation/config/<id> (script/scene likewise). Do not guess other paths. "
+                       "To read an automation, script or scene config by name use kind 'config' with domain and name (the lookup of its id is done for you; HA has no list endpoint for these). "
                        "Cannot change anything.",
-        "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest"]},
+        "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest", "config"]},
+                                                         "domain": {"type": "string", "enum": list(CONFIG_DOMAINS), "description": "kind config: automation, script or scene."},
+                                                         "name": {"type": "string", "description": "kind config: part of the item's name, e.g. 'ford update'."},
                                                          "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
                                                          "path": {"type": "string", "description": "REST path starting with /api/ (kind rest)."},
                                                          "params": {"type": "object", "description": "Extra command fields (ws) or query-free options."},
