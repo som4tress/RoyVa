@@ -225,3 +225,23 @@ def test_config_lookup_returns_the_version_needed_for_an_edit():
     states = [{"entity_id": "automation.ford", "state": "on", "attributes": {"friendly_name": "Ford", "id": "17"}}]
     out = ha.ha_read({"kind": "config", "domain": "automation", "name": "ford"}, rest=lambda m, p, b=None: {"http_status": 200, "body": states if p == "/api/states" else STORED})
     assert out["version"] == ha.config_edit.version(STORED) and "ha_edit" in out["next"]
+
+
+def test_check_edit_reports_problems_to_the_model_and_saves_nothing():
+    fake = FakeHA(STORED)
+    ok = ha.ha_read({"kind": "check_edit", **{k: v for k, v in _edit_args().items()}}, rest=fake)
+    assert ok["ok"] is True and ok["changes"] and "call ha_edit" in ok["next"]
+    bad_path = ha.ha_read({"kind": "check_edit", **_edit_args(edits=[{"op": "append", "path": "variable.msg", "text": "x"}])}, rest=fake)
+    assert bad_path["ok"] is False and "nothing at variable.msg" in bad_path["problem"]                # the 2026-11-14 slip, now fixable by the model itself
+    stale = ha.ha_read({"kind": "check_edit", **_edit_args(version="old")}, rest=fake)
+    assert stale["ok"] is False and "changed since" in stale["problem"]
+    broken = ha.ha_read({"kind": "check_edit", **_edit_args()}, rest=FakeHA(STORED, render_ok=False))
+    assert broken["ok"] is False and "does not render" in broken["problems"][0]
+    assert all(m == "GET" or p == "/api/template" for m, p in fake.calls)                              # never a save
+
+
+def test_a_big_config_keeps_the_fields_the_next_step_needs():
+    big = {**STORED, "variables": {"msg": "x" * 40_000}}
+    states = [{"entity_id": "automation.ford", "state": "on", "attributes": {"friendly_name": "Ford", "id": "17"}}]
+    out = ha.ha_read({"kind": "config", "domain": "automation", "name": "ford"}, rest=lambda m, p, b=None: {"http_status": 200, "body": states if p == "/api/states" else big})
+    assert out["version"] == ha.config_edit.version(big) and out["id"] == "17" and "check_edit" in out["next"] and out["read"].get("truncated")

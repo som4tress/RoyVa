@@ -69,6 +69,18 @@ def _locate(cfg: Any, steps: list, shown: str):
     return node, (steps[-1] if isinstance(node, list) else str(steps[-1]))
 
 
+def _strings(value: Any, label: str):
+    """Every string inside a value (nested lists/dicts too) with its path, so template text hidden in a `set` value is still checked."""
+    if isinstance(value, str):
+        yield label, value
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            yield from _strings(v, f"{label}.{k}")
+    elif isinstance(value, list):
+        for i, v in enumerate(value):
+            yield from _strings(v, f"{label}.{i}")
+
+
 def _clip(text: str, n: int = 80) -> str:
     text = text.replace("\n", "\\n")
     return text if len(text) <= n else text[: n - 1] + "…"
@@ -112,9 +124,9 @@ def apply_edits(cfg: dict, edits: Any) -> dict:
             else:
                 raise EditError(f"edit {n}: cannot set {label}")
             value = e["value"]
-            changes.append(f"set {label}: {_clip(json.dumps(old) if not isinstance(old, str) else old)} -> {_clip(json.dumps(value) if not isinstance(value, str) else value)}")
-            if isinstance(value, str) and TEMPLATE_MARK.search(value):
-                templates.append({"path": label, "text": value})
+            whole = isinstance(old, (dict, list)) and isinstance(value, (dict, list))
+            changes.append(f"set {label}{' (replaces a whole section)' if whole else ''}: {_clip(json.dumps(old) if not isinstance(old, str) else old)} -> {_clip(json.dumps(value) if not isinstance(value, str) else value)}")
+            templates.extend({"path": where, "text": text} for where, text in _strings(value, label) if TEMPLATE_MARK.search(text))
             continue
         parent, key = _locate(new, steps, label)
         current = parent[key]

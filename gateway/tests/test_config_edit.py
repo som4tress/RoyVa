@@ -105,3 +105,9 @@ def test_plain_text_edits_are_not_rendered():
     called = []
     out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "set", "path": "alias", "value": "New name"}], lambda t: called.append(t) or {"ok": True, "text": ""})
     assert not called and out["renders"] == []
+
+
+def test_templates_inside_a_whole_section_value_are_still_collected_and_the_card_says_it_replaces_a_section():
+    out = edit({"op": "set", "path": "variables", "value": {"msg": "{{ states('sensor.a') }}", "n": ["{% if x %}y{% endif %}", "plain"]}})
+    assert {t["path"] for t in out["templates"]} == {"variables.msg", "variables.n.0"}
+    assert "replaces a whole section" in out["changes"][0]

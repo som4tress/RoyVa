@@ -49,9 +49,9 @@ def check_read(kind: str, target: str, method: str = "GET", params: dict = None)
         if method.upper() != "GET":
             return "only GET is allowed here; use ha_write for anything else"
         return None if target.startswith("/api/") else "REST paths must start with /api/"
-    if kind == "config":
+    if kind in ("config", "check_edit"):
         return None
-    return "kind must be 'ws', 'rest' or 'config'"
+    return "kind must be 'ws', 'rest', 'config' or 'check_edit'"
 
 
 MAX_CALL = 100_000
@@ -189,14 +189,16 @@ def find_config(domain, name, rest=_rest):
     hit = hits[0]
     cfg = rest("GET", f"/api/config/{domain}/config/{hit['id']}")
     ver = config_edit.version(cfg["body"]) if cfg.get("http_status") == 200 and isinstance(cfg.get("body"), dict) else None
-    return _cap({**hit, "version": ver, "config_path": f"/api/config/{domain}/config/{hit['id']}", "read": cfg,
-                 "next": "to change it use ha_edit with this domain, id and version and a list of small edits; do not retype the whole config"})
+    return {**hit, "version": ver, "config_path": f"/api/config/{domain}/config/{hit['id']}", "read": _cap(cfg),      # only the config body is capped, never the fields the next step needs
+            "next": "to change it: first ha_read kind check_edit with this domain, id, version and your edits (it saves nothing and tells you what is wrong); call ha_edit only when it reports no problems. Do not retype the whole config"}
 
 
 def ha_read(args, ws=_ws, rest=_rest):
     kind, target, method, params = _target(args)
     if kind == "config":
         return find_config(str(args.get("domain") or ""), str(args.get("name") or ""), rest)
+    if kind == "check_edit":
+        return check_edit(args, rest)
     bad = check_read(kind, target, method)
     if bad:
         return {"error": bad}
@@ -220,6 +222,22 @@ def render_template(text, rest=_rest):
     if out.get("http_status") == 200:
         return {"ok": True, "text": body if isinstance(body, str) else json.dumps(body)}
     return {"ok": False, "error": str(body)[:300]}
+
+
+def check_edit(args, rest=_rest):
+    """Dry check of an edit, same code as ha_edit and as the approval card, saving nothing. Lets the model fix a bad path or template itself
+    instead of the owner meeting a card that cannot be approved."""
+    try:
+        domain, item_id = str(args.get("domain") or ""), str(args.get("id") or "")
+        path = config_edit.config_path(domain, item_id)
+        got = rest("GET", path)
+        if got.get("http_status") != 200 or not isinstance(got.get("body"), dict):
+            return {"ok": False, "problem": f"could not read {domain} {item_id} (http {got.get('http_status')})"}
+        plan = config_edit.plan(got["body"], args.get("version"), args.get("edits"), lambda t: render_template(t, rest))
+    except config_edit.EditError as exc:
+        return {"ok": False, "problem": str(exc)}
+    return {"ok": not plan["problems"], "problems": plan["problems"], "changes": plan["changes"], "renders": plan["renders"],
+            "next": "no problems: call ha_edit with exactly these edits" if not plan["problems"] else "fix the edits and check again"}
 
 
 def ha_edit(args, rest=_rest):
@@ -270,9 +288,12 @@ def ha_write(args, ws=_ws, rest=_rest):
 READ = {"name": "ha_read",
         "description": "Read anything from Home Assistant's own API that no other tool exposes: registries (areas, devices, entities, floors, labels), "
                        "automation/script/scene config, services, history. Registries are big: always narrow list results with contains (e.g. a device name), fields and limit. kind 'ws' with type (e.g. config/device_registry/list) or kind 'rest' with path (e.g. /api/config/automation/config/<id>). "
-                       "To read an automation, script or scene config by name use kind 'config' with domain and name (the lookup of its id is done for you; HA has no list endpoint for these). "
+                       "To read an automation, script or scene config by name use kind 'config' with domain and name (the lookup of its id is done for you; HA has no list endpoint for these). To test an edit before asking the owner use kind 'check_edit' (domain, id, version, edits): it saves nothing. "
                        "Cannot change anything.",
-        "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest", "config"]},
+        "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest", "config", "check_edit"]},
+                                                         "id": {"type": "string", "description": "kind check_edit: the item's id from kind config."},
+                                                         "version": {"type": "string", "description": "kind check_edit: the version from kind config."},
+                                                         "edits": {"type": "array", "items": {"type": "object"}, "description": "kind check_edit: the edits you plan to send to ha_edit."},
                                                          "domain": {"type": "string", "enum": list(CONFIG_DOMAINS), "description": "kind config: automation, script or scene."},
                                                          "name": {"type": "string", "description": "kind config: part of the item's name, e.g. 'ford update'."},
                                                          "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
@@ -286,7 +307,7 @@ READ = {"name": "ha_read",
         "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}}
 EDIT = {"name": "ha_edit",
         "description": "Change an EXISTING automation, script or scene with small exact edits; the server loads the saved config, applies your edits and saves it, so never retype the whole config. "
-                       "First call ha_read with kind 'config' (domain + name) to get its id, version and current config. Then send edits, each {op, path, ...}: "
+                       "First call ha_read with kind 'config' (domain + name) to get its id, version and current config, then ha_read kind 'check_edit' with your edits and fix anything it reports; call this tool only when the check has no problems. Send edits, each {op, path, ...}: "
                        "append or prepend (path, text) add text to a string field; replace (path, find, text) swaps one piece of text that occurs exactly once; set (path, value) replaces a value. "
                        "path is dotted with list positions, e.g. variables.notification_message or actions.0.then.1.data.message, and must already exist (copy it from the config you read). "
                        "Templates you add are rendered by Home Assistant before the owner is asked. The owner approves the exact edits first. "
