@@ -132,7 +132,7 @@ def apply_edits(cfg: dict, edits: Any) -> dict:
         current = parent[key]
         if not isinstance(current, str):
             raise EditError(f"edit {n}: {label} is not text, so {op} cannot be used on it (use set)")
-        text = e.get("text")
+        text = e.get("text", e.get("value"))      # for the text operations "value" can only mean the text (models mix the two keys up)
         if not isinstance(text, str) or not text or len(text) > MAX_TEXT:
             raise EditError(f"edit {n}: {op} needs a non-empty text")
         if op == "replace":

@@ -137,3 +137,11 @@ def test_text_that_uses_the_automations_own_variables_is_rendered_with_placehold
 def test_a_name_that_stays_undefined_is_still_reported_as_needing_context():
     out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": "{{ x }}"}], lambda t: {"ok": False, "error": "UndefinedError: 'x' is undefined"})
     assert out["renders"][0]["status"] == "needs_context" and out["problems"] == []
+
+
+def test_value_is_accepted_for_text_operations_but_text_is_never_taken_for_set():
+    out = edit({"op": "replace", "path": "variables.msg", "find": "Parked", "value": "Stopped"})
+    assert out["config"]["variables"]["msg"].startswith("Stopped.")
+    assert edit({"op": "append", "path": "alias", "value": "!"})["config"]["alias"] == "Ford!"
+    with pytest.raises(ce.EditError):
+        edit({"op": "set", "path": "mode", "text": "single"})                      # set still needs value
