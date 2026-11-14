@@ -33,3 +33,24 @@ test('the hard ceiling still applies', () => {
   const rows = Array.from({length: HARD_ROUNDS + 1}, (_, n) => round(call('t', {n})));
   assert.match(loopVerdict(rows), /rounds/);
 });
+
+// ---- approval-gated tools: a refusal means "blocked", not "try another route" (the 2026-11-13 Ford edit burned 28 rounds this way)
+const result = (name, text, input = {}) => ({type: 'tool', name, state: {input, status: 'completed', content: [{type: 'text', text}]}});
+const refusal = name => result(name, JSON.stringify({error: 'that command reads or uses credentials'}), {n: Math.random()});
+
+test('two refused gated calls in a row stop the run, even with reads in between', () => {
+  const rows = [round(refusal('ha-api_ha_write')), round(call('ha-api_ha_read', {path: '/api/states'})), round(refusal('machine_run_approved'))];
+  assert.match(loopVerdict(rows), /refused calls in a row/);
+});
+
+test('one refusal followed by a call that works is fine, and Home Assistant errors are not refusals', () => {
+  const ok = result('ha-api_ha_write', JSON.stringify({done: {}, http_status: 200}), {a: 1});
+  assert.equal(loopVerdict([round(refusal('ha-api_ha_write')), round(ok)]), null);
+  const haError = n => result('ha-api_ha_write', JSON.stringify({done: {}, http_status: 400, body: 'bad'}), {n});
+  assert.equal(loopVerdict([round(haError(1)), round(haError(2)), round(haError(3))]), null);
+});
+
+test('refusals from tools that are not approval-gated do not count', () => {
+  const r = n => result('ha-history_get_visited_locations', JSON.stringify({error: 'person must be one of'}), {n});
+  assert.equal(loopVerdict([round(r(1)), round(r(2)), round(r(3))]), null);
+});

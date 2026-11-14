@@ -51,6 +51,9 @@ def check_read(kind: str, target: str, method: str = "GET", params: dict = None)
     return "kind must be 'ws' or 'rest'"
 
 
+MAX_CALL = 100_000
+
+
 def check_write(kind: str, target: str, method: str, params: dict):
     if params and ({"type", "id"} & set(params)):
         return "params may not set 'type' or 'id'; the command is given by the target"
@@ -61,8 +64,8 @@ def check_write(kind: str, target: str, method: str, params: dict):
     if kind not in ("ws", "rest"):
         return "kind must be 'ws' or 'rest'"
     blob = json.dumps(params or {}) + " " + target
-    if len(blob) > 3000:
-        return "call is too long for the owner to review in full; split it into smaller steps"
+    if len(blob) > MAX_CALL:     # a long call is fine: the approval card attaches it as a file. This is only a sanity ceiling.
+        return f"call is larger than {MAX_CALL} characters; split it into smaller steps"
     hits = [n for n in protected_names() if n in norm(blob)]
     if hits and len(set(re.findall(r"\b[a-z_]+\.[a-z0-9_]+\b", blob.lower()))) > 1:
         return "a protected device is part of a multi-target change; change it on its own, with explicit approval"
@@ -184,7 +187,7 @@ READ = {"name": "ha_read",
 WRITE = {"name": "ha_write",
          "description": "Change something through Home Assistant's own API: assign a device to an area (config/device_registry/update with device_id and area_id), "
                         "create or edit an automation (rest POST /api/config/automation/config/<id>), rename an entity, call a service. The owner approves the exact call first; "
-                        "look up ids with ha_read before calling, and read the result back afterwards to verify.",
+                        "look up ids with ha_read before calling, and read the result back afterwards to verify. A save REPLACES the whole stored config, so send the complete config with your change in it (a long one is fine: the owner gets it as an attached file with a list of the changes). If a call is refused, do not try another route and never look for tokens or credentials: stop and tell the owner what is blocked.",
          "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest"]},
                                                           "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
                                                           "path": {"type": "string", "description": "REST path starting with /api/ (kind rest)."},

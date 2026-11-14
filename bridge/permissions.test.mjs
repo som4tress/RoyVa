@@ -55,7 +55,8 @@ test('arbitrary-power tools show the whole call and are never batch-approved', (
   assert.match(out, /this call only/);
   assert.equal(approvalKey(p('machine_run_approved')), null);
   const long = formatPermission({action: 'ha-api_ha_write', metadata: {input: {params: 'x'.repeat(5000)}}});
-  assert.match(long, /Too long to review/);
+  assert.match(long, /could not be attached/);              // a long call that was not attached can never be approved from its card
+  assert.doesNotMatch(long, /x{100}/);                      // and is never shown truncated
 });
 
 const writeCall = params => ({action: 'ha-api_ha_write', metadata: {input: {kind: 'ws', type: 'config/device_registry/update', params}}});
@@ -99,4 +100,43 @@ test('the remote takeover config never contains the owner-only doors', () => {
   assert.equal(out.other, 1);
   assert.ok(cfg.mcp.servers.machine);                         // the live config object is untouched
   assert.doesNotThrow(() => withoutOwnerDoors({}));
+});
+
+// ---- big approval calls: attached as a file, never refused for size, approval tied to the exact call
+import {fullCallFile, callHash} from './permissions.mjs';
+const bigWrite = text => ({id: 'p1', action: 'ha-api_ha_write', metadata: {input: {kind: 'rest', method: 'POST', path: '/api/config/automation/config/1', params: {alias: 'A', variables: {decision: text}}}}});
+
+test('a long ha_write is attached as a file (with the full content), a short one is not', () => {
+  const file = fullCallFile(bigWrite('x'.repeat(6000)));
+  assert.ok(file && file.name.endsWith('.json') && file.content.includes('x'.repeat(6000)));
+  assert.equal(fullCallFile(bigWrite('short')), null);
+  assert.equal(fullCallFile({id: 'p', action: 'ha-turn_on', metadata: {input: {}}}), null);
+});
+
+test('the card for a long call says it is attached, shows the diff, and no longer says deny-and-split', () => {
+  const card = formatPermission(bigWrite('x'.repeat(6000)), [], undefined, {attached: true, diff: ['+ variables.map_link: "…"', '~ variables.msg: \'a\' -> \'b\'']});
+  assert.match(card, /attached above as a file/);
+  assert.match(card, /Changes compared with what is saved now:\n\+ variables\.map_link/);
+  assert.doesNotMatch(card, /Too long|smaller step/);
+  assert.match(card, /\/approve or \/deny/);
+  assert.ok(card.length < 900);                                  // fits one Telegram message however big the call is
+});
+
+test('if a long call could not be attached, approving is disabled', () => {
+  const card = formatPermission(bigWrite('x'.repeat(6000)), [], undefined, {attached: false});
+  assert.match(card, /could not be attached/);
+  assert.match(card, /Approve is disabled/);
+  assert.doesNotMatch(card, /\/approve or \/deny/);
+});
+
+test('"no difference" and "could not compare" are stated, not silently omitted', () => {
+  assert.match(formatPermission(bigWrite('s'), [], undefined, {diff: []}), /No difference from what is saved now/);
+  assert.match(formatPermission(bigWrite('s'), [], undefined, {diff: null}), /Could not compare/);
+  assert.doesNotMatch(formatPermission(bigWrite('s'), [], undefined, {}), /compare|difference/);
+});
+
+test('the call fingerprint ignores key order and changes with any content change', () => {
+  const a = {kind: 'rest', params: {x: 1, y: [1, 2]}};
+  assert.equal(callHash(a), callHash({params: {y: [1, 2], x: 1}, kind: 'rest'}));
+  assert.notEqual(callHash(a), callHash({kind: 'rest', params: {x: 1, y: [1, 3]}}));
 });

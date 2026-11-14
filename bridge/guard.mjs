@@ -4,6 +4,10 @@ export const REPEAT_LIMIT = 3;        // the same call (same tool, same inputs) 
 export const ERROR_STREAK = 4;        // this many failed calls in a row = not getting anywhere
 export const HARD_ROUNDS = 25;        // absolute ceiling on model rounds, whatever the skill's own step count says
 export const HARD_CALLS = 80;
+export const BLOCK_STREAK = 2;       // this many policy refusals in a row from approval-gated tools = blocked: stop and report, never look for another way round
+const GATED = new Set(['ha-api_ha_write', 'machine_run', 'machine_run_approved', 'machine_remote_run', 'machine_remote_run_approved']);
+// A tool-level refusal comes back as a result that is only {"error": ...} (size, credentials, protected device, root...). Home Assistant's own answers carry http_status instead.
+const refused = part => { try { const o = JSON.parse((part.state?.content || []).find(b => b.type === 'text')?.text ?? ''); return !!o && typeof o === 'object' && Object.keys(o).length === 1 && typeof o.error === 'string'; } catch { return false; } };
 
 const toolParts = row => (row.content || []).filter(part => part.type && !SKIP.has(part.type));
 
@@ -33,6 +37,12 @@ export function loopVerdict(rows, {hardRounds = HARD_ROUNDS, hardCalls = HARD_CA
   for (const part of parts) {
     streak = part.state?.status === 'error' && part.state?.error?.type !== 'aborted' ? streak + 1 : 0;       // an interrupted call is not a failure
     if (streak >= ERROR_STREAK) return `${ERROR_STREAK} failed calls in a row`;
+  }
+  let blocked = 0;
+  for (const part of parts) {
+    if (!GATED.has(part.name) || part.state?.status !== 'completed') continue;       // reads and other tools in between do not reset the count
+    blocked = refused(part) ? blocked + 1 : 0;
+    if (blocked >= BLOCK_STREAK) return `${BLOCK_STREAK} refused calls in a row (${part.name}): blocked, not retrying another way`;
   }
   return null;
 }

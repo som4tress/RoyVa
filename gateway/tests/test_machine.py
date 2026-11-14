@@ -32,7 +32,9 @@ def quiet(tmp_path, monkeypatch):
 def test_refusals():
     assert "root" in m.refuse("sudo ls") and "root" in m.refuse("echo hi; su -")
     assert m.refuse("ls") is None and m.refuse("echo pseudo") is None and m.refuse("ls /usr/sudoers.d") is None
-    assert "review" in m.refuse("x" * 3001) and m.refuse("") and m.refuse("a\x00b")
+    assert m.refuse("x" * 3001) is None                      # long is fine: the approval card attaches it as a file
+    assert "longer than" in m.refuse("x" * 30_001)
+    assert m.refuse("") and m.refuse("a\x00b")
 
 
 def test_local_run_is_sandboxed_and_passes_the_command_as_one_argument():
@@ -136,3 +138,12 @@ def test_sudo_by_absolute_path_is_refused():
     assert m.ROOT_CMD.search("/usr/bin/sudo ls")
     assert m.ROOT_CMD.search("echo hi; sudo ls")
     assert not m.ROOT_CMD.search("echo pseudo suffix")
+
+
+def test_commands_that_read_or_use_credentials_are_refused_with_a_stop_message():
+    for cmd in ['curl -H "Authorization: Bearer $(cat x)" http://h/api', "grep -r access_token ~/.ha-mcp/", "cat ~/llm-server/ha.env", "cat ~/.git-credentials",
+                "echo $HA_TOKEN", "find ~ -name credentials.json", "cat ~/.gmail-mcp/credentials.json"]:
+        msg = m.refuse(cmd)
+        assert msg and "credentials" in msg and "stop" in msg, cmd
+    for ok in ["ls ~/RoyVa", "free -h", "crontab -l", "systemctl --user list-timers --all", "grep -c tokenizer notes.txt"]:
+        assert m.refuse(ok) is None, ok

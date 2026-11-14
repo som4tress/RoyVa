@@ -96,3 +96,13 @@ def test_ws_command_type_wins_over_params():
     finally:
         ha.ha_ws = ha_ws_real
     assert sent["cmd"]["type"] == "config/device_registry/list"
+
+
+def test_a_large_automation_write_is_not_refused_for_size(monkeypatch):
+    """The 2026-11-13 Ford edit was refused at 3000 characters. Size is now handled by the approval card (full call attached); only a sanity ceiling remains."""
+    monkeypatch.setenv("ROYVA_DRY_RUN", "1")
+    big = {"alias": "t", "variables": {"decision": "x" * 6000}}
+    out = ha.ha_write({"kind": "rest", "path": "/api/config/automation/config/x", "params": big}, rest=lambda *a: 1 / 0)
+    assert out.get("dry_run") and "error" not in out
+    huge = {"alias": "t", "variables": {"decision": "x" * 120_000}}
+    assert "larger than" in ha.ha_write({"kind": "rest", "path": "/api/config/automation/config/x", "params": huge})["error"]

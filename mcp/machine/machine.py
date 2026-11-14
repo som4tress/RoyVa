@@ -18,7 +18,7 @@ HOME = Path.home()
 ROOT = Path(__file__).resolve().parents[2]
 LOG = Path(os.environ.get("ROYVA_MACHINE_LOG", ROOT / "runtime" / "gateway" / "machine.log"))
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", ROOT / "runtime" / "gateway" / "dry_run"))
-MAX_CMD = 3000                                   # an approval must show the whole command, so longer ones are refused
+MAX_CMD = 30_000                                 # sanity ceiling: a long command is attached to the approval card as a file, so size alone is not a reason to refuse
 MAX_OUT = 20000
 DEFAULT_TIMEOUT, MAX_TIMEOUT = 30, 120
 SAFE_PATH = "/usr/local/bin:/usr/bin:/bin"
@@ -37,13 +37,20 @@ def hosts() -> list:
     return [h.strip() for h in os.environ.get("ROYVA_REMOTE_HOSTS", "").split(",") if h.strip()]
 
 
+# A command that reads or uses credentials is never offered for approval. The model must stop and report, not look for another way in.
+CRED_CMD = re.compile(r"(access[_-]?token|api[_-]?key|\bHA_TOKEN\b|\bbearer\s|authorization\s*:|\.ha-mcp|ha-remote\.json|(?:^|[\s/'\"=])(?:api|ha|server|bot)\.env\b|\.netrc|\.git-credentials|credentials?\.json|\bid_(?:rsa|ed25519|ecdsa)\b|\.gmail-mcp)", re.I)
+CRED_REFUSAL = "that command reads or uses credentials, which is never allowed. Do not look for tokens, keys or passwords or find another way round: stop and tell the owner exactly what is blocked and why."
+
+
 def refuse(command: str):
     if not isinstance(command, str) or not command.strip():
         return "empty command"
     if len(command) > MAX_CMD:
-        return f"command is longer than {MAX_CMD} characters; the owner must be able to review it in full, so split it into smaller steps"
+        return f"command is longer than {MAX_CMD} characters; split it into smaller steps"
     if "\x00" in command:
         return "invalid command"
+    if CRED_CMD.search(command):
+        return CRED_REFUSAL
     if ROOT_CMD.search(command):
         return "root is not available. Do not use sudo or su: tell the owner the command to run themselves"
     return None
@@ -199,7 +206,7 @@ def remote_run_approved(args, runner=subprocess.run) -> dict:
     return _remote(args, False, runner)
 
 
-CMD = {"type": "string", "description": "A shell command (max 3000 characters)."}
+CMD = {"type": "string", "description": "A shell command (up to 30000 characters; long ones are attached to the approval for the owner to read)."}
 TIMEOUT = {"type": "integer", "description": "Seconds before it is stopped (default 30, max 120)."}
 HOST = {"type": "string", "description": "An allowed remote host, as user@host."}
 TOOLS = [

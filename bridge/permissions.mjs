@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 const line = value => String(value ?? '').replace(/[\x00-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g, ' ');
 function scrub(value, key = '') {
   if (typeof value === 'string') {
@@ -84,7 +85,20 @@ export function verifyIds(args, live) {
 export const permissionVerified = (permission, live) => !FULL_CALL[canonTool(permission.action)] || verifyIds(permission.metadata?.input || {}, live).verified;
 export const FULL_CALL = {'ha-api_ha_write': 'Change Home Assistant through its API:', 'machine_run_approved': 'Run on THIS machine:', 'machine_remote_run_approved': 'Run on a REMOTE machine:'};
 const FULL_LIMIT = 3500;
-export function formatPermission(permission, rows = [], live = undefined) {
+// A stable fingerprint of exactly what will run. It is taken when the card is shown and checked again when the owner approves, so what was reviewed is what runs.
+const canonical = value => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.keys(value).sort().map(k => [k, canonical(value[k])])) : value;
+export const callHash = input => createHash('sha256').update(JSON.stringify(canonical(input ?? null))).digest('hex');
+// Calls too long for a card are attached as a file instead (never truncated, never refused for size). null = fits in the card.
+export function fullCallFile(permission) {
+  const tool = canonTool(permission?.action);
+  if (!FULL_CALL[tool]) return null;
+  const input = permission.metadata?.input && typeof permission.metadata.input === 'object' ? permission.metadata.input : {};
+  const body = JSON.stringify(scrub(input), null, 1);
+  return body.length > FULL_LIMIT ? {name: `call-${callHash(input).slice(0, 8)}.json`, content: body} : null;
+}
+const DIFF_SHOWN = 25;
+// extra: {attached: bool|undefined, diff: string[]|null|undefined}. attached=false means the file was needed but could not be sent: Approve must stay disabled.
+export function formatPermission(permission, rows = [], live = undefined, extra = {}) {
   const input = permission.metadata?.input;
   const args = input && typeof input === 'object' ? input : {};
   const tool = canonTool(permission.action);
@@ -104,9 +118,16 @@ export function formatPermission(permission, rows = [], live = undefined) {
     const check = verifyIds(args, live);
     const names = check.lines;                                    // arbitrary-power tools: show the whole call (escaped, so nothing hides in a newline), never a truncated one
     const body = JSON.stringify(scrub(args), null, 1);
-    const out = ['Approve?', FULL_CALL[tool], ...names, body.length > FULL_LIMIT ? body.slice(0, FULL_LIMIT) + '…' : body];
-    if (body.length > FULL_LIMIT) out.push('⚠ Too long to review in full. Deny it and ask for a smaller step.');
-    out.push(check.verified ? '/approve or /deny (this call only)' : 'Approve is disabled until the names match: /deny');
+    const tooLong = body.length > FULL_LIMIT;
+    const out = ['Approve?', FULL_CALL[tool], ...names];
+    if (!tooLong) out.push(body);
+    else if (extra.attached) out.push(`The full call (${body.length} characters, id ${callHash(args).slice(0, 8)}) is attached above as a file. Read it before approving: exactly that call will run.`);
+    else out.push(`⚠ The full call is ${body.length} characters and could not be attached, so it cannot be reviewed here. Approve is disabled: /deny`);
+    if (Array.isArray(extra.diff)) {
+      if (extra.diff.length) out.push('Changes compared with what is saved now:', ...extra.diff.slice(0, DIFF_SHOWN), ...(extra.diff.length > DIFF_SHOWN ? [`… and ${extra.diff.length - DIFF_SHOWN} more (see the attached file)`] : []));
+      else out.push('No difference from what is saved now.');
+    } else if (extra.diff === null) out.push('(Could not compare with what is saved now.)');
+    out.push(check.verified && !(tooLong && !extra.attached) ? '/approve or /deny (this call only)' : 'Approve is disabled: /deny');
     return out.join('\n');
   }
   let action = `Run ${line(tool)}`;

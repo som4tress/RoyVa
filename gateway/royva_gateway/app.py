@@ -123,6 +123,21 @@ async def forget(req: ForgetReq):
     return {"removed": gw.store.delete(req.session_id)}
 
 
+class DiffReq(BaseModel):
+    kind: str = ""
+    method: str = ""
+    path: str = ""
+    params: dict = {}
+
+
+@app.post("/v1/diff", dependencies=[Depends(require_token)])
+async def diff(req: DiffReq):
+    """What a Home Assistant config write would change compared with what is saved now (for the approval card). Read-only."""
+    import asyncio
+    from . import diffing, home_context
+    return await asyncio.to_thread(diffing.compare, req.kind, req.method, req.path, req.params, home_context._rest_get)
+
+
 @app.post("/v1/route", dependencies=[Depends(require_token)])
 async def route(req: AskRequest):
     """Route a message and prepare its session (tool grants + context). Does NOT run the model; the caller runs the turn.

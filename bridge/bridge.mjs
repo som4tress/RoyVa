@@ -7,12 +7,12 @@ import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
-import { generatedImages, imageRuns, sendPhotos } from './images.mjs';
+import { generatedImages, imageRuns, sendPhotos, sendDocument } from './images.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
 import {loopVerdict, HARD_ROUNDS, HARD_CALLS} from './guard.mjs';
-import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified} from './permissions.mjs';
+import {withoutOwnerDoors, formatPermission, approvalKey, BatchApprovals, FULL_CALL, canonTool, idsInArgs, hasIds, permissionVerified, fullCallFile, callHash} from './permissions.mjs';
 import {makeEnrollment, LiveAllowlist} from './enroll.mjs';
 import {BRAND} from './brand.mjs';
 import {sessionToolSchemas} from '../procedure-recall/index.js';
@@ -182,8 +182,21 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const ids = idsInArgs(permission.metadata?.input || {});
       if (hasIds(ids)) { try { live = (await gatewayCall('/v1/resolve-ids', ids)).found; } catch { live = null; } }
     }
-    return send(message, formatPermission(permission, history, live), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live)});
+    const extra = {};
+    let hash;
+    if (FULL_CALL[canonTool(permission.action)]) {
+      const input = permission.metadata?.input || {};
+      hash = callHash(input);
+      // Compare with what Home Assistant has saved right now (only when the target has a readable stored version).
+      try { const d = await gatewayCall('/v1/diff', {kind: input.kind, method: input.method, path: input.kind === 'ws' ? input.type : input.path, params: input.params || {}}); extra.diff = d.available ? d.lines : undefined; if (d.available) extra.diffUnchanged = d.unchanged; } catch { extra.diff = null; }
+      const file = fullCallFile(permission);
+      if (file) { try { await sendDocument(token, message.chat.id, file.name, file.content, message.message_id); extra.attached = true; } catch (error) { console.error('Could not attach the full call:', error.message); extra.attached = false; } }
+    }
+    const tooBigUnattached = extra.attached === false;
+    return send(message, formatPermission(permission, history, live, extra), sessionID, false, permission.id, {unverified: !permissionVerified(permission, live) || tooBigUnattached, hash});
   }
+  // The call that is waiting must still be the one the owner was shown (same fingerprint taken when the card was sent).
+  const sameCall = (target, request) => !target.hash || callHash(request.metadata?.input || {}) === target.hash;
   // Ends the running request for a session (Stop button, /deny): abort the run loop and interrupt OpenCode. A denied permission also ends the request: RoyVa must not carry on and try another way round what the owner just refused.
   async function stopSession(sessionID) {
     active.get(sessionID)?.controller.abort();
@@ -353,7 +366,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       });
       first ??= result;
       console.log(`Sent reply part to chat (message ${result.message_id}, ${points.length} chars)`);
-      if (permissionID) state.permissions[`${message.chat.id}:${result.message_id}`] = {sessionID, requestID: permissionID, ...(opts.unverified ? {unverified: true} : {})};
+      if (permissionID) state.permissions[`${message.chat.id}:${result.message_id}`] = {sessionID, requestID: permissionID, ...(opts.unverified ? {unverified: true} : {}), ...(opts.hash ? {hash: opts.hash} : {})};
       if (feedback) state.answers[`${message.chat.id}:${result.message_id}`] = {
         sessionID: sessionID || feedbackData.sessionID,
         assistantIDs: feedbackData.assistantIDs || [],
@@ -449,6 +462,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (text === '/approve' && target.unverified) return send(message, 'Cannot approve: the names in this request could not be matched to Home Assistant. Reply /deny.', linked);
       const request = pending.find(permission => permission.id === target.requestID);
       if (!request) return send(message, 'That permission request is no longer waiting. Reply to the current approval prompt.', linked);
+      if (text === '/approve' && !sameCall(target, request)) return send(message, 'Cannot approve: the waiting call is not the one shown in this card. Reply /deny.', linked);
       try {
         await openCodeAPI(`/api/session/${linked}/permission/${request.id}/reply`, 'POST', { decision: text === '/approve' ? 'once' : 'reject' });
       } catch (error) {
@@ -663,6 +677,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       const pending = await openCodeAPI(`/api/session/${target.sessionID}/permission`);
       const request = pending.find(permission => permission.id === target.requestID);
       if (!request) { await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {}); return answer('Already answered or no longer waiting.'); }
+      if (approve && !sameCall(target, request)) return answer('Not approved: the waiting call is not the one shown in this card. Use Deny.');
       await openCodeAPI(`/api/session/${target.sessionID}/permission/${request.id}/reply`, 'POST', { decision: approve ? 'once' : 'reject' });
       if (approve) batchApprovals.grant(target.sessionID, permissionKeys.get(request.id));
       else await stopSession(target.sessionID);

@@ -61,3 +61,15 @@ export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetc
     }
   }
 }
+
+// Send a text file (e.g. the full call of an approval request) as a Telegram document. Throws if it could not be sent.
+export async function sendDocument(token, chatId, name, content, replyTo, fetchImpl = fetch) {
+  const form = new FormData();
+  form.set('chat_id', String(chatId));
+  if (replyTo) form.set('reply_parameters', JSON.stringify({ message_id: replyTo, allow_sending_without_reply: true }));
+  form.set('document', new Blob([content], { type: 'application/json' }), name);
+  const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendDocument`, { method: 'POST', body: form, signal: AbortSignal.timeout(65000) });
+  const result = await response.json();
+  if (!result.ok) throw new Error(`Telegram sendDocument: ${result.error_code}`);
+  return result.result;
+}
