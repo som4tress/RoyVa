@@ -185,6 +185,7 @@ def ha_write(args, ws=_ws, rest=_rest):
 READ = {"name": "ha_read",
         "description": "Read anything from Home Assistant's own API that no other tool exposes: registries (areas, devices, entities, floors, labels), "
                        "automation/script/scene config, services, history. Registries are big: always narrow list results with contains (e.g. a device name), fields and limit. kind 'ws' with type (e.g. config/device_registry/list) or kind 'rest' with path (e.g. /api/config/automation/config/<id>). "
+                       "There is NO list endpoint for automation/script/scene config: find the item's id first as the 'id' attribute of its entity (rest /api/states, narrowed with contains, or the entity's state), then read /api/config/automation/config/<id> (script/scene likewise). Do not guess other paths. "
                        "Cannot change anything.",
         "inputSchema": {"type": "object", "properties": {"kind": {"type": "string", "enum": ["ws", "rest"]},
                                                          "type": {"type": "string", "description": "WebSocket command type (kind ws)."},
