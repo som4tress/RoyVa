@@ -175,3 +175,11 @@ test('template text that needs the automation\'s own variables is reported, not 
   assert.match(text, /could not be tested alone/);
   assert.match(text, /\/approve or \/deny/);
 });
+
+test('a blank render is shown as a warning on the edit card but does not disable Approve', () => {
+  const blank = {...goodPreview, renders: [{path: 'variables.msg', status: 'empty', rendered: ''}]};
+  const text = formatPermission(editCall, [], undefined, {preview: blank});
+  assert.match(text, /renders to NOTHING/);
+  assert.match(text, /\/approve or \/deny/);
+  assert.equal(editBlocked({preview: blank}), false);
+});

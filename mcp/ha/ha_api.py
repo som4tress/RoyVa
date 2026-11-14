@@ -236,8 +236,10 @@ def check_edit(args, rest=_rest):
         plan = config_edit.plan(got["body"], args.get("version"), args.get("edits"), lambda t: render_template(t, rest))
     except config_edit.EditError as exc:
         return {"ok": False, "problem": str(exc)}
-    return {"ok": not plan["problems"], "problems": plan["problems"], "changes": plan["changes"], "renders": plan["renders"],
-            "next": "no problems: call ha_edit with exactly these edits" if not plan["problems"] else "fix the edits and check again"}
+    nxt = "fix the edits and check again" if plan["problems"] else \
+        "no problems, but read the warnings: if the added text renders blank, check the real entity/attribute values before saving" if plan["warnings"] else \
+        "no problems: call ha_edit with exactly these edits"
+    return {"ok": not plan["problems"], "problems": plan["problems"], "warnings": plan["warnings"], "changes": plan["changes"], "renders": plan["renders"], "next": nxt}
 
 
 def ha_edit(args, rest=_rest):

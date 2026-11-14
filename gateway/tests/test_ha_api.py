@@ -158,14 +158,16 @@ def test_put_to_a_config_item_is_sent_as_post(monkeypatch):
 
 # ---- ha_edit: small exact edits, rebuilt from what is stored right now
 class FakeHA:
-    def __init__(self, cfg, render_ok=True, save_status=200):
-        self.cfg, self.calls, self.render_ok, self.save_status = cfg, [], render_ok, save_status
+    def __init__(self, cfg, render_ok=True, save_status=200, blank_render=False):
+        self.cfg, self.calls, self.render_ok, self.save_status, self.blank_render = cfg, [], render_ok, save_status, blank_render
 
     def __call__(self, method, path, body=None):
         self.calls.append((method, path))
         if method == "GET":
             return {"http_status": 200, "body": json.loads(json.dumps(self.cfg))}
         if path == "/api/template":
+            if self.blank_render:
+                return {"http_status": 200, "body": " "}
             return {"http_status": 200, "body": "https://maps?q=1,2"} if self.render_ok else {"http_status": 400, "body": "ValueError: from_json got invalid input"}
         if self.save_status == 200:
             self.cfg = body
@@ -230,7 +232,9 @@ def test_config_lookup_returns_the_version_needed_for_an_edit():
 def test_check_edit_reports_problems_to_the_model_and_saves_nothing():
     fake = FakeHA(STORED)
     ok = ha.ha_read({"kind": "check_edit", **{k: v for k, v in _edit_args().items()}}, rest=fake)
-    assert ok["ok"] is True and ok["changes"] and "call ha_edit" in ok["next"]
+    assert ok["ok"] is True and ok["changes"] and "call ha_edit" in ok["next"] and ok["warnings"] == []
+    blank = ha.ha_read({"kind": "check_edit", **_edit_args()}, rest=FakeHA(STORED, blank_render=True))
+    assert blank["ok"] is True and blank["warnings"] and "renders blank" in blank["next"] or "blank" in blank["next"]
     bad_path = ha.ha_read({"kind": "check_edit", **_edit_args(edits=[{"op": "append", "path": "variable.msg", "text": "x"}])}, rest=fake)
     assert bad_path["ok"] is False and "nothing at variable.msg" in bad_path["problem"]                # the 2026-11-14 slip, now fixable by the model itself
     stale = ha.ha_read({"kind": "check_edit", **_edit_args(version="old")}, rest=fake)

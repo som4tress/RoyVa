@@ -111,4 +111,4 @@ def preview_edit(args: dict, fetch, render) -> dict:
         return {"ok": False, "problem": str(exc), "lines": [], "edits": [], "renders": []}
     problems = plan["problems"]
     return {"ok": not problems, "problem": "; ".join(problems) or None, "lines": json_diff(stored, plan["config"])["lines"],
-            "edits": plan["changes"], "renders": plan["renders"]}
+            "edits": plan["changes"], "renders": plan["renders"], "warnings": plan["warnings"]}

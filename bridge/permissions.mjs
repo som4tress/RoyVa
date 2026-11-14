@@ -107,6 +107,7 @@ function formatEdit(args, extra) {
   if (pv?.lines) out.push(pv.lines.length ? 'Changes compared with what is saved now:' : 'No difference from what is saved now.', ...pv.lines.slice(0, DIFF_SHOWN), ...(pv.lines.length > DIFF_SHOWN ? [`… and ${pv.lines.length - DIFF_SHOWN} more`] : []));
   for (const r of pv?.renders || []) {
     if (r.status === 'ok') out.push(`Renders now at ${line(r.path)}: ${line(r.rendered).slice(0, 200)}`);
+    else if (r.status === 'empty') out.push(`⚠ Added text at ${line(r.path)} renders to NOTHING right now: the sensor or attribute it reads may not exist. Consider denying.`);
     else if (r.status === 'needs_context') out.push(`Added text at ${line(r.path)} uses the automation's own variables, so it could not be tested alone.`);
     else if (r.status === 'error') out.push(`⚠ Added text at ${line(r.path)} fails: ${line(r.error).slice(0, 200)}`);
   }

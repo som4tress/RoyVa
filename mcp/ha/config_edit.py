@@ -174,7 +174,7 @@ def check_templates(templates: list, render: Optional[Callable[[str], dict]]) ->
     """Render each inserted piece of template on its own through `render(text) -> {"ok": bool, "text"|"error": str}`.
     A piece that refers to variables that only exist inside the automation (trigger, current...) cannot be rendered alone: that is reported, not blamed.
     Anything else that fails to render will fail for real: that is a problem."""
-    out, problems = [], []
+    out, problems, warnings = [], [], []
     for t in templates:
         if render is None:
             out.append({**t, "status": "skipped"})
@@ -183,19 +183,23 @@ def check_templates(templates: list, render: Optional[Callable[[str], dict]]) ->
             r = render(t["text"])
         except Exception as exc:                                      # noqa: BLE001
             r = {"ok": False, "error": str(exc)[:200]}
-        if r.get("ok"):
+        if r.get("ok") and not str(r.get("text", "")).strip():
+            # Renders fine but to nothing: legal, yet usually means the entity or attribute it reads does not exist (an 'ok' that shows blank is not a pass).
+            out.append({**t, "status": "empty", "rendered": ""})
+            warnings.append(f"the text added at {t['path']} renders to nothing right now: if that is not intended, the sensor or attribute it reads may not exist (read its real state first)")
+        elif r.get("ok"):
             out.append({**t, "status": "ok", "rendered": str(r.get("text", ""))[:300]})
         elif re.search(r"undefined", str(r.get("error", "")), re.I):
             out.append({**t, "status": "needs_context", "error": str(r.get("error", ""))[:200]})
         else:
             out.append({**t, "status": "error", "error": str(r.get("error", ""))[:300]})
             problems.append(f"the template added at {t['path']} does not render: {str(r.get('error', ''))[:200]}")
-    return {"renders": out, "problems": problems}
+    return {"renders": out, "problems": problems, "warnings": warnings}
 
 
 def plan(stored: dict, expected_version: str, edits: Any, render: Optional[Callable[[str], dict]] = None) -> dict:
     """Everything both the card and the save need: raises EditError for a stale version or an edit that cannot be applied.
-    Returns {"config", "changes", "renders", "problems"}. A non-empty "problems" means: do not save."""
+    Returns {"config", "changes", "renders", "problems", "warnings"}. A non-empty "problems" means: do not save; warnings are shown but do not block."""
     if str(expected_version or "") != version(stored):
         raise EditError("the item changed since it was read (version mismatch): read it again with ha_read kind config and redo the edit")
     result = apply_edits(stored, edits)

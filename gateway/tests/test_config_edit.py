@@ -111,3 +111,8 @@ def test_templates_inside_a_whole_section_value_are_still_collected_and_the_card
     out = edit({"op": "set", "path": "variables", "value": {"msg": "{{ states('sensor.a') }}", "n": ["{% if x %}y{% endif %}", "plain"]}})
     assert {t["path"] for t in out["templates"]} == {"variables.msg", "variables.n.0"}
     assert "replaces a whole section" in out["changes"][0]
+
+
+def test_an_ok_render_that_is_blank_is_a_warning_not_a_pass():
+    out = ce.plan(AUTOMATION, ce.version(AUTOMATION), [{"op": "append", "path": "variables.msg", "text": " {{ state_attr('sensor.x', 'lat') or '' }}"}], lambda t: {"ok": True, "text": " "})
+    assert out["problems"] == [] and out["renders"][0]["status"] == "empty" and "renders to nothing" in out["warnings"][0]
