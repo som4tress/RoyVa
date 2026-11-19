@@ -13,6 +13,14 @@ export async function openCodeAPI(path, method = 'GET', body) {
   return value?.data ?? value;
 }
 
+// A request gets RUN_LIMIT_MS in total. A picture or video tool can legitimately run for many minutes (a 2-minute video takes about 17), so once such a tool has been seen in the run the limit becomes MEDIA_RUN_LIMIT_MS. It never shrinks again, so the model still has time to write its reply after a long tool call.
+export const RUN_LIMIT_MS = 15 * 60 * 1000, MEDIA_RUN_LIMIT_MS = 45 * 60 * 1000;
+const MEDIA_TOOL = /generate_video|generate_image_set|generate_image|edit_image/;
+export function runLimitMs(rows, current = RUN_LIMIT_MS) {
+  const media = rows.some(message => (message.content ?? []).some(part => part.type === 'tool' && MEDIA_TOOL.test(part.name ?? '')));
+  return Math.max(current, media ? MEDIA_RUN_LIMIT_MS : RUN_LIMIT_MS);
+}
+
 export async function runText(sessionID, text, { api = openCodeAPI, signal, files = [], onPermission = async () => {}, onProgress = async () => {}, onBeforeFinish = async () => false, onAdmitted = async () => {} } = {}) {
   const path = `/api/session/${encodeURIComponent(sessionID)}`;
   const before = await api(`${path}/message`);
@@ -20,12 +28,14 @@ export async function runText(sessionID, text, { api = openCodeAPI, signal, file
   await api(`${path}/prompt`, 'POST', { text, delivery: 'queue', ...(files.length ? {files} : {}) });
   await onAdmitted();
   const announced = new Set();
-  const deadline = Date.now() + 15 * 60 * 1000;
-  while (!signal?.aborted && Date.now() < deadline) {
+  const started = Date.now();
+  let limit = RUN_LIMIT_MS;
+  while (!signal?.aborted && Date.now() - started < limit) {
     const [messages, session, permissions] = await Promise.all([
       api(`${path}/message`), api(path), api(`${path}/permission`),
     ]);
     const rows = messages.filter(message => !known.has(message.id)).sort((a, b) => a.time.created - b.time.created);
+    limit = runLimitMs(rows, limit);
     await onProgress(rows);
     for (const permission of permissions) {
       if (announced.has(permission.id)) continue;

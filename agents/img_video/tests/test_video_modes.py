@@ -37,8 +37,8 @@ class ModeTests(unittest.TestCase):
         import copy
         c30 = copy.deepcopy(CFG); c30["limits"]["max_video_seconds"] = 30
         self.assertEqual((video.max_shots(c30, CAPS, False), video.max_shots(c30, CAPS, True)), (6, 4))              # 30 s: 6 silent or 4 narrated shots
-        self.assertEqual((video.max_shots(CFG, CAPS, False), video.max_shots(CFG, CAPS, True)), (25, 20)); self.assertEqual(CFG["limits"]["max_video_seconds"], 120)      # the configured cap: 2 minutes
-        self.assertGreaterEqual(CFG["limits"]["max_images"], video.max_shots(CFG, CAPS, False))                       # the plan's own count limit must allow a full-length video
+        self.assertEqual((video.max_shots(CFG, CAPS, False), video.max_shots(CFG, CAPS, True)), (32, 25)); self.assertEqual(CFG["limits"]["max_video_seconds"], 150)      # the configured worst-case cap
+        self.assertGreaterEqual(CFG["limits"]["max_images"], video.shots_for_seconds(CAPS, 120))                       # the plan's own count limit must allow a 2-minute video
         for narrated, most in ((False, 6), (True, 4)):
             with tempfile.TemporaryDirectory() as d:
                 job = Job.create(d, {"query": "q", "aspect": "1:1", "video": True, "count": 10})
@@ -72,3 +72,39 @@ class ModeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DurationTests(unittest.TestCase):
+    def _count(self, req, **reply):
+        with tempfile.TemporaryDirectory() as d:
+            job = Job.create(d, req)
+            with mock.patch.object(llm, "ask_json", return_value=dict(plan_reply(True), count=6, **reply)):
+                pipeline.plan(job, CFG, CAPS)
+            return job.read("plan.json")["count"]
+
+    def test_shots_follow_the_length_the_request_states(self):
+        n = video.shots_for_seconds(CAPS, 120)
+        self.assertGreaterEqual(n * video.clip_seconds(CAPS) - (n - 1) * CAPS["padding"]["crossfade_seconds"], 120)
+        self.assertLess((n - 1) * video.clip_seconds(CAPS) - (n - 2) * CAPS["padding"]["crossfade_seconds"], 120)
+
+    def test_a_stated_length_overrides_the_planners_default_count_up_to_the_limit(self):
+        req = {"query": "q", "aspect": "1:1", "video": True}
+        self.assertEqual(self._count(req, seconds=None), 6)                                   # no length stated: the planner's count stands
+        self.assertEqual(self._count(req, seconds=30), video.shots_for_seconds(CAPS, 30))
+        self.assertEqual(self._count(req, seconds=120), video.max_shots(CFG, CAPS, True) if video.shots_for_seconds(CAPS, 120) > video.max_shots(CFG, CAPS, True) else video.shots_for_seconds(CAPS, 120))
+        self.assertEqual(self._count(dict(req, count=4), seconds=None), 4)                    # no length stated: an explicit count wins
+        self.assertEqual(self._count(dict(req, count=6), seconds=120), min(video.shots_for_seconds(CAPS, 120), video.max_shots(CFG, CAPS, True)))   # a stated length beats a count the chat model filled in
+        self.assertEqual(self._count({"query": "q", "aspect": "1:1"}, seconds=120), 6)        # a picture set ignores it
+
+    def test_two_minutes_narrated_is_allowed_by_the_default_limit(self):
+        self.assertGreaterEqual(video.max_shots(CFG, CAPS, True), video.shots_for_seconds(CAPS, 120) - 1)
+
+    def test_a_bad_length_is_asked_again(self):
+        req = {"query": "q", "aspect": "1:1", "video": True}
+        with tempfile.TemporaryDirectory() as d:
+            job = Job.create(d, req); calls = []
+            def ask(cfg, system, user, check=None, **kw):
+                bad = dict(plan_reply(True), seconds="two minutes"); calls.append(check(bad)); return dict(plan_reply(True), seconds=60)
+            with mock.patch.object(llm, "ask_json", side_effect=ask): pipeline.plan(job, CFG, CAPS)
+        self.assertIn("seconds", calls[0])
+

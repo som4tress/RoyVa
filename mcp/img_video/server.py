@@ -24,7 +24,7 @@ LOCK = Path(os.environ.get("ROYVA_IMGVIDEO_LOCK", ROOT / "runtime" / "gateway" /
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", ROOT / "runtime" / "gateway" / "dry_run"))
 ASYNC_FLAG = Path(os.environ.get("ROYVA_IMGVIDEO_ASYNC_FLAG", ROOT / "runtime" / "gateway" / "img_video_async"))
 ASYNC = lambda: os.environ.get("ROYVA_IMGVIDEO_ASYNC") == "1" or (os.environ.get("ROYVA_IMGVIDEO_ASYNC") != "0" and ASYNC_FLAG.exists())      # checked on every call: touch/remove the flag file to switch, no restart
-SYNC_TIMEOUT = {"set": int(os.environ.get("ROYVA_IMGSET_SYNC_TIMEOUT", "900")), "video": int(os.environ.get("ROYVA_IMGVIDEO_SYNC_TIMEOUT", "1800"))}
+SYNC_TIMEOUT = {"set": int(os.environ.get("ROYVA_IMGSET_SYNC_TIMEOUT", "900")), "video": int(os.environ.get("ROYVA_IMGVIDEO_SYNC_TIMEOUT", "2700"))}
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import runner
 DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()

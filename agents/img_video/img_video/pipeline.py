@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import comfy, config, director, guard, llm, local_sd, progress, research, verify, video
 from .jobs import Job, fingerprint
 
-V = {"plan": 5, "research": 2, "direct": 5, "images": 11}     # per-stage prompt version: bump when that stage's prompt or logic changes so old results are not reused
+V = {"plan": 6, "research": 2, "direct": 5, "images": 11}     # per-stage prompt version: bump when that stage's prompt or logic changes so old results are not reused
 
 
 def policy_text(cfg):
@@ -25,12 +25,16 @@ NARRATED_FIELD = (", \"narrated\": true if the video should have a voice-over na
                   "false for a purely visual video (a clip, an animation, a mood piece) with no spoken part")
 
 
+SECONDS_FIELD = (", \"seconds\": the length of the video in seconds if the request states one (\"2 minutes\" is 120, \"a minute and a half\" is 90, \"30 seconds\" is 30), otherwise null")
+
+
 def plan(job, cfg, caps):
     req = job.state["request"]; lim = cfg["limits"]
 
     def check(o):
         n = o.get("count")
         if not isinstance(n, int) or not 1 <= n <= lim["max_images"]: return f"count must be an integer from 1 to {lim['max_images']}"
+        if req.get("video") and o.get("seconds") is not None and (isinstance(o["seconds"], bool) or not isinstance(o["seconds"], (int, float)) or o["seconds"] <= 0): return "seconds must be a positive number or null"
         if o.get("needs_web") and not o.get("research_questions"): return "needs_web is true but research_questions is empty"
         if not isinstance(o.get("visual_style"), str) or not o["visual_style"].strip(): return "visual_style must be a non-empty phrase"
         return None
@@ -38,9 +42,12 @@ def plan(job, cfg, caps):
         f"Today's date: {_today()}\nRequest: {req['query']}\n\nReturn JSON: {{\"count\": number of pictures requested (use {req.get('count') or 'the number in the request, or 6 if none is stated'}), "
         "\"needs_web\": true if the request depends on current events or facts that must be looked up on the web, otherwise false, "
         "\"research_questions\": [complete instructions to a web researcher, including today's date when current news is involved. Each must ask ONLY for facts to look up (never for creative work such as choosing visuals or writing captions); usually one is enough; empty if needs_web is false], "
-        "\"tone\": \"the tone asked for, in a few words\", \"visual_style\": \"one phrase describing a single consistent look for ALL the pictures that fits the request and tone (photographic realism, a rendering technique, an illustration style: whatever the request calls for)\"" + NARRATED_FIELD * bool(req.get("video")) + "}", check=check)
+        "\"tone\": \"the tone asked for, in a few words\", \"visual_style\": \"one phrase describing a single consistent look for ALL the pictures that fits the request and tone (photographic realism, a rendering technique, an illustration style: whatever the request calls for)\"" + (NARRATED_FIELD + SECONDS_FIELD) * bool(req.get("video")) + "}", check=check)
     o["narrated"] = bool(req.get("video")) and (o["narrated"] if isinstance(o.get("narrated"), bool) else False)      # only a video can be narrated; the planner decides, a missing answer means silent
-    if req.get("count"): o["count"] = req["count"]
+    if req.get("video") and isinstance(o.get("seconds"), (int, float)):                          # the request states a length: the number of shots follows from it. A count passed by the chat model does not override it (the model fills one in even when the user gave none)
+        n = min(video.shots_for_seconds(caps, o["seconds"]), lim["max_images"])
+        job.log(f"  the request asks for {o['seconds']:g} s: {n} shots" + (f" (ignoring a count of {req['count']} passed with the request)" if req.get("count") and req["count"] != n else "")); o["count"] = n
+    elif req.get("count"): o["count"] = req["count"]
     if req.get("video"):                                                                       # a video has a length limit: cut the number of shots to fit it
         most = video.max_shots(cfg, caps, o["narrated"])
         if o["count"] > most: job.log(f"  video length limit: {o['count']} shots -> {most} (at most {cfg['limits']['max_video_seconds']} s)"); o["count"] = most
@@ -148,7 +155,7 @@ def result(job, cfg, caps):
 
 
 STAGES = ["plan", "research", "direct", "images", "result", "storyboard", "voice", "clips", "video"]
-VIDEO_V = {"storyboard": 1, "voice": 1, "clips": 1, "video": 1}
+VIDEO_V = {"storyboard": 1, "voice": 1, "clips": 1, "video": 3}
 
 
 def run(job, cfg, caps, stop_after=None, with_video=False):

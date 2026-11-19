@@ -1,5 +1,6 @@
 """Animation stages for a finished image set: storyboard (local LLM) -> voice (CPU) || clips (3090) -> video (ffmpeg). Everything lands in <job>/video/.
 Nothing here is specific to a topic: the pictures, captions and the model decide the content; capabilities.json and config.toml decide the numbers."""
+import math
 import json
 import os
 import subprocess
@@ -17,11 +18,38 @@ def clip_seconds(caps):
     v = caps["video"]; return v["frames"] / v["wan_fps"]
 
 
+def shots_for_seconds(caps, seconds):
+    """How many shots make a video of about `seconds`: n shots last n * clip - (n - 1) * dissolve, so n = ceil((seconds - xf) / (clip - xf))."""
+    xf = caps["padding"]["crossfade_seconds"]; return max(1, math.ceil((seconds - xf) / (clip_seconds(caps) - xf)))
+
+
 def max_shots(cfg, caps, narrated):
     """The most shots a video may have so that it stays within [limits] max_video_seconds. A shot runs clip_seconds, or up to clip_seconds * max_slow when it is slowed to fit its voice, and shots overlap by the dissolve:
     n shots last n * per - (n - 1) * xf, so n <= (limit - xf) / (per - xf)."""
     xf = caps["padding"]["crossfade_seconds"]; per = clip_seconds(caps) * (caps["video"]["max_slow"] if narrated else 1.0)
     return max(1, int((cfg["limits"]["max_video_seconds"] - xf) / (per - xf)))
+
+
+def rate_cap_args(durations, xf, max_bytes, narrated, audio_bps=160_000):
+    """ffmpeg options that keep the final encode under `max_bytes` in ONE pass: crf 18 stays the quality target and -maxrate only bites on a long video (at crf 18 a 2-minute 720p video is 71.7 MB; Telegram takes 50 MB).
+    The length is known before encoding: the shots minus the dissolves between them."""
+    secs = max(1.0, sum(durations) - (len(durations) - 1) * xf)
+    v_bps = max(150_000, int((max_bytes * 8 / secs - (audio_bps if narrated else 0)) * 0.93))
+    return ["-maxrate", str(v_bps), "-bufsize", str(v_bps * 2)]
+
+
+def fit_size(path, max_bytes, audio_bps=160_000):
+    """Telegram refuses a bot upload over 50 MB, and the bridge skips such a file. A longer video at crf 18 is bigger (2 minutes at 720p: 71.7 MB), so when the file is over `max_bytes` its picture is re-encoded at the bitrate that fits (the sound is copied untouched).
+    The clips are 576x320 pictures scaled up, so a few Mbit/s lose nothing visible. Returns True if it re-encoded."""
+    path = Path(path)
+    if path.stat().st_size <= max_bytes: return False
+    secs = _dur(path); tmp = path.with_name(path.stem + ".fit.mp4")
+    for share in (0.93, 0.80, 0.65):                                     # the encoder overshoots its target a little: aim lower if the first try is still too big
+        v_bps = max(150_000, int((max_bytes * 8 / secs - audio_bps) * share))
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(path), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-b:v", str(v_bps), "-maxrate", str(int(v_bps * 1.3)), "-bufsize", str(v_bps * 2),
+                        "-c:a", "copy", "-movflags", "+faststart", str(tmp)], check=True)
+        if tmp.stat().st_size <= max_bytes: break
+    tmp.replace(path); return True
 
 
 def narration_budget(caps):
@@ -95,7 +123,10 @@ def assemble(job, cfg, caps):
     if len(segs) == 1: subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(segs[0]), "-c", "copy", "-movflags", "+faststart", str(out)], check=True)
     else:
         subprocess.run(["ffmpeg", "-v", "error", "-y", *[x for p in segs for x in ("-i", str(p))], "-filter_complex", fg, "-map", f"[{vl}]", *(["-map", f"[{al}]"] if narrated else []), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18",
+                        *rate_cap_args([_dur(p) for p in segs], pad["crossfade_seconds"], int(cfg["limits"]["max_video_mb"] * 1024 * 1024), narrated),
                         *(["-c:a", "aac", "-b:a", "160k"] if narrated else ["-an"]), "-movflags", "+faststart", str(out)], check=True)
+    before = out.stat().st_size
+    if fit_size(out, int(cfg["limits"]["max_video_mb"] * 1024 * 1024)): job.log(f"  video file {before / 1e6:.1f} MB is over the {cfg['limits']['max_video_mb']} MB upload limit: re-encoded to {out.stat().st_size / 1e6:.1f} MB")
     cut = [r["shot"] for r in report if r["line_cut"]]
     if cut: job.log(f"  WARNING: narration of shot(s) {cut} runs past its clip and was cut")
     job.write("video.json", {"path": str(out), "seconds": round(_dur(out), 1), "mb": round(out.stat().st_size / 1e6, 1), "title": sb["title"], "cut_lines": cut,
