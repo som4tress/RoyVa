@@ -11,7 +11,7 @@ mkdirSync(dir, { recursive: true, mode: 0o700 });
 
 const SUITE = [
   ['P1 lights', 'What is the status of lights upstairs?'],
-  ['P2 mustang', 'How much distance has my mustang travelled this week?'],
+  ['P2 car', 'How much distance has my car travelled this week?'],
   ['P3 forecast', 'What is the weather forecast for the next 10 days?'],
   ['P4 in/out', 'What is the weather inside and outside of my house?'],
   ['P5 unread', 'List the top 20 oldest unread emails from my gmail.'],

@@ -186,18 +186,18 @@ def test_unknown_or_ambiguous_leader_is_an_error_not_a_silent_default():
 
 # ------------------------------------------------------------------ radio: presets first, loosened search, honest empty result
 def test_presets_win_over_the_public_directory_and_match_loosely():
-    out = hs.find_radio_stream({"query": "Play 98.5 Kbay country"}, fetch=lambda r: pytest.fail("must not call the network"), presets={"Kbay": "https://example.com/kbay.mp3"})
-    assert out["stations"][0]["url"] == "https://example.com/kbay.mp3" and out["stations"][0]["preset"] is True
+    out = hs.find_radio_stream({"query": "Play 98.5 Zephyr country"}, fetch=lambda r: pytest.fail("must not call the network"), presets={"Zephyr": "https://example.com/zephyr.mp3"})
+    assert out["stations"][0]["url"] == "https://example.com/zephyr.mp3" and out["stations"][0]["preset"] is True
 
 
 def test_empty_search_is_retried_without_frequency_and_filler_words():
     queries = []
     def fetch(req):
         queries.append(req.full_url)
-        return [] if len(queries) == 1 else [{"name": "Kbay", "url_resolved": "https://k.example/s", "codec": "MP3", "bitrate": 64, "country": "US", "state": "", "votes": 1}]
-    out = hs.find_radio_stream({"query": "98.5 Kbay FM"}, fetch=fetch, presets={})
-    assert out["stations"][0]["name"] == "Kbay" and "no exact match" in out["note"]
-    assert "98.5" not in queries[1] and "name=Kbay" in queries[1]
+        return [] if len(queries) == 1 else [{"name": "Zephyr", "url_resolved": "https://k.example/s", "codec": "MP3", "bitrate": 64, "country": "US", "state": "", "votes": 1}]
+    out = hs.find_radio_stream({"query": "98.5 Zephyr FM"}, fetch=fetch, presets={})
+    assert out["stations"][0]["name"] == "Zephyr" and "no exact match" in out["note"]
+    assert "98.5" not in queries[1] and "name=Zephyr" in queries[1]
 
 
 def test_nothing_found_returns_a_hint_not_a_guess():
@@ -206,7 +206,7 @@ def test_nothing_found_returns_a_hint_not_a_guess():
 
 
 def test_loosen_keeps_meaningful_words():
-    assert hs.loosen("98.5 Kbay Country FM") == "Kbay Country" and hs.loosen("FM 101") == ""
+    assert hs.loosen("98.5 Zephyr Country FM") == "Zephyr Country" and hs.loosen("FM 101") == ""
 
 
 def test_corrupt_or_missing_presets_file_is_empty(tmp_path):

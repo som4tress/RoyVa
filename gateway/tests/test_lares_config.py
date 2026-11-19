@@ -41,7 +41,10 @@ def test_no_machine_or_household_literals_in_scripts_units_bridge_or_mcp():
     """Deployment facts live in lares.toml / Home Assistant. config/opencode*.json (generated MCP wiring) is a known leftover and not scanned."""
     import re
     root = Path(__file__).resolve().parents[2]
-    forbidden = re.compile(r"/home/[a-z0-9_-]+/|[a-z0-9_-]+@[a-z0-9-]+\.local|shobha|shivangsh|shivi |mustang", re.I)
+    import json
+    try: private = [re.escape(v) for v in json.loads((root / "tests" / "local_names.json").read_text()).values() if len(v) > 3]   # gitignored; real household terms
+    except OSError: private = []
+    forbidden = re.compile("|".join([r"/home/[a-z0-9_-]+/", r"[a-z0-9_-]+@[a-z0-9-]+\.local"] + private), re.I)
     files = [f for pattern in ("scripts/*", "systemd/*", "bridge/*.mjs", "mcp/*/*.py") for f in root.glob(pattern) if f.is_file() and not f.name.endswith(".test.mjs") and f.name != "lares_config.py"]
     hits = [(str(f.relative_to(root)), i + 1, line.strip()[:70]) for f in files for i, line in enumerate(f.read_text(errors="ignore").splitlines()) if forbidden.search(line)]
     assert not hits, hits

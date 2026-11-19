@@ -16,3 +16,6 @@ lares.toml
 scripts/remote/box.env
 agents/img_video/config.local.toml
 config/opencode.json
+
+# Real household terms for the live tests (copy tests/local_names.example.json)
+tests/local_names.json

@@ -14,7 +14,7 @@ ONLY = sys.argv[3].split(',') if len(sys.argv) > 3 else None
 
 PROMPTS = {
     'P1': ('What is the status of lights upstairs?', r'GetLiveContext|GetDateTime'),
-    'P2': ('How much distance has my mustang travelled this week?', r'GetLiveContext|GetDateTime'),
+    'P2': ('How much distance has my car travelled this week?', r'GetLiveContext|GetDateTime'),
     'P3': ('What is the weather forecast for the next 10 days?', r'^(websearch|webfetch)$'),
     'P4': ('What is the weather inside and outside of my house?', r'GetLiveContext|^(websearch|webfetch)$'),
     'P5': ('List the top 20 oldest unread emails from my gmail.', r'^gmail_'),
@@ -26,7 +26,7 @@ ALLOW = {'websearch', 'webfetch', 'home-assistant_homeassistant__GetLiveContext'
 SYS_B = ("You are RoyVa, the personal assistant for the Roy family's home. Use your tools to look things up; do not guess or "
          "invent values. If a tool returns an error or nothing, say so plainly. Keep answers short and direct.")
 SYS_D = SYS_B + (" Home Assistant holds all data about the home, its devices, sensors and the family's connected vehicles "
-                 "(for example the Mustang). Gmail holds the user's email. Web search and fetch answer anything else, such as "
+                 "(for example the car). Gmail holds the user's email. Web search and fetch answer anything else, such as "
                  "weather forecasts. Always call a tool to look something up before answering; never say you lack access or "
                  "ask the user for details until a tool has returned nothing.")
 REFUSAL = re.compile(r"(don'?t|do not|cannot|can'?t|unable to|no) (have )?(any )?(access|tool|way)|not able to (access|check)", re.I)

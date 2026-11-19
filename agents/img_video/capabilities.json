@@ -1,5 +1,5 @@
 {
-  "_comment": "Measured or chosen numbers. Change them here, never in code. 'measured' entries come from benchmark runs (see RoyVa/docs/video-gen-optimization-handoff.md).",
+  "_comment": "Measured or chosen numbers. Change them here, never in code. 'measured' entries come from benchmark runs (see RoyVa/HANDOFF.md Part B2).",
   "tts_chars_per_second": {
     "value": 18.2,
     "source": "measured: Chatterbox, 12 lines, 2026-11-16"

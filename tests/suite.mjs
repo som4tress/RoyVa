@@ -17,7 +17,7 @@ const HA = /GetLiveContext|GetDateTime/, MAIL = /^gmail_/, WEB = /^(websearch|we
 const CODING = /^(read|glob|grep|shell|edit|write|subagent|execute|skill)$/;
 const PROMPTS = [
   { id: 'P1', text: 'What is the status of lights upstairs?', want: HA },
-  { id: 'P2', text: 'How much distance has my mustang travelled this week?', want: HA },
+  { id: 'P2', text: 'How much distance has my car travelled this week?', want: HA },
   { id: 'P3', text: 'What is the weather forecast for the next 10 days?', want: WEB },
   { id: 'P4', text: 'What is the weather inside and outside of my house?', want: HA, wantAlso: WEB },
   { id: 'P5', text: 'List the top 20 oldest unread emails from my gmail.', want: MAIL },

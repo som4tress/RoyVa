@@ -70,7 +70,7 @@
   "answer_match": "bedroom|area|upstairs|downstairs"
  },
  {
-  "id": "shobha-left",
+  "id": "{{PERSON_A}}-left",
   "q": "What time did Shoba leave home?",
   "intents": [
    "home_history"
@@ -87,7 +87,7 @@
  },
  {
   "id": "where-is",
-  "q": "Where is Shivangsh",
+  "q": "Where is {{PERSON_B}}",
   "intents": [
    "home_history"
   ],
@@ -165,7 +165,7 @@
  },
  {
   "id": "turn-on-mics",
-  "q": "Turn on somdutta-Linux - tonor, webcam mic and both analog inputs. But turn off the microphones on all the Sonos speakers",
+  "q": "Turn on {{BOX_NAME}} - {{MIC}}, webcam mic and both analog inputs. But turn off the microphones on all the Sonos speakers",
   "intents": [
    "home_control"
   ],
@@ -329,7 +329,7 @@
  },
  {
   "id": "disk-usage",
-  "q": "Compare disk usage of /home/somdutta/llm-server and /home/somdutta/.cache/huggingface. Identify their three largest immediate subdirectories.",
+  "q": "Compare disk usage of ~/llm-server and ~/.cache/huggingface. Identify their three largest immediate subdirectories.",
   "intents": [],
   "mode": "fallback",
   "tools_include": "machine.run"
@@ -343,7 +343,7 @@
  },
  {
   "id": "past-02",
-  "q": "Turn on all lights in shivi room",
+  "q": "Turn on all lights in {{KID}} room",
   "intents": [
    "home_control"
   ]
@@ -358,7 +358,7 @@
  },
  {
   "id": "past-04",
-  "q": "Where is shobha now",
+  "q": "Where is {{PERSON_A}} now",
   "intents": [
    "home_state"
   ],
@@ -396,7 +396,7 @@
  },
  {
   "id": "past-09",
-  "q": "Turn off all lights,fans,switches in shivi room",
+  "q": "Turn off all lights,fans,switches in {{KID}} room",
   "intents": [
    "home_control"
   ]
@@ -418,7 +418,7 @@
  },
  {
   "id": "past-12",
-  "q": "Play kbay country 94.5 in all the Sonos speakers",
+  "q": "Play {{STATION}} country 94.5 in all the Sonos speakers",
   "intents": [
    "media_playback"
   ]
@@ -440,7 +440,7 @@
  },
  {
   "id": "past-15",
-  "q": "List all the places shobha visited today",
+  "q": "List all the places {{PERSON_A}} visited today",
   "intents": [
    "home_history"
   ],
@@ -448,7 +448,7 @@
  },
  {
   "id": "past-16",
-  "q": "Show me all the places Shivangsh visited this week",
+  "q": "Show me all the places {{PERSON_B}} visited this week",
   "intents": [
    "home_history"
   ],
@@ -622,7 +622,7 @@
  },
  {
   "id": "past-40",
-  "q": "Show me Somdutta's location history for this week",
+  "q": "Show me {{OWNER_NAME}}'s location history for this week",
   "intents": [
    "home_history"
   ],
@@ -706,7 +706,7 @@
  },
  {
   "id": "room-all-lights",
-  "q": "Turn off all the lights in the Shivi bedroom",
+  "q": "Turn off all the lights in the {{KID_CAP}} bedroom",
   "intents": [
    "home_control"
   ],
@@ -714,7 +714,7 @@
   "tools_used": "GetLiveContext",
   "no_domain_arg": true,
   "answer_not": "can.?t|cannot|don.?t have access",
-  "answer_match": "Shivi Bedroom Light"
+  "answer_match": "{{KID_LIGHT}}"
  },
  {
   "id": "floor-all-lights",
@@ -725,7 +725,7 @@
   "live": true,
   "tools_used": "GetLiveContext",
   "no_domain_arg": true,
-  "answer_match": "Shivi Bedroom Light",
+  "answer_match": "{{KID_LIGHT}}",
   "answer_not": "can.?t|cannot|don.?t have access"
  },
  {
@@ -765,7 +765,7 @@
  },
  {
   "id": "image-edit-ghibli",
-  "q": "Turn this photo into a Studio Ghibli style painting\n\n[Attached photo: /home/somdutta/RoyVa/runtime/data/inbox/x.jpg]",
+  "q": "Turn this photo into a Studio Ghibli style painting\n\n[Attached photo: ~/RoyVa/runtime/data/inbox/x.jpg]",
   "intents": [
    "image_generate"
   ]

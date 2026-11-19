@@ -1,0 +1,15 @@
+{
+ "OWNER_ID": "<owner_id>",
+ "PERSON_A": "<person_a>",
+ "PERSON_B": "<person_b>",
+ "KID": "<kid>",
+ "KID_CAP": "<kid_cap>",
+ "KID_LIGHT": "<kid_light>",
+ "CAR": "<car>",
+ "STATION": "<station>",
+ "CITY": "<city>",
+ "BOX_NAME": "<box_name>",
+ "MIC": "<mic>",
+ "PROTECTED": "<protected>",
+ "OWNER_NAME": "<owner_name>"
+}

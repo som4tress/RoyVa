@@ -308,9 +308,9 @@ def test_away_text_uses_city_only_and_skips_when_home():
     away = {"at_home": False, "zone": "not_home", "city": "Boston", "region": "MA"}
     text = home_context.away_text(away)
     assert "Boston, MA" in text and "unless they name another place" in text
-    assert home_context.away_text({"at_home": True, "zone": "home", "city": "Milpitas", "region": "CA"}) is None
+    assert home_context.away_text({"at_home": True, "zone": "home", "city": "Springfield", "region": "CA"}) is None
     assert home_context.away_text({"at_home": False, "zone": "unknown", "city": None, "region": None}) is None
-    assert "at Hands on Learning" in home_context.away_text({"at_home": False, "zone": "Hands on Learning", "city": "Milpitas", "region": "CA"})
+    assert "at Hands on Learning" in home_context.away_text({"at_home": False, "zone": "Hands on Learning", "city": "Springfield", "region": "CA"})
 
 
 def test_person_place_never_reads_the_street_address_state():
@@ -362,7 +362,10 @@ def test_vehicle_distance_intent_has_history_tools_and_date(tmp_path):
 def test_code_contains_no_household_specific_terms():
     """Everything specific to this household/home must come from Home Assistant or deployment config, never from code."""
     import re
-    forbidden = re.compile(r"shobha|shivangsh|mustang|milpitas|santa clara|goodnight|kbay|printer", re.I)
+    import json
+    try: private = [re.escape(v) for v in json.loads((ROOT.parent / "tests" / "local_names.json").read_text()).values() if len(v) > 3]   # gitignored; real household terms
+    except OSError: private = []
+    forbidden = re.compile("|".join(["goodnight", "printer"] + private), re.I)
     files = list((ROOT / "royva_gateway").glob("*.py")) + [ROOT.parent / "mcp" / "ha" / n for n in ("ha_entity_history.py", "ha_routines.py", "ha_speakers.py")] + [ROOT.parent / "mcp" / "mail" / "gmail_tidy.py"]
     hits = [(f.name, i + 1, line.strip()[:80]) for f in files for i, line in enumerate(f.read_text().splitlines()) if forbidden.search(line)]
     assert not hits, hits

@@ -1,27 +1,48 @@
-# RoyVa handover (written 2026-11-10): start here
+# Lares / RoyVa handoff (the single handoff file)
 
-Older, section-by-section history is in `docs/handoff-log-2026-11.md`. This file is the current picture.
+One file for everything: the household assistant (Lares, repo name RoyVa) and the img_video agent (pictures + narrated video on the shared 3090 box). Last consolidated 2026-11-19. Replaces the older `HANDOFF.md`, `BUGS.md` (now A2), `NOTES.md` (A3), `docs/handoff-log-2026-11.md` (A4), `docs/handoff-2026-11-11-image-and-agents.md` (A5), `docs/handoff-img-video-agent.md` (B1) and `docs/video-gen-optimization-handoff.md` (B2); the old files are still in git history. Component READMEs stay next to their code (`gateway/README.md`, `agents/img_video/README.md`, `mcp/ha/README.md`, `docs/oauth-relay/README.md`).
 
-**Video generation / ComfyUI speed work (2026-11-16):** the full state, measured numbers, code map and next ideas are in `docs/video-gen-optimization-handoff.md`. Start there for anything about the 3090 box, Wan, or the video agent.
+**How to read it.** Part 0 and the "Current state" sections are the up-to-date picture. Everything under "Archive" and the dated logs is history, kept verbatim: where an old entry conflicts with a newer one, the newer one wins (the img_video log says so itself where it matters). Labels in the logs: measured = seen in a log or output, inferred = reasoned from measurements, unverified = a hypothesis nobody tested.
 
-**READ FIRST (2026-11-17 evening): the shared 3090 box reset abruptly 7 times that day and the cause is unknown; all picture and video requests now go through the img_video agent; nothing over 500 characters may reach the box.** Full findings, measurements, the guard layers, the list of every door to the box, what is deployed and what is not: `docs/handoff-img-video-agent.md`, section "UPDATE, evening" (U1-U8). `scripts/check.sh` now also runs the agent tests and `tools/check_3090_doors.py` (fails on any new code that can reach the box). The deploy that loads the new wiring has NOT been run yet (U6).
+| Part | Contents |
+|---|---|
+| 0 | Resume in two minutes, new-machine setup, standing owner rules |
+| A | Lares / RoyVa: A1 current picture, A2 bug log, A3 early dev notes, A4 session log 2026-11-08..10, A5 image skill and the agents idea (2026-11-11) |
+| B | img_video agent: B0 current state (2026-11-19), B1 full log and reference, B2 Wan / ComfyUI optimization on the 3090 |
 
-## 0. Resume in two minutes
+## Part 0. Start here
+
+### 0.1 Resume in two minutes
 1. Start `claude` in `~/RoyVa` and say "resume from HANDOFF.md".
 2. Arm the Telegram listener under Monitor: `~/RoyVa/scripts/claude-inbox-watch.sh` (30-minute cap; re-arm on every expiry). It replays anything missed.
 3. Check health: `scripts/royva-status.sh` (every line `ok`; the last line goes DOWN when the running process is older than the last commit, which means: run deploy).
-4. Replies to the owner go through `scripts/notify.sh "text"`. Keep them short (5-8 points). Owner replies land in `runtime/claude/inbox.jsonl`.
-5. Before restarting anything: `scripts/check.sh`. To load changes: the owner runs `scripts/deploy.sh` (checks, then restarts opencode -> gateway -> bridge, waits for health). Claude cannot run `systemctl`, `sudo`, `gh repo create` or `git push` (org policy / permission classifier). Claude's own ssh to `<box>` was also denied.
+4. Replies to the owner go through `scripts/notify.sh "text"`. Keep them short. Owner replies land in `runtime/claude/inbox.jsonl`.
+5. Before restarting anything: `scripts/check.sh`. To load changes: the owner runs `scripts/deploy.sh` (checks, then restarts opencode -> gateway -> bridge, waits for health). Claude cannot run `systemctl`, `sudo`, `gh repo create`, and its own ssh to the box was denied: the owner runs those (one `!` command per message).
 
-## 0a. Setting up on a new machine (machine-specific files are NOT in git)
-The repo is public, so hostnames, usernames and absolute paths live in gitignored files. After cloning, create these:
-1. `cp scripts/remote/box.env.example scripts/remote/box.env` and fill in `BOX_USER`, `BOX_HOST`, `BOX_HOME` (the 3090 box). Every ssh script in `scripts/remote/` reads it and stops with a clear message if it is missing. Scripts that run ON the box must not source it.
-2. `agents/img_video/config.local.toml` with `[comfy]` and `url = "http://<box>:8188"` (it overrides the placeholder in `config.toml`, key by key).
-3. `bash scripts/render-config.sh` renders `config/opencode.json` from `config/opencode.template.json` (`@HOME@` becomes `$HOME`); `scripts/env.sh` does it automatically if the file is missing. Edit the template, never the generated file.
-4. `lares.toml` (copy `lares.example.toml`) for household and deployment values, as before.
-Then run `scripts/check.sh`.
+### 0.2 Setting up on a new machine (machine-specific files are NOT in git; the repo is public)
+Hostnames, usernames and absolute paths live in gitignored files. After cloning, create:
+1. `cp scripts/remote/box.env.example scripts/remote/box.env`, fill in `BOX_USER`, `BOX_HOST`, `BOX_HOME` (the 3090 box). Every ssh script in `scripts/remote/` sources `_box.sh` and stops with a clear message if `box.env` is missing. Scripts that run ON the box (fed through `ssh ... bash -s`) must NOT source it.
+2. `agents/img_video/config.local.toml` with `[comfy]` and `url = "http://<box>:8188"`. It overrides the placeholder in `config.toml`, key by key.
+3. `bash scripts/render-config.sh` renders `config/opencode.json` from `config/opencode.template.json` (`@HOME@` becomes `$HOME`); `scripts/env.sh` does it if the file is missing. Edit the template, never the generated file.
+4. `lares.toml` (copy `lares.example.toml`) for household and deployment values.
+Then run `scripts/check.sh`. Checked 2026-11-19: it passes (322 gateway, 88 bridge, 20 wrapper, 68 agent tests, doors check). The ssh scripts were syntax-checked, not run, after the change.
 
-## 1. What RoyVa is
+### 0.3 Standing owner rules (all still apply)
+* **No prompt over 500 characters may ever reach the 3090.** The owner is certain this caused the box resets. Do not re-argue it, never raise the ceiling, never add a door that skips the guards.
+* **Do not break RoyVa's existing functionality.** Build on top; changes are additive or confined to image/video. Before changing a shared piece (intent text, router, gateway, bridge, tool registry): check what else it affects, run the tests and routecheck, and report what was touched.
+* **ComfyUI starts from the striped disk** (`/dev/md127` at `/mnt/models`, read-only in the container at `/data/models`); `comfy-up-default.sh` delegates to `comfy-up-stripe.sh`. New model files must be synced to the stripe (`stripe-sync-apply.sh`).
+* **Notify the owner (`scripts/notify.sh`) before using the 3090**; one job at a time; send nothing when it is down.
+* **Plan before implementing; keep this file updated every few steps**, not only at the end. Record owner instructions here the moment they are given.
+* Test prompts go through Telegram (`node tests/enqueue.mjs "label" "prompt"`, after `. scripts/env.sh`); test runs start from a fresh job, never resume.
+* No per-prompt or per-household hardcoding; facts come from Home Assistant or deployment config. No policy / enabled-skill / routing changes without asking.
+* Commit only when the owner asks. Replies are short; label numbers measured vs estimated; the owner dislikes assumptions and self-contradiction; an ambiguous reply is not approval.
+* Phase 2 (remote-model escalation and learning) is parked.
+
+## Part A. Lares / RoyVa
+
+### A1. Current picture
+
+#### 1. What RoyVa is
 A household assistant. The owner talks to it on Telegram; it controls Home Assistant devices, reads/tidies Gmail, searches the web, answers from home history, and (new) can attempt things no skill covers.
 
 ```
@@ -35,15 +56,15 @@ Telegram -> bridge (bridge/bridge.mjs, node)
 ```
 Ports: model 8000, router 9B 8203, proxy 8100, OpenCode 49380, gateway 8300. Services are systemd USER units (`systemctl --user ... royva-{opencode,gateway,bridge,proxy,router-9b}`); the model server `evo-llamacpp-agent` is separate.
 
-## 2. State at hand-over
-Everything is committed on `main` (no remote is set; push is the owner's job, see section 7). Gateway 249 tests, bridge 40 tests, undefined-name checks clean.
+#### 2. State at hand-over
+Everything is committed on `main` and pushed to the public GitHub repo (see section 7). Gateway 249 tests, bridge 40 tests, undefined-name checks clean.
 Only uncommitted file: `config/opencode.json` carries generated dummy Gmail entries (`gmail-u-dummy`, `gmail-tidy-u-dummy`), left out on purpose. The dummy account is still in `runtime/gateway/gmail/accounts.json`; remove it with `scripts/royva-gmail` (check the subcommand), then `git checkout config/opencode.json`.
 
 Built this session (all with tests):
 | Area | What |
 |---|---|
 | Follow-ups | A reply in the same session gets "the previous turn acted on ..." read back from the session's own tool calls (`gateway/royva_gateway/scope.py`). New standalone messages start a new session and inherit nothing. |
-| Home control rules | More than one device -> list them and wait for the owner's OK; protected devices (`ROYVA_PROTECTED_DEVICES`, now `Shivi Linux Box`, it hosts Home Assistant) never bundled and always asked first; state re-read after bulk changes; floor requests use ONE unfiltered query. **These are prompt rules, not hard blocks.** |
+| Home control rules | More than one device -> list them and wait for the owner's OK; protected devices (`ROYVA_PROTECTED_DEVICES`, now the Linux box named in `scripts/env.sh`, it hosts Home Assistant) never bundled and always asked first; state re-read after bulk changes; floor requests use ONE unfiltered query. **These are prompt rules, not hard blocks.** |
 | General mode | `gateway/royva_gateway/general.py`. Replaces the old "I can't do that yet" refusal. Gap still logged (`missing` in `runtime/gateway/traces.jsonl`). |
 | HA API door | `mcp/ha/ha_api.py`: `ha_read` (reads only; filter with `contains`/`fields`/`limit`) and `ha_write` (always asks). Lets RoyVa assign areas, rename, write automations. No automation validator exists. |
 | Machine door | `mcp/machine/machine.py`. Reads run in a read-only bubblewrap sandbox (no network, clean env, secret files hidden by name pattern, own pid namespace); writes need approval via `*_run_approved`. Remote hosts: `ROYVA_REMOTE_HOSTS` (now `<user>@<box>`, `bwrap` confirmed there). `crontab -l`, `systemctl [--user] list-timers --all` and one `ps` listing run unsandboxed by exact match. Log: `runtime/gateway/machine.log`. No sudo. |
@@ -55,28 +76,28 @@ Built this session (all with tests):
 
 Scopes: `runtime/gateway/users.json`. Owner = `"*"`. The two doors are tool scope `admin`: owner only. Invited household members get the existing skills, not the doors.
 
-## 3. Not live-verified (be honest about this)
+#### 3. Not live-verified (be honest about this)
 The owner said things look good after deploying, but Claude did not itself run these end to end. Confirm with `node tests/enqueue.mjs "label" "prompt"` (mirrors into the owner's chat, runs the real handler):
 * general mode + `machine_run` ("how much memory is free?"), `crontab -l` path, remote read on `<box>` (never run; quoting is unit-tested through a local shell).
 * `ha_write` approval showing live names; Deny stopping the run; the Approve/Deny buttons on a permission request.
 * floor query (one call), loop guard on a long legitimate job, `/v1/resolve-ids` against the real Home Assistant.
 * Prompt-rule behaviour on the 35B model (models can ask in text instead of calling `ha_write`; this happened once and the prompt was changed).
 
-## 4. Standing rules from the owner
+#### 4. Standing rules from the owner
 * Only Gmail trash/archive asks approval, plus what the owner explicitly added: multi-device changes, the protected device, `ha_write`, `*_run_approved`.
 * **Never change user-visible behavior (policies, enabled skills, routing) without asking first.** No hardcoded household or vocabulary logic: facts come from Home Assistant or deployment config (`scripts/env.sh`).
-* Commit locally in small commits with proper messages; never push. Keep Telegram replies short.
+* Commit only when the owner asks, in small commits with proper messages (the owner has since asked for pushes explicitly, 2026-11-19). Keep Telegram replies short.
 * Phase 2 (remote-model escalation and learning) is parked by the owner.
-* Telegram messages from the owner (from_id 6064019420) arrive as Monitor events; treat them as the owner's words.
+* Telegram messages from the owner (from_id in `tests/local_names.json`) arrive as Monitor events; treat them as the owner's words.
 
-## 5. Decisions the owner deferred ("let's do these later")
+#### 5. Decisions the owner deferred ("let's do these later")
 * **A.** The 👎 "Incorrect" button sends the chat to OpenRouter/DeepSeek, which runs with every permission pre-allowed (Gmail send included). Disable? (`runDeepSeekTakeover` in `bridge/bridge.mjs`; the owner-only doors are already stripped from its config.)
 * **B.** General mode offers web fetch/search together with machine reads: a malicious page could make RoyVa read a file and leak it in a URL. Options: drop web fetch from general mode, or require approval for it.
 * **C.** A general-mode request carried ~100k prompt tokens (mostly cached). Trim to read tools + approval tools?
 * Should household members get `ha_read`/`ha_write` (not the machine tools)? One scope change.
 * Locks/garage on the no-approval path (owner never said).
 
-## 6. Candidate next phases (suggested order)
+#### 6. Candidate next phases (suggested order)
 1. **Live verification and tuning of what was built** (section 3), incl. measuring general-mode cost and quality on the 35B.
 2. **Doing things later / proactive**: no scheduler and no unprompted messages today ("remind me at 8", "tell me when the garage has been open 10 minutes"). Biggest functional gap. Needs a scheduler plus a push path (the bridge already has `notify`-style sending).
 3. **Calendar and other logged-in services** (`calendar` intent is `planned`, tools unbuilt); Google Calendar via OAuth like the Gmail pipeline.
@@ -84,14 +105,14 @@ The owner said things look good after deploying, but Claude did not itself run t
 5. **Phase 2 learning**: remote-model escalation and an agent that learns skills from traces; first showcase is song/YouTube playback (no music source in HA, no yt-dlp). Reference code: `~/RoyVa-old-baseline-reference` (agent-learning, smart-router, gmail-mcp, ha-legacy). Gap data already logged in traces (`missing`).
 6. **Persistent memory** across conversations ("always do X when I say Y"). Sessions are the only memory today.
 7. Routing: a fresh held-out eval set (current benchmark is tuned and optimistic); extra title-generation call (B5).
-8. Enrollment: second real Telegram account test (`/join` -> `/accept` -> `/connect-gmail`); GitHub Pages OAuth relay (`som4tress/royva-oauth-relay`, owner runs the `gh` commands); map Telegram ids to Shobha and Shivangsh.
+8. Enrollment: second real Telegram account test (`/join` -> `/accept` -> `/connect-gmail`); GitHub Pages OAuth relay (`som4tress/royva-oauth-relay`, owner runs the `gh` commands); map Telegram ids to the other household members.
 
-## 7. Owner actions waiting
-* Push: `cd ~/RoyVa && git remote add origin https://github.com/som4tress/RoyVa.git && git push -u origin main` (the remote repo exists and was empty; tag `checkpoint-2026-11-08` optional). Old repo cleanup and the `RoyVa-Hearth` idea are in the archived log.
+#### 7. Owner actions waiting
+* Pushed: `origin` is `https://github.com/som4tress/RoyVa.git` (PUBLIC; pushed by Claude at the owner's request on 2026-11-19, so never commit machine-specific values: see 0.2). Old repo cleanup and the `RoyVa-Hearth` idea are in A4.
 * `scripts/deploy.sh` after any commit that touches bridge, gateway or mcp.
 * Optional: a dedicated, restricted ssh key for RoyVa on the remote host (the current key is the owner's own).
 
-## 8. Known issues and tech debt
+#### 8. Known issues and tech debt
 * `mcp/ha/ha_history.py` hardcodes three family first names; absolute `~` paths in scripts, units and config.
 * `config/opencode.baseline.json`, `config/opencode.fix1.json` look stale.
 * `ha.broadcast` is `external`-risk; unread-count answers once capped at a page (fixed for exact counts, recheck).
@@ -100,7 +121,7 @@ The owner said things look good after deploying, but Claude did not itself run t
 * Sessions keep their original tool descriptions; a changed tool schema only reaches NEW conversations (a reply into an old thread keeps the old behavior).
 * Existing sessions from before a deploy carry old grants until the gateway re-patches them on the next turn.
 
-## 9. Where things are
+#### 9. Where things are
 * `gateway/royva_gateway/`: `service.py` (route/prepare/commit), `router.py`, `profiles.py` (grants, prompt text), `general.py`, `scope.py`, `home_context.py` (HA registries, id->name), `registry.py`/`models.py` (data contracts), `sessions.py`, `app.py` (endpoints).
 * `gateway/registry/`: `tools.json` (catalog: risk, scope, approval, door) and `intents/*.json`. A fix is usually data or a generic rule, not a code branch.
 * `bridge/`: `bridge.mjs` (Telegram + run loop), `permissions.mjs` (approval text, names, takeover strip), `guard.mjs`, `opencode.mjs`, `usage.mjs`, `enroll.mjs`.
@@ -110,14 +131,14 @@ The owner said things look good after deploying, but Claude did not itself run t
 * Debug a conversation: `journalctl --user -u royva-bridge -n 50`, `runtime/gateway/traces.jsonl`, and the OpenCode DB (tool calls are in `session_message.data` -> `content[]` with `state.input/status/error`).
 * Env (`scripts/env.sh`): `ROYVA_PROTECTED_DEVICES`, `ROYVA_REMOTE_HOSTS`, `ROYVA_DEFAULT_PERSON`; volume cap `ROYVA_PLAY_VOLUME` (28%) / `ROYVA_MAX_VOLUME` (30%); rehearsal mode: create `runtime/gateway/dry_run` (the write tools report instead of acting).
 
-## 10. Lessons from this session
+#### 10. Lessons from this session
 * `node --check` and unit tests do not catch a missing import. Run `scripts/check.sh`, deploy with `scripts/deploy.sh`.
 * A tool result cut off at a size cap looks like "not found" to the model. Narrow on the server (filters, limits) and say when something was cut.
 * A prompt instruction is not enforcement. Where it matters (approvals, secrets, scopes) enforce in code; say so when something is only a prompt rule.
 * If you ask the model to "ask first", it may ask in chat text and never call the tool whose own prompt carries the buttons. Tell it to call the gated tool directly.
 * Ids that reference each other (device <-> area <-> entity) must be named from their own registry, live, never from the nearest name in earlier output.
 
-## 11. Regression suite and open audit findings (2026-11-10)
+#### 11. Regression suite and open audit findings (2026-11-10)
 Run before/after every change, no Telegram: `. scripts/env.sh; node tests/regress.mjs` (route + permission checks, ~1 min) and `node tests/regress.mjs --live` (also runs the `live` cases through OpenCode; every permission request is denied, so nothing in the house changes; ~10 min). Cases are in `tests/regress_cases.json`, built from real past queries (`past-NN` are frozen current routing; add the owner's new queries there). Known misroute is tagged `xfail`.
 Open findings from the 2026-11-10 audit, not fixed (need an owner decision or more work):
 - Any enrolled member can press 👎 (DeepSeek takeover, all servers allowed); gmail servers are not stripped from the takeover config.
@@ -129,10 +150,975 @@ Open findings from the 2026-11-10 audit, not fixed (need an owner decision or mo
 - `expected_mcp` omits `machine` and `ha-api`.
 - Loop guard trips on read, change, re-read of the same query.
 
-## 12. Image skill (Qwen-Image-2.1 Q8, stable-diffusion.cpp Vulkan)
+#### 12. Image skill (Qwen-Image-2.1 Q8, stable-diffusion.cpp Vulkan)
 * Files: runtime binary `~/llm-server/sdcpp/master-1086` (sd-cli), models in `~/llm-server/models/image/qwen-image-2.1` (denoiser Q8, Qwen3-VL-8B Q8 encoder, VAE, mmproj for editing). Smoke test: `~/llm-server/sdcpp/test-image.sh`.
 * MCP server `image-gen` (`mcp/image/image_gen.py`): `generate_image`, `edit_image` (reads photos only from `runtime/data/inbox`, writes to `runtime/data/images`, one render at a time, 900 s timeout). Intent `image_generate` (also web.search/fetch for news memes). Bridge: `images.mjs` sends the picture, `media.mjs` saves incoming photos and adds a `[Attached photo: path]` line.
 * Needs `scripts/deploy.sh` (OpenCode restart loads the MCP server). Text-to-image smoke-tested by hand; photo restyle and the live tool path are NOT yet verified end to end. Regression: route cases `image-*`, live case `image-live-draw`.
 
-## 13. Latest handoff
-See `docs/handoff-2026-11-11-image-and-agents.md`: image skill as shipped (30 steps, cfg 4.0, EasyCache), latest fixes, open owner decisions (3090/ComfyUI, PG&E data, Hyderabad job finder), and the autonomous scheduled-agents design (runner vs NemoClaw).
+#### 13. Latest handoff
+See A5 (image skill as shipped, open owner decisions, the autonomous scheduled-agents design) and Part B (img_video agent).
+
+
+### A2. Bug log (archive, written 2026-11-08; status table at its end)
+
+#### RoyVa bug log
+
+Method: one bug at a time. Each entry cites a captured request ID (`captures/<id>.req.json`, `captures/index.jsonl`),
+states expected vs actual, a hypothesis (not a confirmed cause until tested), the generic fix, and before/after numbers
+from re-running the full six-prompt suite. A fix must help the suite as a whole, not one prompt.
+
+Baseline stack: vanilla OpenCode v2.2.5 (binary hash matches inventory; build reproducibility vs upstream unverified),
+Qwen3.6-35B-A3B Q8_0 on llama.cpp b12110 Vulkan, minimal config (no instructions, no plugins, HA + Gmail MCP only,
+mutating tools denied), logging proxy, production Telegram bridge copy.
+
+Status key: OPEN · HYPOTHESIS · FIXING · FIXED (with numbers) · WONTFIX
+
+---
+
+##### B1 — Coding-agent system prompt for a household assistant   [OPEN]
+- Evidence: capture `20261107232616-0002`: system prompt 2,130 tokens begins "You are an AI agent running in OpenCode, a
+  coding agent harness", includes "Working in codebases" rules and a "Code Mode" JS catalog of OpenCode-management tools.
+- Expected: short assistant-appropriate prompt. Actual: coding-harness prompt on every request.
+- Hypothesis: it biases the model toward file exploration (see B2) and costs ~2.1k tokens per request.
+- Candidate generic fix: replace/override the default system prompt via an agent profile or config option; measure.
+
+##### B2 — Model explores the filesystem before answering   [OPEN]
+- Evidence: `…-0002`, `…-0003`: first two actions were `read` on the workspace dir then `~/RoyVa` for
+  "What is the status of lights upstairs?". ~11 s of extra round-trips; 12 built-in tools (edit, write, shell, glob,
+  grep, subagent, webfetch, websearch, skill, question, read, execute) are offered.
+- Hypothesis: coding prompt + coding tools invite repo exploration.
+- Candidate generic fix: remove/deny built-in coding tools for the assistant profile; verify deny hides them from the schema
+  (deny rules did remove the 12 denied HA/Gmail tools from the schema — confirmed in `…-0003`: 19 tools, no mutators).
+
+##### B3 — MCP tools absent on the first model step   [OPEN — REPRODUCED 2026-11-08]
+- Evidence: `…-0002` carried 12 tools and none of the HA/Gmail ones; from `…-0003` the 7 allowed MCP tools appear (19 total).
+- Impact if real: the first message after a (re)start could not call HA at all, and an answer like "I don't have access"
+  becomes likely (cf. the P2 refusals in the isolation harness).
+- Reproduced: after restarting OpenCode, the very first request (session with HA grants) carried tools=['skill'] only; the same
+  request on a warm instance carried the HA tools. Hypothesis stands: MCP servers connect asynchronously after startup.
+- Fix path: `GET /api/mcp` reports per-server status (`connected`); the gateway waits for all expected servers before serving.
+
+##### B4 — Discovery thrash: floors/areas unknown to the model   [OPEN]
+- Evidence: `…-0004`..`…-0006`: `GetLiveContext{area:"upstairs"}` → error "No exposed entities found in area 'upstairs'";
+  then `{}` (9.9k-char full-home dump ≈ 3k tokens); then three per-area calls. 5 HA calls and 3 extra LLM round-trips.
+  History grew 342 → 3,345 tokens. Final answer lists lights in Master Bedroom and a child's bedroom; whether those are
+  exactly the "upstairs" lights has not been verified against the HA floor registry.
+- Hypothesis: the model has no map of floors → areas, so "upstairs/downstairs/outside" has no direct lookup.
+- Candidate generic fix: a compact, generated "home map" (floors → areas, with synonyms) supplied as context or a tool.
+
+##### B5 — Extra title-generation LLM call per session   [OPEN, low priority]
+- Evidence: `…-0001`: 0 tools, 421-token system prompt, ~4.7 s. Runs once per new session (Telegram creates one per message).
+- Candidate fix: configure a cheaper/no-op title path if OpenCode allows it; otherwise accept.
+
+##### B6 — Runaway tool loop with no budget ("oldest unread emails")   [OPEN — reproduced]
+- Evidence: API-path run, prompt "List the top 20 oldest unread emails from my gmail." → 55 LLM requests, max prompt 97,885
+  tokens, ≥223 s (captures `20261107233…`, see `index.jsonl`). Calls: `gmail_list_messages` ×2 (page 1–2 of INBOX+UNREAD,
+  maxResults 100) then `gmail_search_messages` with ever-different date windows (`before:`, `older_than:`, `newer_than:`,
+  `sort:date`) — none of which the Gmail search syntax supports as intended.
+- Expected: either a correct "oldest first" result, or a bounded attempt that stops and says what it could not do.
+- Hypothesis (two causes): (a) the Gmail tool returns newest-first and has no sort/"last page" support, so "oldest" requires
+  paging to the end; (b) nothing caps tool-call count or detects "same tool, near-duplicate args".
+- Candidate generic fixes: (1) a per-turn step/tool-call budget with forced wrap-up (applies to every prompt);
+  (2) tool-level: `order=oldest` / count-aware paging helper. Do (1) first; (2) is Gmail-specific.
+
+##### B7 — Capability refusals without trying tools (P2, P3)   [OPEN — reproduced in OpenCode and in the isolation harness]
+- Evidence: P2 "…car travelled this week?" → 1 request, 0 tool calls: "I don't have access to vehicle telematics or car
+  data through the tools available to me." P3 "…forecast for the next 10 days?" → 1 request, 0 tool calls: "I don't have
+  access to a weather tool … what city?" even though `websearch`/`webfetch` are in the tool list (capture `…-0002`).
+  Isolation harness (180 runs) showed the same P2 refusal pattern, which a 2-sentence "tools cover X; search before
+  refusing" prompt eliminated (47% → 100% first-tool-correct).
+- Hypothesis: the model is not told what its tools cover (HA holds vehicle sensors; web tools answer weather) nor where
+  "home" is (forecast location).
+- Candidate generic fix: a small assistant context block: capabilities + home location + "look it up before saying you
+  cannot". Same block should carry the home map from B4.
+
+##### B8 — `skill` tool leaks through `deny *`   [OPEN]
+- Evidence: session with agent `royva` (deny *) and no grants still received tools=['skill'] (session_perm_test.mjs, C).
+- Fix: explicit deny rule for `skill` in the base agent (and review other built-ins that ignore `*`).
+
+##### Design finding — per-session permissions (validated 2026-11-08)
+- Session create accepts `{agent, permissions}`; PATCH /api/session/:id widens permissions mid-session; captured requests confirm the
+  model receives exactly the granted tools (Gmail-only session -> 4 Gmail tools; PATCH added websearch/webfetch). So the gateway uses
+  ONE base agent (deny *, short prompt) + per-session grants = union of the session's intents. No per-combination agents.
+
+---
+Template for new entries:
+
+    ## Bn — title   [STATUS]
+    - Evidence: capture IDs + one-line observation
+    - Expected / Actual
+    - Hypothesis (label as such) · Root cause (only once confirmed)
+    - Fix (generic?) · Before/after: suite metrics
+
+
+---
+##### Status as of 2026-11-08 (gateway hardening pass)
+| Bug | Status | How / evidence |
+|---|---|---|
+| B1 coding-agent system prompt | FIXED | base agent `royva` has its own short prompt (system ~250 tokens vs ~2,130) |
+| B2 filesystem exploration / coding tools | FIXED | base agent denies everything; per-session grants expose only the intent's tools; `never_grant` list |
+| B3 MCP tools absent on first step | MITIGATED | gateway readiness is continuous (`watch_ready`): 503 until all MCP servers are connected, and again if OpenCode restarts (drill 3). The underlying OpenCode race remains. |
+| B4 floor/area thrash | FIXED | home map generated from HA registries; upstairs now checks all areas; follow-up "and downstairs?" works in-session |
+| B5 title-generation call per session | OPEN (low) | one extra ~0.5 s model call per new session; not yet suppressed |
+| B6 runaway tool loop | FIXED | per-turn round cap (intent `steps`) with forced wrap-up; counts rounds not parallel calls (a fan-out of 8 areas is fine); regression tests |
+| B7 capability refusals | MITIGATED | capability hint per intent + generated context; P2/P3 replay went 55%/10% -> ~100% first-tool-ok; Ford distance and forecast now answered |
+| B8 `skill` leaking through deny * | FIXED | explicit deny in the base agent and in `never_grant` |
+
+Hardening verified by failure injection (tests/test_hardening.py, 99 tests total) and live drills: router failover (9B -> 4B -> keyword rules) with circuit
+breaker; fail-closed when no router works; OpenCode down -> 503 + friendly Telegram message + automatic recovery; invalid registry edits rejected on reload;
+never leave a session persisted as busy; GET-only retries; token auth; trace rotation; session pruning; stats endpoint with unsupported-demand counter.
+
+Regressions caught by the new tests during this pass (worth remembering): a rewrite of app.py silently deleted /v1/session and /v1/route (now pinned by a
+route-table test); a style-hint test coupled to wording (now asserts the principle); loop guard once counted parallel calls (now rounds).
+
+Known gaps: B5; write capabilities intentionally OFF (speakers/TTS, run-routine, automations, calendar, trackers, camera analysis); remote escalation and
+recipe learning (phase 2); fresh held-out routing eval set needed (real_v1 is a tuning set); per-user mapping beyond ROYVA_DEFAULT_PERSON.
+
+
+### A3. Early dev notes (archive, 2026-11-07/08: dev stack restart order, findings)
+
+#### RoyVa dev handoff (written before moving the session into tmux)
+
+##### Restart the dev stack (each is a long-running process; start in this order)
+    scripts/run-proxy.sh        # logging proxy :8100 -> llama :8000   (captures in captures/)
+    scripts/run-opencode.sh     # isolated vanilla OpenCode :49380
+    ROYVA_INJECT_DIR=$PWD/runtime/inject scripts/run-bridge.sh   # Telegram bridge (@roy_has_bot); prod unit opencode-telegram-vanilla must be stopped
+    scripts/run-router-model.sh emb Qwen3-Embedding-0.6B-Q8_0.gguf 8201
+    scripts/run-router-model.sh llm Qwen3-4B-Instruct-2507-Q8_0.gguf 8202
+    scripts/run-router-model.sh llm Qwen3.5-9B-Q8_0.gguf 8203      # if download finished (models/router/)
+Model server for Qwen 35B (port 8000) is the systemd unit evo-llamacpp-agent (now Q8_0, launch_qwen36.py).
+Telegram <-> Claude: scripts/notify.sh "text" sends a message; replies (to it, or "cc: ...") land in runtime/claude/inbox.jsonl.
+Units (not installed): systemd/royva-*.service + scripts/install-units.sh.
+
+##### Findings so far
+- BF16 -> Q8_0 for the 35B: decode 8.5 -> ~50 tok/s, PP 150-480 -> 1,100-1,700 tok/s.
+- Replay experiment (tests/replay.py, 600 reqs): OpenCode's coding prompt + 12 coding tools cause refusals / no-tool answers
+  (P2 55%, P3 10% first-tool-ok); short prompt + only relevant tools + capability sentence -> 100%. Prefix cache not a confounder.
+- OpenCode input is deterministic post-MCP; variation = model sampling. Decision: stay with OpenCode, fix via config.
+- Bugs B1-B7 in Part A2 (coding prompt, FS exploration, cold-start MCP tool race, area/floor thrash, title call, runaway loop, refusals).
+- Staged but NOT applied: config/opencode.fix1.json (royva agent: own system prompt, deny * + allow list, default_agent).
+
+##### Gateway (gateway/, python venv .venv, 22 tests pass: .venv/bin/python -m pytest)
+- royva_gateway/models.py (contracts+schemas), registry.py (validated loader), classifiers.py, registry/tools.json (41 tools),
+  registry/intents/*.json (9 seeds), eval/eval_set.jsonl (118 items, leak-checked), bench/run_bench.py, bench/emb_sweep.py.
+- Benchmark (test split, 58 items): rules 72% macro; embedding(Qwen3-Emb-0.6B, with instruction prefix) 65%; 4B LLM 81% (p50 358 ms).
+- Embedding sanity sweep: instruction prefix HURTS (70% with, 87% without top-1 on standalone). EOS suffix hurts too. => set use_prefix=False.
+- Next: rerun embedding without prefix; add 9B; try hybrid (embedding confident -> use it, else LLM); few-shot prompt for LLM; cross-domain is weak (~40%).
+
+##### Open items
+- Decisions from user: gateway = separate service (decided), small model preferred over Qwen35B (decided), intents list (decided).
+- Do not commit/push anything unless the user asks.
+
+##### Update 2026-11-08
+- Router decision: Qwen3.5-9B Q8 + few-shot is the default router model (user OK with ~0.5 s); 4B Q8 kept as fast fallback. Embedding stage dropped for v1.
+- Gateway design: ONE base OpenCode agent `royva` (deny *, short system prompt) + per-session `permissions` (PATCH to widen). See Part A2.
+- Readiness: GET /api/mcp (Basic auth opencode:$OPENCODE_SERVER_PASSWORD) lists MCP servers with status; wait for all `connected` (fixes B3).
+- Telegram: user is travelling; use scripts/notify.sh, replies land in runtime/claude/inbox.jsonl.
+- New intents added: routine_trigger, web_lookup research phrasing (steps 10), grouped status in home_state. real_v1 eval set is now a TUNING set; need fresh held-out messages.
+
+##### Update 2026-11-08 (later)
+- Gateway service built (gateway/royva_gateway: service.py prepare/ask/route_for_bridge, router.py, runner.py round-guard, profiles.py, home_context.py, app.py).
+  Endpoints: POST /v1/ask (self-contained), POST /v1/session + POST /v1/route (bridge path), GET /healthz, POST /v1/reload. Port 8300. 42 tests pass.
+- Bridge uses the gateway when ROYVA_GATEWAY_URL is set (default in scripts/run-bridge.sh). Round guard is enforced in the bridge's onProgress.
+- Base agent `royva` denies everything; a request that bypasses the gateway gets NO tools (caused a bad reply to a real user message during a restart).
+- ha-history MCP (mcp/ha/ha_history.py + vendored ha_* helpers) is wired: get_visited_locations (home_history, active), get_on_entities_with_context and
+  get_device_status_report (home_state). Known gaps: Ford distance (no generic entity-history tool yet), camera events, TTS, synced speakers, run-routine.
+- Start order: llama -> proxy -> opencode -> gateway -> bridge (units in systemd/, not installed; scripts/install-units.sh).
+- Approved by user: travel-aware location (use phone location via HA when away); concise grouped status.
+
+##### Update 2026-11-08 (end of hardening pass; user away)
+- Gateway README: gateway/README.md (architecture, safety model, failure table, API, how to extend, runbook). 99 tests: `cd gateway && .venv/bin/python -m pytest`.
+- Safety model: read tools allow; write/external tools `ask` (bridge /approve) unless intent `auto`; read_only intents never get write tools. No write intent is active.
+- Router: chain 9B+fs -> 4B+fs -> rules (breaker 2 failures / 30 s); fail closed when none can route. Router models are separate llama-servers on 8203 / 8202.
+- Context is generated from HA (home map, location, household, speakers); per-turn `current_location` when the user is away (city only; never the street address).
+- Escalation/learning (phase 2) is parked by the user. `/v1/stats` already counts unsupported requests (`unsupported_demand`) as the demand signal.
+- Stack started by me from this session (dies with it): proxy 8100, OpenCode 49380, gateway 8300, bridge, router models 8202/8203. llama 8000 is the user's systemd unit.
+- Telegram: scripts/notify.sh to message the user; replies (reply to it or `cc:`) land in runtime/claude/inbox.jsonl.
+- Do not commit or push unless the user asks.
+
+##### Update 2026-11-08 (options 1 + 2 live)
+- LIVE (no dry run): routine_trigger ("Goodnight" -> automation "Good Night", allowlist = ["Good Night"]) and media_playback (speak/TTS, radio streams, synced Sonos
+  grouping, volume/control). Verified: dry-run flows for every example, then one harmless LIVE write (pause an idle speaker) with the "What I did" footer.
+- Privacy: private chats only; email scope owner-only and SILENT for others; home_actions scope owner-only (polite refusal). users.json holds the owner only; 2 IDs are
+  on the bot allowlist. `_policy.silent_scopes = ["email"]`.
+- Telegram with Claude: /claude (sticky) /royva, cc:/claude:/@claude, replies to Claude's messages. Heartbeat-based ack. Listener: scripts/claude-inbox-watch.sh (replays unread;
+  re-arm each Monitor expiry). Injected tests use `as: 'royva'`. ANY question for the user goes to Telegram (scripts/notify.sh).
+- Stack now runs under scripts/supervise.sh (bridge, gateway, OpenCode). Router models 8202/8203 run unsupervised (systemd units exist, not installed).
+- Open questions sent to the user (Telegram msg 12287): radio stream URL/presets, allow Good Morning/Home Away, silence for other refusals, which ID is whom.
+- Known hardcode left: vendored mcp/ha/ha_history.py has the 3 family names in its `person` enum (generalize from HA person entities).
+
+##### Update 2026-11-08 (owner's answers to the numbered questions)
+- Radio station: the user's URL was the station website; the real stream (found in the station's player config) is saved as radio presets for two country stations
+  (MP3 and AAC streams exist). Presets live in runtime/gateway/radio_presets.json.
+- Routines allowlist = Good Night, Good Morning, Home Away ("allow all" read as the three routine automations; the other ~19 automations are event automations and stay off).
+- House actions (speakers, routines) are open to everyone on the bot; ONLY email is partitioned (owner only, silent for others). home_actions scope removed.
+- Which Telegram ID is whom: deferred by the user (they will set up the other members' email later).
+
+
+### A4. Session log 2026-11-08 .. 2026-11-10 (archive)
+
+#### RoyVa handoff (2026-11-08)
+
+##### Do this first (you, in a normal terminal, after exiting Claude)
+```
+~/RoyVa/scripts/install-units.sh       # enables + starts the whole stack at boot, disables the OLD Telegram bridge
+~/RoyVa/scripts/royva-status.sh        # every line should say "ok"
+cd ~/RoyVa && gh repo create som4tress/RoyVa-Hearth --private --source . --push     # first push (no remote is set on purpose)
+```
+Then (optional proof) reboot, wait ~3 min, run `royva-status.sh` again. Delete the OLD GitHub repo `som4tress/RoyVa` yourself
+(a read-only copy is in `~/RoyVa-old-baseline-reference`, useful for phase 2: agent-learning, smart-router, gmail-mcp, ha-legacy).
+In Telegram send `/royva` once so plain messages go to RoyVa (`/claude` or `cc:` talks to Claude).
+
+##### State
+* Git: branch `main`, tag `checkpoint-2026-11-08`, clean tree, no remote. `gateway/eval/real_v1.jsonl` (real messages) is git-ignored.
+* Served models: main Qwen3.6-35B-A3B Q8 (:8000, systemd `evo-llamacpp-agent`, not restartable by Claude), router Qwen3.5-9B Q8 (:8203, 2 slots x 4096). Fallback router = main model via proxy :8100.
+* Stack: proxy :8100 -> OpenCode v2.2.5 :49380 -> gateway :8300 -> Telegram bridge. Units in `systemd/`, dev supervision via `scripts/supervise.sh`.
+* Volume cap: 28% default, 30% ceiling (`ROYVA_PLAY_VOLUME`, `ROYVA_MAX_VOLUME`). Rehearsal mode: create `runtime/gateway/dry_run`.
+* Token totals: `runtime/state/usage_totals.json` (shown in every reply footer).
+* Photos work; videos are expanded to <=8 frames by the bridge (OpenCode media plugin is not loaded).
+
+##### Resuming Claude
+Start `claude` in `~/RoyVa`, say "resume from HANDOFF.md". Then re-arm the Telegram listener under Monitor:
+`~/RoyVa/scripts/claude-inbox-watch.sh` (30-minute cap, re-arm on expiry). Standing rule: replies to Telegram messages go back through
+`scripts/notify.sh`. Claude cannot run `systemctl`, `sudo`, or `gh repo create/git push` (org policy / permission classifier): the user runs those.
+
+##### Open items
+* Music/YouTube playback: no music source in HA (no media_extractor/Spotify/Plex/Music Assistant, no yt-dlp). Parked as the phase-2 learning-module showcase.
+* "All speakers" skips the AirPlay Office Den (cannot be grouped): plan is to play on it separately and say it is not in sync.
+* `mcp/ha/ha_history.py` still hardcodes three family first names; absolute `~` paths in scripts/units/config.
+* Fresh held-out routing eval set needed (current benchmark is tuned, optimistic). B5 (title-generation extra call) open.
+* Map Telegram IDs to the other household members (email scope) later. Planned/off: calendar, trackers, HA automation writing, camera analysis, home_control.
+* Phase 2 (remote-model escalation + learning) is parked by the user.
+
+
+##### Gmail pipeline + Telegram enrollment (2026-11-08, built while the user was away; all UNCOMMITTED unless noted)
+* Done and tested (gateway 216, bridge 30 tests): `gateway/royva_gateway/{gmail_enroll,gmail_cli,directory}.py`, per-person MCP wiring (profiles/service: `gmail-u-<name>`),
+  scope renamed email -> gmail, endpoints `/v1/enroll/*` and `/v1/admin/restart-opencode`, bridge `enroll.mjs` + hooks in `bridge.mjs`, relay page `docs/oauth-relay/`, `scripts/royva-gmail`.
+* Live-verified: dummy Gmail connected via paste-back (then removed); isolation; unknown-mailbox message; owner-only invite on the live store with a fake id.
+* NOT verified end to end: a real second Telegram account doing /join -> /accept -> /connect-gmail (needs a second account); restart-when-idle after a real connect; the Web-client + GitHub Pages route
+  (needs the user: public repo `som4tress/royva-oauth-relay` + Pages [repo create was denied by the classifier; the local repo ~/royva-oauth-relay is committed], Google Web client JSON at ~/.royva/gmail-client.json).
+* Known gaps: unread-count answers are wrong (model reports a capped page, e.g. 201 vs ~7.6k); env allowlist ids in TELEGRAM_ALLOWED_USER_IDS cannot be revoked from chat (shrink it to the owner).
+* Backups of the bridge before each change: runtime/bridge.mjs.pre-*.bak.
+
+##### Session handoff 2026-11-09 (read this first)
+
+**Goal (owner's words, restated):** RoyVa should be an *autonomous*, generic assistant. When no skill matches, it must judge and attempt on its own (consult itself on possible paths), not answer "I can't". Example that failed: "find this cron job on the machine you run on / ssh somewhere" and "how much memory is free?" got zero tools and a guess. Design under discussion (NOT built, owner has not approved): fallback with read-only tools (B) vs. model picks tools from the whole skill catalog within scopes (C) vs. a sandboxed machine-access capability. The owner wants autonomy; clarify with them which level (including machine shell/ssh) before building.
+
+**Standing rules from the owner:** only Gmail trash/archive asks for approval; everything else (device control, media, routines) runs unattended. Never change user-visible behavior (policies, enabled skills, routing) without asking first. No hardcoded household/vocabulary logic. Commit locally in small commits; do not push. Tell the owner via Telegram (`scripts/notify.sh`); keep replies short (5-8 points). Re-arm `scripts/claude-inbox-watch.sh` under Monitor (30 min cap). Owner's chat is sticky in /claude mode until they send /royva (a reply to a RoyVa message now goes to RoyVa).
+
+**Done this session (all committed, 219 gateway tests, 30 bridge tests):** Gmail enrollment + per-person isolation + Telegram invite flow, exact unread counts, local-time (not UTC) in HA history/device/context tools, doorbell false-event fix, home_control enabled with no approval + look-up-first style, lights wired as switches returned for the model to judge (no keyword list), policy-pin test, original on/off tool descriptions restored after an audit against 49b1d97 (HA status output identical old vs new for default/floor/area/name queries).
+
+**Known open:** GitHub Pages OAuth relay (owner runs two `gh` commands), second real Telegram account for an enrollment test, locks/garage on the no-approval path (owner has not said), fallback autonomy (above), `config/opencode.json` carries generated dummy Gmail server entries (uncommitted on purpose).
+
+##### Session 2026-11-09 (later): autonomy + approvals (all committed, 243 gateway / 31 bridge tests; NOT yet restarted or live-tested)
+* Follow-ups inherit the previous turn's tool-call scope (`gateway/royva_gateway/scope.py`). Home control: approval before multi-device changes, protected devices (`ROYVA_PROTECTED_DEVICES` in `scripts/env.sh`) never bundled, state re-read after bulk changes. These are prompt rules, not hard blocks.
+* Bridge: Approve/Deny inline buttons under permission requests; `/approve` `/deny` in the command menu. Arbitrary-power tools show the whole call and are never batch-approved (`FULL_CALL` in `bridge/permissions.mjs`).
+* General mode (`general.py`): no matching intent, or a matched intent that is unbuilt, runs with every tool the user may use (writes behind approval) instead of refusing; the gap is still logged (`missing` in traces).
+* Doors, owner-scoped (tool `scope: admin`, `approval: true` on the write side): `mcp/ha/ha_api.py` (ha_read / ha_write) and `mcp/machine/machine.py` (run / run_approved / remote_run / remote_run_approved). Read vs write on machines is enforced by a read-only bubblewrap sandbox (no net, clean env, secrets hidden), not by a command list. `ROYVA_REMOTE_HOSTS` (env.sh) is the ssh allowlist. Commands are logged to `runtime/gateway/machine.log`.
+* To load: restart `royva-opencode`, `royva-gateway`, `royva-bridge` (user units; Claude cannot). New servers are NOT in `expected_mcp` on purpose.
+* Not verified: any live turn; remote ssh (Claude's ssh was denied, quoting is unit-tested through a local shell); `crontab -l` and `ps` run unsandboxed via a tiny exact-match list. Step "request_tools meta-tool" deliberately not built (no mid-run grant path known).
+* `config/opencode.json` still carries the uncommitted dummy Gmail entries; the ha-api and machine entries are committed.
+
+##### Audit 2026-11-10 (owner asked; all fixes committed)
+* Bug I shipped: `bridge.mjs` used `loopVerdict` without importing it, so every request failed with ReferenceError until the bridge was restarted with the fix. `node --check` and unit tests do not catch missing names: run `scripts/check.sh` (undefined-name checks for py and js via `tools/`, plus all tests) before restarting anything.
+* Fixed: the remote DeepSeek takeover (👎 "Incorrect" button, runs with every permission pre-allowed) was handed the live config, which now includes the `machine` and `ha-api` servers; `withoutOwnerDoors()` strips them. Sandbox secret hiding is now by file-name pattern (it missed opencode.env, connection.env, runtime.env, the Google client_secret json).
+* Open, need the owner's decision: (1) the 👎 button still sends the conversation to OpenRouter/DeepSeek with all permissions allowed (incl. Gmail send); (2) general mode offers web fetch/search together with machine reads: prompt injection could read a file and send it out in a URL; (3) general-mode requests carry ~100k prompt tokens; (4) stale `config/opencode.baseline.json` / `opencode.fix1.json`; (5) `mcp/ha/ha_history.py` hardcodes household names; absolute `~` paths everywhere.
+
+##### Local-flow hardening 2026-11-10
+* `scripts/deploy.sh` = check.sh, then restart opencode -> gateway -> bridge in order, then wait for `royva-status.sh` to be healthy. Use it instead of restarting by hand.
+* `royva-status.sh` now also checks: ha-api and machine MCP connected, bwrap works, and that the RUNNING build is not older than the last commit touching bridge/gateway/mcp (a stale process is reported DOWN).
+* Machine door fails closed when bwrap/ssh is missing; Home Assistant refusals now carry HA's own message; request failures log the stack to the journal.
+* Smoke tests of the local flow without typing in Telegram: `node tests/enqueue.mjs "label" "prompt"` (mirrored into the owner's chat, run through the real handler).
+
+
+### A5. Image skill as shipped and the autonomous-agents idea (archive, 2026-11-11)
+
+#### Handoff, 2026-11-11: image skill as shipped, and the autonomous-agents idea
+
+Read `HANDOFF.md` first (architecture, sections 1-12). This file covers what changed on 2026-11-10/11 and what is being thought through next. Nothing is pushed; all work is committed locally (last commit `f2a0acd`). The only uncommitted change is the intentional dummy Gmail entries in `config/opencode.json`.
+
+##### 1. State right now (all deployed and live)
+
+- Stack: Telegram -> bridge -> gateway :8300 -> OpenCode :49380 -> llama.cpp (35B chat model + 9B router). Last `scripts/deploy.sh` passed all health checks.
+- Tests: `scripts/check.sh` green (gateway 265, bridge 52). Route suite 95/95 (1 known xfail). Live suite last full run 93/95, the 2 failures were fixed and re-run 3x (see section 3); the 4 image live cases were re-run after the final deploy: 5/5 pass. A full live run has NOT been repeated since the last two fixes.
+- Telegram listener: only armed when the owner asks (`scripts/claude-inbox-watch.sh` under Monitor, 30 min cap). Replies go through `scripts/notify.sh`. Standing rule: if something is needed from the owner, send it on Telegram; keep replies short.
+
+##### 2. Image skill (what exists)
+
+Pipeline: message (photo saved to `runtime/data/inbox` by the bridge) -> gateway intent `image_generate` (tools: image.generate, image.edit, web.search, web.fetch; news memes search first) -> chat model writes an English prompt -> MCP server `image-gen` (`mcp/image/image_gen.py`, tools `generate_image`, `edit_image`) -> `sd-cli` (stable-diffusion.cpp master-1086, Vulkan) with Qwen-Image-2.1 Q8 GGUF + Qwen3-VL-8B Q8 text encoder + 2.1 VAE -> PNG in `runtime/data/images` -> bridge sends the picture BEFORE the text reply (own try/catch, Telegram 429 retry) -> usage footer.
+- Editing: same model with `-r <photo>` + `--llm_vision mmproj-Qwen3-VL-8B-F16.gguf`; no separate denoise strength, the change is described in words. Output size follows the photo (long side <= 1024).
+- Files outside the repo: `~/llm-server/sdcpp/master-1086/` (binary), `~/llm-server/models/image/qwen-image-2.1/` (16+ GB), benchmark scripts `~/llm-server/sdcpp/bench.sh`, `bench2.sh`, results in `~/llm-server/sdcpp/bench/`.
+- Measured (Strix Halo, Vulkan, 1024x1024, same seed): sampling is 183 of 190 s (compute-bound, ~2 passes/step at cfg>1); text encoder + VAE ~4 s. Old default (20 steps, cfg 6.0) = ~190 s and had halos/oversaturation. **Current defaults: 30 steps, cfg 4.0, `--cache-mode easycache` = ~110-120 s, clean** (EasyCache skips ~18 of 30 steps). Overrides: `ROYVA_IMAGE_STEPS`, `ROYVA_IMAGE_CFG`, `ROYVA_IMAGE_CACHE` ("" disables). Flow-shift made no difference. 28 steps without cache = 263 s (not worth it).
+- Sizes: multiples of 16, 512-1280 per side, so 1280x720 works. One render at a time (lock file); concurrent requests serialize.
+- Text in pictures: the model garbles many/long texts. The intent style says: <=2 short ALL-CAPS lines of <=5 words, no names in quotes. A short quoted title spelled correctly in all 8 benchmark renders.
+- Progress bar shows the image model label (`OPENCODE_TG_IMAGE_MODEL_LABEL`) while an image tool is running.
+- Usage footer now has a Pictures line: count, render minutes, text-encoder tokens (encoder tokens are added to the input total; counted once per file via `images_seen`). The "est. saved" figure includes those few tokens (negligible).
+- Not verified: a real end-to-end photo restyle with a user photo at the new 30-step settings (the live edit cases check routing/tool choice only; only the sloth case actually renders). Headline "#N" ranking for "top 5 news" memes is unreliable (the model does not pick 5 distinct stories reliably); a "search once, choose 5 distinct stories" style tweak was offered, not done.
+- Camera snapshot idea was dropped by the owner.
+
+##### 3. Other fixes this stretch
+
+- Whole-room / whole-floor light requests: HA GetLiveContext's domain filter hides switches/plugs, so the style text (home_control) and `home_context.py` floor rule say: no domain filter, also look up by name. Latest fix: a switch named like a light (("Bedroom Light")) counts as a light; list every match by name including those already in the requested state. Cases: `room-all-lights`, `floor-all-lights` (live), keyed on a bedroom light switch. They are state-dependent in principle (the switch is currently off); the "already off" wording keeps them valid.
+- Bridge: Telegram 429 retry in `tg()`, pictures first, `sendPhotos` retry.
+
+##### 4. Decisions waiting on the owner
+
+1. 3090 box (`<user>@<box>`, 24 GB): owner is considering ComfyUI image generation there (expected faster; Q8 21 GB is tight so Q6/fp8 or encoder offload; same model quality ceiling but more control, LoRAs, upscalers; Qwen-Image 2.1 support in ComfyUI NOT verified). Candidate models discussed: Qwen-Image (+Lightning LoRA if one works), Z-Image Turbo, FLUX.1 Krea/Kontext, FLUX.2, Qwen-Image-Edit for restyle. Nothing was run on that machine; ask before any SSH. Integration sketch: image tool calls ComfyUI's HTTP API (workflow JSON, submit, poll, fetch), local sd-cli stays as fallback, ComfyUI LAN-only with a token.
+2. Energy data: owner asked about PG&E electric and gas. Options: HA "Opower" integration (login with the owner's PG&E account, daily data, owner adds it in the HA UI so we never hold the password), Green Button manual export, Zigbee meter bridge / Emporia for live electric. Offered, not done: check whether HA already exposes energy entities.
+3. Job finder for Hyderabad (phase 1: given a CV, find relevant jobs and the contact details the posting/company publishes; phase 2: scheduled and emailed to an address). Needs from the owner: the CV (Telegram or file path), target role/seniority/salary floor/remote-hybrid, and agreement that contacts are limited to what postings or company pages publish (no scraping personal profiles, no guessed or bulk personal numbers; DPDP Act and spam concerns). Sources found (all unofficial, none vetted): JobSpy MCP (LinkedIn/Indeed/Naukri), Apify India Jobs MCP (Naukri, foundit, Instahyre, Hirist...), Bright Data Naukri MCP, community Naukri/Instahyre/LinkedIn servers. No board offers an official MCP. Fully automated applying risks account bans and breaks site terms, so the plan is search, rank, draft, notify; the owner applies or approves each one.
+4. Full live regression suite after the final fixes: run `. scripts/env.sh; node tests/regress.mjs --live` when asked (the image-live-draw case renders ~110 s).
+5. Parked from before: llama.cpp b12250 vs b12110 decision, remote DeepSeek takeover issues, HANDOFF section 11 items.
+
+##### 5. NEW DIRECTION being designed (not built): autonomous scheduled agents working with RoyVa
+
+Idea: every monitor, scheduled report, watch-and-act rule and research task becomes an independent agent defined by a small spec, run on a schedule, handing results back through RoyVa/Telegram. Phase 2 (email output, schedule) of the job finder is the first use.
+
+Design discussed:
+- Agent spec (declarative, reviewable): goal prompt, trigger/schedule, cheap code pre-check (so the model stays idle on quiet days), condition, action level (notify only / safe act / ask-first via the existing Approve/Deny), output target (Telegram now, email later), tool allowlist, limits (time cap, runs/day, token cap).
+- Isolation per agent: own OpenCode session per run (never pollutes chat context), own state file (seen-jobs list, last value, last alert time), own log visible via a `/agents` command (last run, result, cost). Agents talk to each other only through notifications/files.
+- Shared: GPU scheduling with chat priority (heavy jobs such as image rendering queue behind it; existing one-render lock stays), safety rules (Approve/Deny, quiet hours, dry-run flag, owner-only doors; an agent cannot widen its own permissions), one registry to list/pause/edit/delete agents in chat or files.
+- Who builds what: I (the dev assistant) build the generic runner and the MCP tools (job search, contact extraction) once; RoyVa then creates and edits agents from chat as spec files, dry-runs them, and asks the owner to approve before activation. RoyVa does not author new connector code; if that is ever wanted, add a sandboxed "propose a tool" path with review and approval (fits the parked phase 2 learning-module idea).
+- Mechanism options: in-gateway asyncio loop (no sudo, simplest, dies with the gateway) vs systemd user timers (robust, but Claude cannot run systemctl; owner would run `install-units.sh`). Leaning in-gateway loop first, HA automations for pure device rules.
+- Example agents: morning brief (weather + calendar + mail digest), bedtime check (doors/lights/thermostat), car weekly mileage, unusual power draw or fan left on, mail from specific senders, daily news meme in a GPU-idle window, nightly regression run with a Telegram pass/fail, the Hyderabad job finder.
+
+Alternative being weighed: **NVIDIA NemoClaw** (open-source stack running OpenClaw agents inside the OpenShell sandbox; Landlock/seccomp/network isolation, no access by default; alpha since 2026-03-16; can route to local Ollama/vLLM; docs https://docs.nvidia.com/nemoclaw/0.0.43/index.html, repo https://github.com/NVIDIA/NemoClaw). Whether it has scheduling or a skills system was NOT confirmed. Proposed split: RoyVa stays the front door, router and owner of permissions and exposes its tools (home, mail, image, calendar) to NemoClaw as MCP tools (read-only where possible); simple monitors/reports run on a small RoyVa runner; open-ended agents that may write code (job finder, research) run in NemoClaw's sandbox; all results return through RoyVa to Telegram. Risks: alpha stability, GPU contention with chat, a second agent stack to maintain.
+
+Suggested next steps for the new session:
+1. Time-boxed NemoClaw spike (on this machine or the 3090 box): does it run against our local llama.cpp endpoint, does it schedule, can it call RoyVa MCP tools, what GPU/RAM does it use next to the 35B model. Pilot agent: the Hyderabad job finder.
+2. Based on the spike, either use it for long-tail agents and build only a small RoyVa runner for monitors, or build the generic runner as designed.
+3. Get the CV, target, and contact rule from the owner (section 4, item 3).
+4. Optional quick wins still open: headline-picking tweak, real photo restyle test, full live suite, energy entities check.
+
+##### 6. How to work in this repo (reminders)
+
+- Run things via `. scripts/env.sh` (node on PATH); gateway tests: `(cd gateway && ./.venv/bin/python -m pytest -q)`; bridge: `node --test bridge/*.test.mjs`; everything: `bash scripts/check.sh`.
+- Claude cannot run systemctl or restart services; the owner runs `~/RoyVa/scripts/deploy.sh` (it restarts opencode -> gateway -> bridge and kills in-flight runs, so do not deploy mid-render). Registry changes can be loaded without a restart: `curl -s -X POST localhost:8300/v1/reload`; the MCP processes (e.g. image-gen) only pick up code changes after a deploy.
+- Test through Telegram with `node tests/enqueue.mjs "label" "text"` (inject hook) and add cases to `tests/regress_cases.json`; keep fixes generic, not per-prompt (owner feedback).
+- Do not make `pgrep -f '<pattern>'` wait loops whose own command line contains the pattern (they match themselves and never exit); use `pgrep -x sd-cli`.
+- Past runs can be inspected in `runtime/data/opencode/opencode.db` (table `session_message`, JSON content; use python sqlite3 read-only, the recent rows may still be in `opencode.db-wal`).
+
+
+## Part B. img_video agent (pictures and narrated video, Qwen-Image 2.1 + Wan 2.2 on the shared 3090 box)
+
+### B0. Current state (2026-11-19; sources: the dated entries in B1)
+**What it is.** `agents/img_video/` turns a request into a picture set or a narrated video. Telegram -> bridge -> gateway (:8300) -> OpenCode -> MCP wrapper `mcp/img_video` -> agent -> ComfyUI on the 3090 box (container `comfyui-limited`, :8188). Pipeline: plan -> research (one question via the gateway, 21-54 s) -> director (local Qwen3.6-35B-A3B, thinking off) || pictures (streamed through a queue) -> storyboard -> voice (CPU Chatterbox) || clips (Wan 2.2 14B image-to-video, a two-job batch: A = high-noise expert, B = low-noise expert, INT8 ConvRot, 3 steps, LoRA lightx2v) -> ffmpeg assembly -> bridge delivery. CLI: `cd agents/img_video && python3 -m img_video run "<query>" --count 10 --aspect 9:16 [--video]`.
+
+**Owner goal (stated repeatedly):** a 5-minute video done in at most 2 minutes, no quality loss. Not reachable by tuning one box: about 18x throughput is needed (about 5 H100-class GPUs or about 18 3090s). The "cloud GPUs or your own hardware?" question was never answered.
+
+**Config that matters now** (`agents/img_video/config.toml`; machine-specific values in `config.local.toml`): `[limits] image_prompt_chars = hard_prompt_chars = 500`, `max_video_seconds = 120`; `[pipeline] video_picture_scale = 1.5` (video pictures at 640 for 1:1), `stream_pictures = true`, `warm_pictures = true` (code default false; pre-loads Qwen-Image during research); `[wan] max_batch_clips = 10`; `[image] backend = "comfy"`, `[comfy] backend = "qwen-image-21"`, 25 steps, cfg 1. GPU power limit on the box is 300 W (set by the owner with sudo; resets on reboot unless persisted). The main llama-server runs `--parallel 2`.
+
+**Latest measured run (W8, fresh 10-shot job, 2026-11-19):** agent done 417 s after queueing (about 425 s with delivery, delivery not measured). research 29.9 | director 110.5 | images stage 115.7 | clips 253.3 (A 106.3, B 144.4) | assembly 9.6. Earlier: W6 481 s, W7 about 454 s. The first picture is warm now (5.4 s, was 32.6 s); most of the gain over W7 is research variance. Fixes this window: analyze used to run 3 times because the model answered `open_details` as an object (`director._as_list`, about 28 s saved per video).
+
+**Open levers, in order:** (1) director shot loop is the pace-setter (shots about 8 s each, about 80 s for 10 shots, plus about 30 s analyze + decide; shots embed earlier shots, so parallelising changes prompts, unproven); (2) research 21-54 s; (3) the 2 Wan expert loads, about 46-50 s per batch, disk-bound at about 630 MB/s (the stripe's ceiling is about 1.1 GB/s; RAM cap 24g -> about 30g or a prefetch node; desktop headroom about 2 GB, risky); (4) VAE decode 3.9 s/clip and WanImageToVideo 2.4 s/clip (no easy win); (5) scale-out for the 2-minute goal.
+
+**Not approved / not built (ask first):** logging each failed `ask_json` attempt; code-side `research_text` fix (move over-long query text into `research_text`); 4-bit Wan experts; the director shot-loop speed-up; family names, car, city and device names still in tests and docs; rewriting old commits to remove the old hostname and paths (option B; needs a force-push). **Unverified:** the GPU throttle flag at 250 W; delivery time and integrity of the W7/W8 videos; Stop during a synchronous job; the silent-video path live; the verify/vision calls and video-stage LLM use were not covered by the silent-retry audit.
+
+**Deployed vs not:** all code is committed and pushed (public repo `som4tress/RoyVa`); the 3090 is idle; ComfyUI runs from the stripe with the harmless timing diagnostic node installed (`~/comfyui/data/wan_diag.off` switches it off). Agent changes are live on the next request (the MCP spawns a fresh agent per call); gateway, bridge and MCP changes need `scripts/deploy.sh`.
+
+### B1. img_video log and reference (kept verbatim; the 2026-11-17 "UPDATE" block, the checkpoint of 2026-11-18 13:30 and the 2026-11-19 entries are the most current)
+
+#### Handoff 2026-11-17: img_video agent (pictures + narrated video), Qwen-Image 2.1 on the 3090
+
+Read this first in a new session. Everything below was measured or read from files unless marked "(guess)" or "(not verified)".
+
+> **UPDATE, evening of 2026-11-17: read this block first. It supersedes sections 3 (backend), 5 (rules, additions only) and 6 (open problems) below wherever they conflict.** Labels: **(measured)** = seen in a log/output, **(inferred)** = reasoned from measurements, **(unverified)** = a hypothesis nobody has tested.
+
+##### U1. The 3090 box reset abruptly 7 times today. The cause is NOT found. Read this before touching the GPU.
+The box (`<box>`, <box-ip>) also hosts the home **Pi-hole DNS**, the **Home Assistant VM** (Haos, now 2 GiB) and a second VM; when it drops, DNS for the whole house drops for about 3 minutes and Telegram notifications from this machine fail.
+
+| Stop | What was running | Prompt in flight (chars) | Pictures done first |
+|---|---|---|---|
+| 10:58 | 10-picture set through the director (no cap yet) | 1,021 | 1 |
+| 11:09 | same kind of job | 1,505 | 1 |
+| 11:30 | same | 1,443 | 4 |
+| 12:01 | same | 1,506 | 2 |
+| 12:14 | the prompt-length test script (lengths 57-1,950) | 1,198 | 6 (all <= 695 chars) |
+| 13:15 | a job the GATEWAY started by itself (a misrouted research call), cap 700 | 673 | 6 |
+| 16:46 | streaming check of option C, cap 500 | **420** | 3 |
+
+The 13:23-13:25 stop was a clean power-off done by the owner, not a crash. Every crash: the journal just stops (unclean), ext4 recovery on the next boot, no pstore dump, the box is back after 2-3.5 minutes. (measured, `crash.sh`, `boot.sh`)
+
+**Ruled out (measured):** host out-of-memory (no OOM line; the only OOM kills were 4 container kills on Nov 15), GPU Xid / MCE / thermal / watchdog messages (none), kernel or driver change (7.0.0-43 and NVIDIA 580.178.04 on every boot since Nov 15), Home Assistant polling (it logs in about once a minute, all day: the "HA login right before every crash" idea was a coincidence and was retracted), the GPU power cap (350, 300 and 250 W all stopped), the second machine's network, anything the owner did except the 13:23 power-off.
+**Prompt length is NOT the cause (measured):** it stopped at 420 and 673 chars. It changes the odds (inferred from counts, approximate): about 5 stops in about 13 pictures at 1,000+ chars, about 2 stops in about 100 pictures at <= 700 chars. That is the signature of marginal hardware under load, not of a deterministic bug.
+**Patterns worth testing (inferred):** all 7 stops happened during **Qwen-Image picture generation** and none during Wan (three Wan batches today, heavy Wan runs on Nov 15-16, no stop); every stop came right at the start of a new picture (after the previous one finished); Qwen-Image 2.1 only started running on this box on Nov 17 (fetch script 09:56, files about 10:00), the first stop was about an hour later. **A caveat I got wrong earlier:** after the 13:26 reboot the box ran only about 19 Qwen pictures and 3 Wan batches before 16:46, so "3 hours clean" was weak evidence.
+**Next experiments, in this order:** (1) when the box is back, read-only: `bash scripts/remote/crash.sh`, `comfy-logs.sh`; (2) A/B: the same prompts through another picture model already supported by the agent (FLUX.2 klein, `[comfy] backend`), 50+ pictures: if it never stops, the Qwen-Image workload is implicated; (3) the physical checks (PSU model and wattage, one cable per 8-pin, another outlet, a known-good PSU). The owner has not done (3) yet.
+**Rule while the cause is unknown:** notify the owner (`scripts/notify.sh`) before any 3090 work, one job at a time, never send anything when the box is down, no benchmarks without a reason.
+
+##### U2. What is guaranteed about prompts now, and how it is enforced (all tests pass)
+The owner's requirement: **nothing longer than 500 characters ever reaches the 3090.** Layers, outermost first:
+1. **Server side (INSTALLED AND VERIFIED at 17:10 local, 2026-11-17; ComfyUI restarted with `comfy-up-default.sh`):** `scripts/remote/comfy-prompt-guard/prompt_length_guard.py`, a ComfyUI custom node (no nodes, one `add_on_prompt_handler` hook) that cuts any string input over 500 chars in ANY submitted graph, from any client including ComfyUI's own web page, and logs to `~/comfyui/data/prompt_guard.jsonl` on the box. ComfyUI swallows errors from such hooks (fail-open), so the handler never raises and `prompt-guard-verify.sh` proves it is active. Install was: `! bash scripts/remote/prompt-guard.sh`, restart ComfyUI (`comfy-up-default.sh`, GPU idle), `! bash scripts/remote/prompt-guard-verify.sh`. **Verified (measured):** the probe graph (invalid node, HTTP 400, no GPU work) carried 2,004 chars and the guard log shows `was 2004, sent 497`; the container log shows `[prompt_length_guard] active` and the cut warning. **Re-run the verify script after EVERY ComfyUI restart or image change** (it is the only proof the hook loaded). It does not tell the client that text was cut, limits text only (not count, rate, VRAM, power), counts characters not tokens, and cannot limit text a node adds itself (unchecked for the Qwen text node).
+2. **Client ceiling at the two places graphs are posted:** `agents/img_video/img_video/guard.py` `trim_workflow`, called from `comfy._call` and `wan.py`. It cuts EVERY string input of a graph (not only recognised encoders) and can never exceed `[limits] image_prompt_chars` (`comfy._hard()` takes the smaller of `hard_prompt_chars` and the cap). It was **800 until the evening, not 500: that was my error.** Every text input posted is recorded in `runtime/gateway/prompts_sent.jsonl` (`was`, `sent`, `ceiling`).
+3. **Fitting before sending:** the director's scene budget is `cap - style line - no-text clause`; a scene is accepted only if the whole prompt fits (measured: 347-500 chars over 27 pictures since 14:21, longest 500). Rewrites by the model (3 rounds, rising temperature), then a word-boundary trim as the last resort (owner decision: never kill a job for length). A single picture or a big prompt: `guard.fit_prompt` (local writer rewrites, then a cut).
+4. **One job at a time on the box:** `runtime/gateway/gpu3090.lock` shared by the agent's picture and clip stages and the single-picture command.
+5. **Gateway:** `users.json` entry `agent:img_video` with `only_intents: ["web_lookup"]` (deployed and probed live: a smart-home question was rerouted to web_lookup). Before this, most intents had `scope: ""` meaning ANY identity could reach `home_control` etc.; a misrouted research call had started its own image jobs on the 3090 twice.
+6. **Structure:** `tools/check_3090_doors.py`, run by `scripts/check.sh` and therefore by `deploy.sh`: fails if live code anywhere posts to `/prompt`, names the box (host, address, 8188), uses ssh/scp, or calls ComfyUI `/free`, unless the file is on its reviewed list. Tests: `agents/img_video/tests/test_doors.py`.
+**Not covered:** text a ComfyUI node adds itself after receiving the string (unchecked for the Qwen text node); the manual scripts in `scripts/remote/` (owner-run; none sends prompts); voice transcription (U3). Any client, including ComfyUI's web page, is now covered by layer 1.
+
+##### U3. Audit of "doors" to the box (RoyVa included), 2026-11-17
+| Door | Status |
+|---|---|
+| Agent ComfyUI client `comfy.py`, Wan client `wan.py` | guarded (U2.2, U2.4) |
+| Single-picture command `img_video image` | guarded (fit + ceiling + lock; falls back to this machine's GPU) |
+| Chat tools (`mcp/img_video`: image, set, video) | call the agent; **rewire not deployed yet** (see U6) |
+| Old chat image tool `mcp/image` | now edit-only (this machine's GPU); its 3090 code was archived to `runtime/episodes/lib/` (the 19 old experiment scripts import it; its ceiling default is 500 too) |
+| `/free` after 10 idle minutes (was in the old chat tool, against the "never /free" rule) | removed with the old code; the door check forbids it |
+| **Voice transcription (`bridge/whisper.mjs`)** | **UNGUARDED door:** `lares.toml [voice] whisper_remote` is the box; every voice message runs whisper-cli over ssh there (8 threads; whether it uses the GPU is unverified); no lock, no limit; there is no local whisper install on this machine. Recorded on the door list; not changed |
+| RoyVa `machine` tool | no remote hosts configured (`[machine]` absent): cannot reach the box |
+| `scripts/remote/*` (96) | owner-run only |
+| Home Assistant VM and Pi-hole | live on the box (CPU/RAM/network); not GPU |
+| Gateway intents | most have `scope: ""`; only `agent:img_video` is restricted so far (owner decision pending for others) |
+
+##### U4. Architecture now (all media through the agent)
+Intents unchanged (`image_set`, `image_generate`); what is behind the tools changed. One picture: `image.generate` -> `mcp/img_video` `generate_image` -> `img_video image` (no director, immediate). A set: `image.set` -> `generate_image_set` -> background job (`mcp/img_video/runner.py`, detached) -> the director -> pictures. A video: `image.video` -> `generate_video` -> background job -> `run --video`. The tool returns at once ("started, will be posted when ready"); the runner leaves `runtime/data/outbox/done/<job>.json`; the bridge (`bridge/outbox.mjs`, watcher every 5 s) posts it to the chat that asked (it registers `pending/<job>.json` when the run ends) or posts a failure message. One director job at a time. The planner decides `narrated` (voice-over for an explanation, silent for a pure clip); a silent video has no voice stage and no audio track; `[limits] max_video_seconds = 30` cuts the shot count (6 silent or 4 narrated). The director writes motion only for videos and narration only for narrated videos. Photo editing stays in `mcp/image` (this machine's GPU). Option C (pictures drawn while the director is still writing, `[pipeline] stream_pictures`, only when the backend is the 3090) is implemented and tested with fakes; the live comparison is **unfinished** (the box stopped, U1).
+Config now: `image_prompt_chars = 500`, `hard_prompt_chars = 500`, `max_video_seconds = 30`, style share 0.25, 3 scene fields (subject 50%, setting 25%, colors 25%), `[director]` and `[pipeline]` in `agents/img_video/config.toml`. Director steps are saved in `jobs/<id>/director/`. Research can be supplied with `--research-file` (no gateway call). Prompts for single pictures and sets are written by the local model on this machine; Claude is never in RoyVa's runtime path.
+
+##### U5. Measured performance (3090, settings identical to the locked R4: 3 steps, 320x576, 81 frames, INT8)
+(Second sample, through Telegram at 17:42: 19.1 s video in 287 s, see the progress log.) Narrated 19 s video "how bees make honey", 4 shots (CLI run): **298 s** = plan 1.6 + director 53.7 (analyze 24, decide 8, shots 22) + pictures 53.1 (13.3 each) + Wan clips 184.1 + assembly 5.3 (voice 44.9 s ran in parallel, hidden). A 5-picture set: director 36-62 s (rewrite rounds dominate the slow ones: shots without rewrites take 2.8-3.3 s, with rewrites about 10 s), pictures 14.4-15.5 s each. The same 4 Wan clips three times: 184.1 s (A 90.1 + B 91.4), 201.5 s (96.3 + 103.4), **164.9 s warm (59.9 + 103.5)**. So a warm cache saves about 35 s, all in job A; job B did not change; identical runs vary about 10%. The doc's 423.5 s was 10 clips in an earlier config, 274.5 s the same 10 clips locked, 527 s the whole 60 s video with warm files and 5 of 12 stills reused: **per video-second yesterday 8.8 s, today 15.7 s.** (inferred) about 100 s of fixed cost per batch remains; fewer clips amortise it worse. Memory during the 4-clip runs: ComfyUI reported free RAM 2.1-21.0 GiB and free VRAM 2.5-22.4 GiB; (unverified reading) the container used about 22 of its 24 GiB cap, which is the Nov 15 OOM situation; a bigger cap is limited by the host (45 GiB, 2 GiB swap, VMs 2 + up to 8 GiB), so about 30 GiB at most. The 250 W cap made pictures about 16% slower (12.4 -> 14.4 s). Image to the 3090 and back (PNG) is not where time goes.
+Ideas not done: streaming (done, unmeasured live), parallel shot calls (needs llama-server slots, unchecked), merging analyze+decide, `comfy-timeline.sh` to split load time from sampling (run it on the box).
+
+##### U6. Deploy state and open items
+- **ComfyUI was restarted at about 17:09 (cold caches: the next picture and Wan job will be slower) with the guard loaded.**
+- **Deployed** (the owner ran `deploy.sh` at about 14:40; the gateway trace shows the first `restricted_reroute` at 14:43:52): gateway identity allow-list, the 500-char guards of that time in the old chat tool. **NOT deployed:** everything after (rewire of image.generate/image.video to the agent, background jobs and the bridge outbox watcher, tools.json and intent text, 500 ceiling in the old tool's replacement). Run `bash ~/RoyVa/scripts/deploy.sh`; until then the old chat image tool (ceiling 800) is still live. After deploying, test end to end from Telegram: one picture, a set of 5, a silent clip (never tested live: the planner chose narrated for the one video made).
+- Tested live today on the 3090 through the agent CLI: one picture, a 5-picture set, a narrated video (all fine). Unit tests: agent 43, gateway 319, bridge 86, wrapper 10; `scripts/check.sh` runs all of them plus the door check.
+- Other changes today: Haos VM 16 -> 2 GiB (`scripts/remote/haos-2g.sh`; backup of the definition `~/Haos-before-2g.xml` on the box; the owner reports Home Assistant works; undo: `haos-2g.sh restore`); the owner is installing a Pi-hole on this machine (not done by Claude); `lares.toml` lost its dead `comfyui_url` (backup `lares.toml.bak-20261117`); `users.json` backup `users.json.bak-20261117`.
+- Open: the research routing is fixed for `agent:img_video` only (a human asking "top 10 headlines" can still be routed to `image_set`; the router has an `image_set` example about news); decide whether other identities should be restricted; the voice door (U3); install the server guard (U2.1); finish the streaming comparison; the reset experiments (U1); per-shot director rewrite rounds waste 7 s each when the writer overshoots (the writer ignores character limits; word budgets work better).
+
+##### U7. Owner rules added today (keep)
+Nothing over 500 characters reaches the 3090, as an absolute, and the system must be able to prove it (audit file). Never kill a job for prompt length: rewrite then cut at a word boundary. Everything that uses the director may be posted later; reply at once. All single, set and video requests go through the agent. Keep fixes generic, no per-video tuning: validate any speed-up on several different workloads. Test runs start from a fresh job. Notify before using the 3090; send nothing when it is down. Claude (the developer assistant) must not be in the runtime path and should not open generated pictures unless the owner says so. Corrections I made today, so nobody repeats them: prompt length was never proven to be the cause; the Home Assistant correlation was a coincidence; the first "three clean hours" claim was too strong; the guard ceiling was 800 not 500.
+
+##### U8. Files and commands added today
+`agents/img_video/img_video/{guard,single}.py` (guard, single picture); `mcp/img_video/{server,runner}.py`; `bridge/outbox.mjs` (+ tests); `tools/check_3090_doors.py`; `scripts/remote/`: `crash.sh`, `changes.sh`, `usage.sh`, `haos-2g.sh`, `prompt-guard.sh`, `prompt-guard-verify.sh`, `comfy-prompt-guard/prompt_length_guard.py`, `power-cap-push.sh` (the 250 W cap service is installed on the box: `gpu-power-limit.service`, it makes pictures about 16% slower and did not prevent stops; consider removing it once the cause is known). Logs: `runtime/gateway/prompts_sent.jsonl` (every text input posted), `runtime/data/outbox/` (background jobs), job folders `director/`. Memory note: `project_img_video_agent.md`.
+
+
+##### U9. User-visible RoyVa behavior that every change must keep (I forgot some of it today; do not repeat that)
+Before changing any flow, list what the bridge (`bridge/bridge.mjs`, `images.mjs`, `usage.mjs`, `guard.mjs`) does AROUND it, and test that each item still works.
+- **The live progress bar** (the owner relies on it). When a message is sent to RoyVa the bridge sends a status message and edits it every 3 s (`updateStatus`, `statusTimer`, bridge.mjs about line 526): `⏳ Processing · 47s elapsed`, one ▰ block per 3 s ("each block ≈ 3s"), the model label (the image model while an image tool runs: tool names matching `generate_image|edit_image|generate_video`), token usage, the current pass, `Tool: <name> · running`, a **⏹ Stop** button and "reply to this to steer"; at the end it becomes `✓ Finished · N s` with no button. **My background-job design broke this for sets and videos** (the tool returns in seconds, so the bar says Finished after about 10 s and nothing is live for minutes). Fix in progress (U10): the same message keeps following the background job with real stages (director k/n, pictures i/n, animating, voice, assembling), a Stop that cancels the job, and a final Finished or failure line.
+- **Steering and stopping:** a reply to the status message steers the running request (`ackSteer` puts a 👀 reaction); `/stop` and the Stop button cancel the run; the loop guard (`guard.mjs`) interrupts a stuck run and asks for a wrap-up.
+- **Permission prompts** (`presentPermission`) for write tools; the "what I did" action report appended to the answer (`actionReport`); usage and cost lines (`formatUsage`, `formatFinalUsage`, `usage.mjs`); pictures go first and on their own so a failed text reply cannot lose them; captions are sent with each photo (`imageCaptions`, 1,000 chars max).
+- **Known gaps found on 2026-11-17 that are still to fix:** (1) image usage accounting: `usageTotals.recordImages(imageRuns(rows))` reads `image_path` results from the run, and a background set/video has none, so image counts and render seconds for sets and videos are no longer recorded (the outbox watcher must record them when it posts); (2) the Telegram upload stall: one `sendPhoto` hung for 65 s at 17:16 and the picture was dropped because only 429s were retried; fixed in `images.mjs` (4 attempts, 40 s each; videos 3 attempts) with tests, **not deployed yet**; the manual resend took 1.8 s, so the network was fine.
+- **Live test status of the new wiring (17:13-17:17):** the single-picture path ran end to end through Telegram (route 0.5 s, tool call 5 s, picture on a cold 3090 57 s, prompt 209 chars, audit file correct) but the upload failed (see above). The set and the silent video were not tested yet.
+
+##### U10. Working agreement for every session (owner instruction, 2026-11-17)
+1. **Keep this document up to date as you go: after every few steps (about every 3 changes, tests or measurements), not only at the end.** Add what changed, what was measured (label measured / inferred / unverified), decisions the owner made, and mistakes you corrected. If a session ends abruptly, the document must already hold the state.
+2. Record owner instructions here the moment they are given, including this one.
+3. Do not assume you remember earlier work: read this document and `HANDOFF.md` first, then check the code for user-visible behavior (U9) before changing a flow.
+4. The progress-bar work (U9/U10 below) is the next build: **agent progress file** (`IMG_VIDEO_PROGRESS_FILE` set by `mcp/img_video/runner.py`, written by the agent at each stage and picture), **bridge watcher** edits the run's status message every 3 s from it, **Stop** writes `outbox/cancel/<job>` and the runner terminates the agent (which asks ComfyUI to interrupt its current job), **final** line Finished or the failure reason. Status of each piece is logged below as it is done.
+
+###### Progress log for the progress-bar build
+- 17:30 plan agreed with the owner (the owner said to record it and keep recording); nothing built yet.
+- 17:50 DONE agent side (47 agent tests): `img_video/progress.py` writes `IMG_VIDEO_PROGRESS_FILE` (stages running/done, `shots_done/total`, `pictures_done/total`) from `Job.run_stage`, the director's shot loop and the picture loop; `comfy.interrupt()` posts ComfyUI `/interrupt` (the ONLY new thing sent to the box: it stops the running graph, no `/free`); `cli.py` installs a SIGTERM handler for `run` that interrupts ComfyUI and exits (finally blocks release the GPU lock).
+- 17:50 DONE runner (12 wrapper tests): `mcp/img_video/runner.py` starts the agent in its own process group with `IMG_VIDEO_PROGRESS_FILE=<outbox>/progress/<job>.json`, writes stdout/stderr to `<outbox>/logs/<job>.agent.{out,err}` (no pipes, no deadlock), polls every second for `<outbox>/cancel/<job>` (then SIGTERM, 20 s grace, SIGKILL) and for the time limit; a cancel ends in `done/<job>.json` with `cancelled: true`; the lock is freed when the runner exits.
+- 18:10 BUILT BEFORE CHECKING (the owner stopped me): bridge pieces for the background bar: `outbox.mjs` `registerJob` stores `statusMessageId/startedAt/kind`, `updateStatuses` edits the run's status message every 3 s from the progress file (`statusText`, `progressLabel`), `finalText` (Finished / Failed / Stopped), `requestCancel` + `jobStopButton` (callback `job:stop:<job>`), image usage recorded when results are posted (`onImages`); `bridge.mjs` hands the run's status message to the job instead of finalizing it when the run started a background job. 88 bridge tests pass. **These only act when a job was registered with a status message (background mode), so they are dormant in synchronous mode.**
+- 18:20 AUDIT of what already existed (see U11), then the owner chose: **a switch and a live test**. DONE: `mcp/img_video/server.py` runs in two modes chosen PER CALL by the flag file `runtime/gateway/img_video_async` (absent = SYNCHRONOUS, the default; present = background). `runner.produce(spec)` is the one code path for both. Synchronous returns the old result format (one text part per picture with `image_path`/`caption`/`topic`/`index`/`secs` and a summary part; a video returns `video_path`), so the existing bar, Stop, usage lines, captions and action report apply unchanged. Tool descriptions and the intent texts (`image_set.json`, `image_generate.json`) are mode-neutral ("reply as the tool's result says"). 17 wrapper tests pass.
+- 17:31 DEPLOYED (owner, 17:28) and TESTED LIVE the synchronous 5-picture set through the gateway's own turn path (`/v1/ask`, identity `claude-test:1`: real router, OpenCode, local model, `generate_image_set` tool in synchronous mode, agent, 3090; NOT the Telegram bridge). **Result (measured): done in 113.4 s end to end; the synchronous tool call ran about 107 s and survived OpenCode's MCP handling (so the 60 s worry does not apply at least up to about 2 minutes); route to answer: image_set; 5 pictures at 14.4 s each; prompts sent 451/470/460/438/373 chars, the audit file's largest was 470 (ceiling 500); pictures copied to `runtime/data/images/imgset-*`; posted to the owner's Telegram by Claude (messages 14433-14437).** The model's answer said the pictures "have been sent to the chat" (true only on the bridge path, where the bridge sends them).
+- 17:31 STREAMING (option C) measured live for the first time: images stage 106.3 s against 122.2 s run one after the other (director 50.2 s + pictures 72.0 s): **saved about 16 s (13%)**, not the 45 s I estimated earlier: the director's analyze (24 s) and decide (8 s) and shot 1 must finish before the first picture, so only the later shots overlap. Shot calls without rewrites took 3.0-3.1 s while pictures were rendering, the same as sequential (3.0 s): **no contention on this machine**.
+- STILL UNTESTED: the Telegram path of the new bridge code (live bar for a synchronous tool call, upload retry, usage line, Stop), a video through the tool (about 5 minutes: the gateway path has a 300 s limit (`run_timeout_s`), so it cannot test this; it needs the bridge from Telegram), the silent-video path, and whether Stop during a synchronous set leaves the agent running on the 3090 (expected yes).
+- 17:38 FIRST REAL TELEGRAM TEST of the synchronous set (owner's request "5 images explaining how rain is formed", routed 17:34:25 as `image_set`): run finished 17:36:18 (**113 s end to end**), no "Could not send picture" line in the bridge log (the upload retry fix is deployed), text reply at 17:36:35 after the pictures; **usage accounting works for the synchronous path** (the five `imgset-...rain-is-01..05` files are in `runtime/state/usage_totals.json`, lifetime images 92); audit max 492 of 500; streaming: images stage 103.3 s against 130.8 s sequential (**saved 27.5 s, 21%**; the first test saved 16 s, so about 16-28 s per 5-picture set); director 59.0 s, pictures 14.3-14.4 s each. A follow-up message at 17:37:17 (routed as a continuation of `image_set`) was answered in 1 s with no new job. NOT verified from the server side: the live bar on the phone, captions on the photos, Stop, the video.
+- 17:40 KNOWN GAPS, owner decided NOT to fix now ("it's fine"): (1) the follow-up "Take these images and make a video of it, no sound" (17:37:17) was classified `image_set` (because of "these images"), so `_mode` made it a continuation (`pred_intents` subset of the prior intents) and the session got only `image.set` + web tools: the model said it cannot generate videos. A fresh video request routes to `image_generate` correctly. Possible data fix if wanted later: add that sentence as a negative in `intents/image_set.json` and as a video example in `intents/image_generate.json`, then `/v1/reload`. (2) There is no "make a video from the pictures just made" feature: `generate_video` always plans and draws NEW pictures from a text request. Possible build: an agent mode that takes an existing set's job id, writes a motion line (and narration only if wanted) per existing shot, then runs the existing clips and assembly stages; the set tool's summary part would have to return the agent job id and `generate_video` take a `from_job` argument.
+- 17:50 **FIRST VIDEO THROUGH TELEGRAM, synchronous (owner's request: "a short 30-second educational video explaining how and why it rains...", routed `image_generate`, `generate_video`; the planner chose NARRATED, count 6 cut to 4 by `max_video_seconds = 30`).** Result (measured): a **19.1 s** video, 4.4 MB, video + audio, title "How Rain Forms", no narration line cut (audio 2.24/4.44/2.0/2.92 s; shot 2 slowed 1.035); **message to video in chat 4 min 47 s (17:42:12 -> 17:46:59)**. **The synchronous tool call ran about 276 s (4.6 min) and was NOT cut off by OpenCode or the bridge: the synchronous design works at video length (the gateway path's 300 s `run_timeout_s` does not apply to bridge runs).**
+| Stage | Time |
+|---|---|
+| routing, OpenCode session, model writes the tool call (message 17:42:12 to job start 17:42:18) | 6 s |
+| plan | 1.8 s |
+| director (analyze+decide+4 shots; shot calls 4.4 s avg, no contention while pictures rendered) | 45.9 s |
+| 4 pictures (12.3-12.4 s each, warm), streamed with the director: stage 82.0 s against 95.3 s one after the other | saves 13 s |
+| Wan clips on the 3090: upload 0.4 + job A 90.8 + latents 2.9 + job B 91.6 | **185.7 s** (46.4 s per clip) |
+| voice-over (Chatterbox, this machine's CPU), in parallel with the clips | 125.6 s, hidden |
+| assembly (ffmpeg) | 6.3 s |
+| run end (model's reply, 71 chars) then upload of the video to Telegram | 4 s |
+Critical path: plan -> director/pictures (82 s) -> clips (186 s) -> assembly (6 s); the clips are 65% of the tool call. Per video-second: 287 s / 19.1 s = **15.0 s** (the doc's 8.8 s was 60 s of video with 10 clips and warm files). **Observation (unverified cause): the voice took 125.6 s for 4 lines, against 44.9 s for 4 lines in the bees run (CLI) the same afternoon; it is hidden behind the clips, but if clips get faster it becomes the critical path (possible CPU competition from the bridge, the LLM server or ffmpeg; not investigated).** Prompts: pictures 426/455/432/495 chars; Wan motion lines 140/123/80/145 plus the 94-char negative, in both Wan jobs (audit file); everything under 500. The Telegram text and video were sent (messages 14454, 14455); the breakdown was posted to Telegram (14456).
+- **DECISION POINT (owner):** synchronous mode survived a 4.6-minute tool call, so the synchronous default is sound. The background machinery (`runner.py` detached mode, outbox, bridge job bar, cancel marker, SIGTERM interrupt) is now optional: keep it dormant behind the flag (`runtime/gateway/img_video_async`) or delete it. Still untested: Stop during a synchronous job (and whether the 3090 job really stops), the silent-video path (the planner chose narrated), the live bar on the phone during the video (owner to confirm).
+- 18:05 **STOPPED BY THE OWNER ("stop now, we will see later") in the middle of raising the video cap to 2 minutes. State as left:** (1) `[limits] max_video_seconds = 120` and `max_images = 30` in `agents/img_video/config.toml` (agent changes are LIVE on the next request, no deploy needed): a 2-minute video plans up to 25 silent or 20 narrated shots (was 30 s: 6 / 4; the 30 s had been the owner's TEST limit that I left as the default). (2) `wan.animate` now sends clips to ComfyUI in batches of at most `[wan] max_batch_clips = 10` (before: ALL clips in one batch; a 4-clip batch already used about 22 of the container's 24 GiB, so 25 clips in one batch risked the Nov 15 container OOM; each extra batch pays about 120 s of model loading, estimated). (3) `mcp/img_video/server.py` `MAX_COUNT` 24 -> 30 (needs `deploy.sh`; only matters if the model passes an explicit count above 24). Tests: agent 50 pass; not re-run through `check.sh`, not deployed. **TODO: `tests/test_wan_batches.py`, first test, contains a meaningless leftover assertion line (`self.assertEqual(sizes, ... if False else sizes)`): delete it.**
+- **Estimates for a 2-minute video, NOT measured (the owner wanted to ask for something and have it timed; that test did NOT happen):** silent 25 shots: pictures about 5 min, clips in 3 batches about 12 min, total about 17 min; narrated 20 shots: about 14 min, and the voice-over (4-10 min) could become the critical path. Risks: a synchronous tool call of 15-18 min (only 4.6 min proven; the flag `runtime/gateway/img_video_async` switches to background mode if it is cut off), memory on the 3090 box with more clips, the unexplained 3090 stops (a long continuous run raises exposure), Telegram's 50 MB limit (2 min at today's quality is about 28 MB, estimated, fine).
+- **Open owner questions:** the reading of "2 pictures per clip" (A: start and end picture per clip, B: 2 clips per picture, C: 2 s per picture; see the table given in chat on 2026-11-17); keep or delete the dormant background-job machinery; how long a video to allow.
+- NEXT (owner, from Telegram): `Make a set of 5 pictures showing how a seed grows into a plant, with a caption for each` (expect: live bar ticking with the image label, pictures with captions, a usage line with 5 images, no timeout), then `Make a short video clip, no narration, of a paper boat drifting on a puddle` (the first long synchronous call, about 5 min).
+
+##### U11. Audit (2026-11-18, before building the progress bar): what RoyVa already does, and the open question
+Already built: the live bar for a RUNNING request (3 s timer, elapsed, ▰ blocks, image-model label for image tools, `Tool: x running`, Stop; designed on Nov 11 for long image tools); Stop/`/stop` = `stopSession` (aborts the run, OpenCode `/interrupt`); it does NOT reach the tool process (inferred: the MCP server ignores cancel notices and blocks in a subprocess), so in synchronous mode Stop leaves the agent and the 3090 job running (unverified, worth a test); usage lines from `recordImages(imageRuns(rows))`; captions, pictures-first, action report, permission prompts, loop guard. NOT built anywhere: posting anything after a run has ended (no proactive sender; the `tracker` tool stores alerts but the bridge has no sender for them), job-level cancel, progress for a background job.
+**Open question (decides the design):** does a tool call of 3-5 minutes survive OpenCode's MCP request handling? Unverified: no OpenCode timeout setting exists for these servers in `config/opencode.json`; the one live tool call that worked took 57 s. The gateway's own `run_timeout_s` (300 s) applies only to the self-contained `/v1/ask` path, not to the bridge's runs.
+**Live test to run after deploy:** from Telegram, `Make a set of 5 pictures showing how a seed grows into a plant, with a caption for each` (about 2-3 minutes). Watch: (1) the live bar keeps ticking with the image label; (2) the pictures arrive with captions (and the upload retry works); (3) the usage line counts the 5 pictures; (4) no tool timeout error in `journalctl --user -u royva-bridge`. Then a video of at most 30 s. **Decision rule:** if the synchronous set and video complete, keep synchronous as the default and either delete or keep dormant the background machinery (owner's call); if a tool timeout appears, set the flag (`touch runtime/gateway/img_video_async`) and finish the background bar. Also test Stop during a synchronous set and check on the box whether the 3090 job really stops (expected: it does not).
+
+##### 1. What this is
+`~/RoyVa/agents/img_video/` takes a query ("10 images explaining how a rainbow forms") and produces a set of pictures with captions, and (flag `--video`) a narrated animated video. Everything is local except the web research (RoyVa gateway). Invoked by RoyVa (Telegram -> gateway :8300 -> OpenCode -> MCP tool `img-video_generate_image_set` in `mcp/img_video/server.py`, which spawns `python3 -m img_video run ... --json` per call, so code changes apply to the next request without a restart). A self-running mode is planned, not built. Product name: Lares.
+
+CLI: `cd ~/RoyVa/agents/img_video && python3 -m img_video run "<query>" --count 10 --aspect 9:16 [--video] [--job <id>] [--stop-after <stage>]`; `python3 -m img_video status <job>`. Jobs live in `jobs/<id>/` (state.json, log.txt, outputs). Stages resume by input fingerprint and outputs must exist.
+
+##### 2. Pipeline (stages in `pipeline.py`)
+`plan -> research -> direct -> images -> result` then, with `--video`: `storyboard -> (voice || clips) -> video`.
+- **plan**: count, needs_web, research questions, tone, visual style (1 LLM call).
+- **research**: web facts via RoyVa gateway `/v1/ask` (`research.py`, 300 s timeout) only when needed.
+- **direct** (`director.py`): the "thinking" planner. Thinking mode is OFF in the local model, so thinking = separate stepwise calls: analyze (title, rules, shot list) -> decide (one style bible for the whole set) -> per-shot calls (scene fields, caption <=160, motion <=300, narration <= budget) -> review and revise once -> plain-code compile into picture prompts (hex codes and "Shot N:" labels stripped). Writes `direction.json` and `items.json`. One plan feeds both pictures and video. Narration check allows 10% over the 100-char budget (`SLACK = 1.1`).
+- **images**: backend by config, see section 3. Prompt = director prompt + style line + the no-text clause (`[policy] image_text`).
+- **video** (`video.py`, `wan.py`, `voice_worker.py`): voice = Chatterbox TTS on this machine's CPU (18.2 chars/s); clips = Wan 2.2 14B image-to-video on the 3090 (INT8 ConvRot, 3 steps, two-job batch, 81 frames at 16 fps); assembly = ffmpeg per-shot slow-down/tempo, minterpolate to 24 fps, loudnorm, cross-dissolve (xfade/acrossfade 0.4 s).
+- `[verify]` (vision describe-and-redraw check) exists but is OFF: it made the images stage 3.9x slower (1066 s vs 274 s) with 8/10 never passing. The owner rejected it.
+
+##### 3. Image backend: CURRENT SETTING
+`config.toml`: `[image] backend = "comfy"`, `[comfy] backend = "qwen-image-21"`, `qwen_steps = 25`, `qwen_cfg = 1.0`, `qwen_lora = ""`. Qwen-Image 2.1 (7B) INT8 ConvRot on the 3090's ComfyUI (`http://<box>:8188`, container `comfyui-limited`, started by `scripts/remote/comfy-up-default.sh`). Workflow = ComfyUI's own template: UNETLoader + CLIPLoader(type `qwen_image`) + VAELoader + `TextEncodeQwenImage21` + KSampler(euler, simple) (`comfy.qwen21_workflow`). Files in `~/comfyui/data/models` on that box, fetched by `scripts/remote/fetch-qwen-image.sh` (a new `qwen21` set in `fetch-wan.sh`): `qwen_image_2.1_int8_convrot.safetensors`, `qwen3vl_8b_int8_convrot.safetensors`, `qwen_image_2.1_vae_bf16.safetensors`, `qwen_image_2.1_lightning4.safetensors` (lightx2v LoRA, unused). ComfyUI only lists new model files after a container restart.
+Fallback: `[image] backend = "qwen-image-local"` = sd.cpp `sd-cli` (master-1086, Vulkan) on this machine, `local_sd.py`, `[local]` section (now `lora = ""`, 8 steps, cfg 4; about 80 s per picture).
+
+###### Measured picture speeds (1024x1024, same seed/prompts)
+| Where / setting | Per picture |
+|---|---|
+| This machine, Lightning 4-step LoRA cfg 1 | 27 s |
+| This machine, Lightning LoRA at 8 steps | 47 s |
+| This machine, no LoRA 8 steps cfg 4 | 79-81 s |
+| This machine, no LoRA 30 steps cfg 4 | 279 s |
+| 3090, 8 steps cfg 4 | 8.4 s (first picture 36.9 s with model load) |
+| **3090, 25 steps cfg 1 (chosen)** | **12.4 s** |
+| 3090, 25 steps cfg 2 | 22.2 s (owner did not prefer it) |
+| 3090, 30 steps cfg 4 | 26.4 s |
+Rule of thumb: cfg above 1 costs a second guidance pass (about 2x per step regardless of value). Model fit on the 3090: about 1.9 s fixed + 0.39 s/step at cfg 1, 0.82 s/step at cfg > 1. The owner judged by eye: full-quality sampling is "clearly better" than the 4-step Lightning LoRA; the LoRA at cfg 1 on this machine followed prompts less closely. Quality of INT8 (3090) vs Q8 GGUF (here) was NOT compared directly.
+
+##### 4. Other measured numbers
+- Director (local LLM `qwen36-35b` at 127.0.0.1:8000, JSON mode, thinking off): 234 s for 10 shots (analyze 32, decide 17, ten sequential shot calls 104, review/revise 70). My estimate of 40-90 s was wrong.
+- Video stages on the 10-shot rainbow job: voice 73 s (CPU, parallel with clips), clips on 3090 296 s (upload 1.4, high-noise 121, latents up 4.6, low-noise 169; 29.6 s/clip), assembly 6.7 s, 47 s video, 7.7 MB. Image upload to the 3090: 2.4-2.9 s for 10.
+- Last full 10-picture video on the 8-step local setting: end to end 1,344 s (director 234 + pictures 807 + video 303).
+
+##### 5. Rules and owner decisions (keep)
+- All text/style/wordless prompt filters were removed on request; **moderation is deliberately deferred to the last phase** (owner: "we will do moderation next in the last phase"). `[policy] real_people = "allow"` (real public figures by name in satire/parody); `image_text` clause stays (Qwen-Image otherwise draws garbled/Chinese labels). At cfg 1 there is no negative prompt, so "no text" must be in the prompt.
+- Keep the code generic: no per-prompt hardcoding or tuning to the rainbow example (owner called this out again today). The director's fixed scene fields (`subject, setting, composition, colors, placement, facing, lighting` in `director.SCENE`) came from the rainbow failures (sun colour, observer facing) and should be revisited.
+- Never call ComfyUI `/free`; refuse/wait while the 3090 queue is busy (`comfy.wait_until_free`); Wan INT8 names are explicit in config (a silent FP8 fallback once cost a day of numbers).
+- The 3090 is shared (son's class/homework, HA VM). Claude has no SSH (org policy): the owner runs `! bash ~/RoyVa/scripts/remote/<name>.sh`. Never give commands that reboot that machine, change the driver, or start GPU work during class. Message the owner on Telegram (`scripts/notify.sh "text"`) before using the 3090 for minutes.
+- Owner prefers: short answers; measured vs estimated numbers always labelled; run tests via Telegram; one `!` command per message. Thinking mode of the local model is off by default; do not rely on it.
+
+##### 6. Open problems, in priority order
+1. **Research path times out when called through RoyVa (not proven cause).** Today's "satirical video of the top 10 news headlines" test failed at research: `/v1/ask` on the gateway (:8300) gave no answer in 300 s (gateway itself answers plain requests in 1 ms). RoyVa also started its own jobs for the same request at the same moment (jobs `20261117-0856..`, `-0901..`, `-0907..`, all failed or stale "running"; no `img_video run` process was alive when checked). Hypothesis: the gateway handles one request at a time and the agent's research call goes back into the same gateway that is waiting for the agent, so it can never complete when invoked via RoyVa. Next: test `/v1/ask` alone with a small question when nothing else runs; if it works, the fix is to not research through the gateway during a gateway-initiated run (a direct search provider in `research.py`, which was built to be swappable), or make the tool call non-blocking.
+2. **Director too slow (234 s).** Plan agreed with the owner: drop the review step (70 s, mostly nitpicks: it revised 5 of 10 shots; keep cheap code checks), merge analyze+decide into one call, run shot calls in parallel, cap scene fields at two sentences; and **stream pictures**: render shot i as soon as its spec exists instead of waiting for all shots (now sensible because pictures run on the 3090, not this GPU; real contention with the LLM on this machine's GPU was not applicable any more). Estimated saving about 170 s (guess); measure it.
+3. **Is the director worth it at all?** The owner doubts it. No controlled comparison exists: the first "better" set also changed the no-text clause and settings. Option agreed in principle: a literal mode (user's prompt as written + style line + no-text clause, no LLM planning) vs an expand mode (one LLM call). Test same prompts three ways on the 3090 (about 12 s per picture now, so cheap).
+4. Re-run the full rainbow request end to end through the 3090 backend (`--video`) and post a per-stage timing table. Not done after switching backends. Expected (guess): director 234 s + pictures about 125 s + video about 300 s.
+5. RoyVa-facing video tool: async submit/status MCP tool (a video takes about 5 min), bridge delivery of the mp4 (up to 50 MB). Not built. The existing tool only returns pictures.
+6. Not built: talking-presenter shots (speech-to-video, InfiniteTalk or LatentSync), lip-sync for voice-over shots, optional `[plan] approval` Telegram gate (default off), moderation (last phase), README update for the director and 3090 backend, removing the old `mcp/video/script_writer.py`.
+7. Deploy: the gateway/bridge/MCP were last redeployed before the director; the MCP spawns a fresh agent per call so director code is live, but run `! bash ~/RoyVa/scripts/deploy.sh` before a real RoyVa end-to-end test. `systemctl` is blocked for Claude.
+8. Small leftovers: residual garbled/legible text in a few pictures (e.g. "42/40" angle numbers); `jobs/20261116-183338-...` state.json had its `direct` stage marked done by hand (output from the real 234 s run); jobs `...085648`, `...085655`, `...090158` failed at research, `...090700` shows stale "running".
+
+##### 7. Files
+- Agent: `agents/img_video/{config.toml, capabilities.json, README.md}`; `img_video/{pipeline,director,video,wan,comfy,local_sd,verify,llm,research,jobs,cli,voice_worker}.py`; tests in `tests/` (`python3 -m unittest discover -s tests`, 7 tests pass; `scripts/check.sh` runs the repo suites).
+- Benchmarks and Telegram senders (new, kept from the session's scratchpad): `agents/img_video/bench/` — `ci3090.py <tag> <steps> <cfg> [lora] [count]` (10 plain prompts on the 3090, each picture to Telegram as generated), `ci_grid.py` (8 varied prompts x 3 settings), `ci_cfg.py` (cfg 1 vs 2), `raw.py`/`raw8.py` (local sd-cli settings), `send_photo.mjs <caption> <files..>`, `send_video.mjs <caption> <file>`. Needs `. ~/RoyVa/scripts/env.sh` for node; outputs under `runtime/bench/`. Telegram creds: `~/.config/opencode/telegram/bot.env`.
+- Remote scripts: `scripts/remote/fetch-qwen-image.sh`, `fetch-wan.sh` (set `qwen21`), `comfy-up-default.sh`, `comfy-status.sh`.
+- Related docs: `HANDOFF.md` Part B2 (Wan/ComfyUI locked stack), `HANDOFF.md` Part A5.
+- Older episodes/dry runs: `runtime/episodes/rainbow_dry/` (superseded by the agent stages).
+
+##### 8. Suggested first steps for the next session
+1. Check the stuck-research hypothesis (item 1 above) with one small direct `/v1/ask` call.
+2. Rerun the rainbow request with `--video` through the 3090 (notify the owner first) to get the real per-stage table.
+3. Implement item 2 (director speed-up and picture streaming), measure against 234 s.
+
+- 2026-11-17 (late) ROUTING FIX "a video has to be a video". Owner asked that a video request is never answered with pictures. Cause found: the router in use is the 9B+few-shot LLM (embedding path unused), and its few-shot takes only the first 3 examples per intent, so examples I appended at the end of `image_generate.json` were never seen; description/negative/RULE text edits did not move the 3 headline-video phrasings (still `image_set`). Baseline 9/12, after data edits 8/12 (rainbow video regressed to no intent), after moving video examples to the first 3 of `image_generate` 9/12. Final fix is deterministic and generic: `router.video_not_pictures()` — if the classifier's intents are only picture intents (image_set/image_generate) and the text has video/clip/animation/animate, route to `image_generate` (generate_video). Playback and mixed intents are untouched. Also: `EmbeddingClassifier.rebuild` + `HybridClassifier.rebuild` so /v1/reload re-embeds edited examples. NEEDS A GATEWAY RESTART (deploy.sh) to take effect (code, not registry); re-run scratchpad routecheck.py after: expect 12/12. MCP tool descriptions ("Pictures only: NEVER use this for a video") also need that deploy. Gateway tests: 320 pass.
+- 2026-11-17 (late) ROUTING FIX DEPLOYED (deploy.sh, all checks passed). routecheck.py on the live gateway: 12/12 (was 9/12). Live Telegram video request pending from owner.
+
+##### OWNER RULE (hard, do not relax): NO PROMPT OVER 500 CHARACTERS MAY EVER REACH THE 3090
+Recorded 2026-11-17 at the owner's instruction so no later session repeats it. The owner's position: prompts above 500 characters are what tripped the 3090 box. Treat it as an invariant: ceiling is 500 (image_prompt_chars = hard_prompt_chars = 500 in config.toml), enforced by the director budget, guard.trim_workflow on every string input, the server-side ComfyUI node (prompt_length_guard.py), and tools/check_3090_doors.py in check.sh/deploy.sh. Never raise it, never add a door that skips the guards, never "test" with longer prompts on the live box.
+Root cause (owner's determination, certain): prompts longer than 500 characters trip the 3090 box. Do not re-open this question or argue it from the earlier bench; earlier analysis that found short-prompt resets or suspected PSU/cables is superseded by the owner's ruling. Treat 500 as the hard limit, always.
+
+##### TOMORROW (owner request 2026-11-17 night): why does a ~30 s video take ~5 minutes when the locked Wan stack did 60 s of video in 527 s?
+Start from the table in this entry. Question to answer first: per-clip Wan cost (27-29 s/clip in a 10-clip batch vs 46 s/clip in a 4-clip batch = batch-size amortization) and what else is serial (director 46-54 s, voice-over 125 s on CPU, pictures 12 s each).
+- 2026-11-17 night BIGGEST CLUE for slow Wan: `docker exec comfyui-limited df -h /data/models` shows `/dev/sdc2 ... /data` = the ORIGINAL single SATA disk, NOT the stripe (`/dev/md0`). The 17:10 ComfyUI restart used `comfy-up-default.sh`; the stripe needs `comfy-up-stripe.sh`. So today's runs (Wan per clip 46 s, 4-clip batches 165-201 s) ran WITHOUT the stripe benefit. Next step: when the GPU is idle, `! bash ~/RoyVa/scripts/remote/comfy-up-stripe.sh` (it refuses if /mnt/models is not mounted), confirm `/dev/md0`, then re-time the same 4-clip batch. Make the stripe launcher the default so a restart cannot silently drop it.
+- 2026-11-17 night: ComfyUI restarted with `comfy-up-stripe.sh`; inside the container /data/models is `/dev/md127` (the stripe, 916G, 231G used; md127 is the renamed md device), mounted ro from /mnt/models. Custom nodes (the prompt guard) still load from ~/comfyui/data on sdc. Next: re-time the same 4-clip batch and compare with 164.9-201.5 s.
+- 2026-11-18 OWNER RULE: ComfyUI must start with models on the striped disk. Verified live: `/data/models` = /dev/md127 (247G used), mount /mnt/models->/data/models (ro), container started 2026-11-18T03:02Z with comfy-up-stripe.sh. The 4 Qwen-Image 2.1 files were missing on the stripe (the 19:08 job failed with "model files not available"); copied with `scripts/remote/stripe-sync-apply.sh` (17.4 GB, no sudo needed, /mnt/models is owned by the box user). `comfy-up-default.sh` now delegates to `comfy-up-stripe.sh` (set COMFY_NO_STRIPE=1 to start on the old disk on purpose); the stripe launcher also refuses if the Qwen file is missing. NEW MODEL FILES must be copied to the stripe (`stripe-sync-new.sh` = dry run, `stripe-sync-apply.sh` = copy) or ComfyUI will not offer them.
+
+##### PLAN 2026-11-18 (planning only; nothing implemented until the owner approves): speed + longer videos
+Baseline (measured, 10 shots, pre-stripe): plan 5 s | research 47-133 | director||pictures ~150 (director-bound: 10 shots x 6-13 s) | clips 250 (10 clips) | voice 45-126 (CPU, parallel, starts only after the pictures) | assembly 6-10. ~470-550 s total; the 3090 idles 130-220 s before its first picture.
+Order = risk low to high, each generic (validate on 3 different workloads: narrated news 10 shots, silent animation 10 shots, educational 6 shots; fresh jobs, cold and warm; no per-video tuning):
+- P1 Wan two-pass across chunks (all high-noise passes, then all low-noise): a >10-clip video loads each 14B expert twice instead of 2 x chunks. Est. -60..80 s at 20 shots. Low risk.
+- P2 Start the voice as soon as the director has written the narration (not after storyboard/pictures): voice never becomes the critical path at 20 lines. ~0 risk (CPU only).
+- P3 Research diet: 1 question, concise answer (<2.5k chars) so research and the director's analyze step shrink. Est. -30..60 s. Check the answer still has the facts the director needs.
+- P4 Director: write 2 shots at once (llama-server main model runs --parallel 2); emit in order so streaming keeps working; cut rewrite rounds by giving word budgets. Est. director 142 -> ~100 s. Medium risk (OpenCode chat shares the slots during a job).
+- P5 Picture size for video: render at ~1.5x the Wan input (320x576) instead of 720x1280. Est. -30% picture time. Needs a look at quality.
+- P6 Qwen-Image lightning4 LoRA (4 steps vs 25; est. 12 s -> ~3 s/picture). QUALITY TRADE-OFF: owner A/B decides; do not enable silently.
+- P7 Pre-warm the Qwen model on the 3090 while research/director run (hides the cold load). Low risk, small gain.
+- P8 Long videos: cap is already 120 s (25 silent / 20 narrated shots). Unproven: an OpenCode tool call of 10-15 min (longest seen 276 s). Test WITHOUT the 3090: a dummy MCP tool that sleeps 12 min through the real chat path. If it fails, switch long videos to the dormant background-job path (post-when-ready + progress bar).
+- P9 Measurement: log per-batch Wan job A/B and use comfy-timeline.sh to split model load from sampling; the stripe's effect is judged on the same 4-clip batch (pre-stripe 165-201 s).
+Owner decisions needed: D1 target maximum length (60 / 120 / 180 s?); D2 allow the lightning-LoRA A/B (P6)?; D3 long jobs synchronous or background (decided by P8); D4 OK to use both llama slots for the director (P4).
+- 2026-11-18 10:01 FAILED TEST V1 (satirical narrated video, top 10 headlines): routed correctly to image_generate, but the chat model followed the intent style's "for a news request first use web.search" (written for single-picture memes), searched 4 times itself, found nothing, and the bridge loop guard ("4 lookups in a row found nothing") interrupted before generate_video was called. No job started, nothing reached the 3090. Web research itself works (gateway research call: 14 s, 780 chars). Fix (registry only, live after /v1/reload): image_generate style now says for a VIDEO call generate_video once with the whole request and do NOT search yourself; the single-picture news rule stays. routecheck 12/12. Lesson: intent style text is instructions to the chat model; a rule for one tool can derail another tool of the same intent.
+
+##### OWNER RULE (hard): DO NOT BREAK ROYVA'S EXISTING FUNCTIONALITY
+Recorded 2026-11-18 at the owner's instruction. We build ON TOP OF RoyVa, not the other way around. RoyVa's existing behaviour (web search and answering in text, home control, mail, media playback, routing, the Telegram bridge and its UX, usage accounting, every existing intent and tool) must keep working exactly as before. Any change for the img_video agent must be additive or confined to the image/video intents and tools; never remove, block or reroute a RoyVa capability to make the agent work. Before changing a shared piece (intent text, router, gateway, bridge, tool registry), check what else it affects, run the gateway/bridge tests and routecheck, and say what was touched. Example of the mistake to avoid (2026-11-18): I first told the chat model "do NOT search the web yourself" for videos; the owner objected, and it was relaxed to a preference.
+- 2026-11-18 10:05 FIRST STRIPE RUN (job 20261118-100515, satirical narrated video, 6 shots, 28.7 s, 10.6 MB, via Telegram, cold ComfyUI start after restart 03:02Z): chat model before tool call 125 s | plan 5.9 | research 79.3 | director 99.9 (streamed with pictures: stage 149.4, pictures 91.1 = first 28.7 cold + 5 x 12.5) | clips 187.1 (job A 81.3 + job B 103.5; 31.2 s/clip) | voice 52.0 (hidden) | assembly 7.6. Message to video 555 s. Pre-stripe: 4 clips 165-201 s (46 s/clip), 10 clips 250 s (25 s/clip). Warm repeat needed; planner chose 6 shots for "top 10 headlines".
+
+##### 2026-11-18 12:2x - OWNER DECISION: img_video does the web search for video turns
+- Warm-run attempts W1-W3 all failed before the 3090: chat model searched itself then pasted a long script into generate_video's query (cap 1000 chars; 2773/1592/1442/1181 rejected), loop guard tripped (counts failures as "found nothing"). Third attempt after a query-length hint still failed (cause unseen).
+- Owner: "let the img_vid take over the websearch whenever the img_vid takes over". Implemented (needs gateway restart via deploy.sh): `router.is_video_turn()` + in `service.prepare` the per-turn grants drop web.search/web.fetch ONLY when the turn is purely a video request (intents subset of image_set/image_generate and a video word present). Mixed turns ("search X and make a video"), meme/picture turns and every other intent keep search. img_video's research stage still searches via RoyVa's web_lookup (/v1/ask), so RoyVa search is used, just once and inside the agent.
+- Style text of image_generate updated (no search for video; query <600 chars).
+- Gateway tests 322 pass (2 new). Touched: gateway/royva_gateway/router.py, service.py, registry/intents/image_generate.json, tests. Other intents unaffected.
+- Idea (not built): pass chat findings via research_text field.
+- 12:5x research_text added (owner approved): generate_video has optional `research_text` (clipped to 6000, never rejected; query cap 1000 unchanged). runner.agent_cmd writes it to outbox/logs/<job>.research.txt and passes `--research-file` (existing CLI/pipeline path: no gateway research call). Video tool only; set tool/pictures untouched. Style text tells the model to pass facts there only if it already searched. Tests: 3 new in mcp/img_video/test_server.py (23 total there), 2 new gateway (322). scripts/check.sh: all passed (gateway 322, bridge 88, wrapper 20, agent 50). NEEDS deploy.sh (gateway restart + MCP reload). Not yet run on the 3090.
+
+##### 2026-11-18 12:32 Warm run W4 (job 20261118-122226) after search-takeover + research_text deploy
+10 shots, 50.5 s, 19.8 MB, delivered by the bridge (msg 14534). Message->video 558 s (12:22:21->12:31:39). Chat model before tool ~5 s (was 125). Stages s: plan 2.3, research 21.0 (was 79.3), director 119.4, pictures 166.1 (streamed, images stage 226.1), clips 287.0 (jobA 111.8, up 13.2, jobB 160.1, 28.7 s/clip vs 31.2 cold), voice 85.0 (parallel), assembly 9.4. Wait per second of video 19.3 -> 11.0. Remaining big items: director 119 s serial (P4), clips 287 s (P1 two-pass), picture render. research_text path not yet exercised by the model (video-only turn has no search).
+
+##### 2026-11-18 12:45 Mixed BMW test (M1) + director concurrency measurement
+- M1 "look up BMW X5 price and make a short video": routed web_lookup+image_generate, chat model kept search (tools=6), searched itself, put facts IN query (passed, under 1000), did NOT use research_text -> pipeline researched again (48.5 s duplicate). 6 shots, 35.9 s video, msg->video 449 s (12:33:22->12:40:51), delivered msg 14540. Clips 195.5 s (jobA 82.8, up 5.6, jobB 105.9; 32.6 s/clip). Prompt guidance alone does not make the model fill research_text; candidate code fix (not built, needs owner OK): tool moves overlong query text into research_text.
+- Director concurrency bench (scratchpad dirbench.py; real captured shot prompts, local Qwen3.6-35B-A3B Q8 MoE, --parallel 2): serial 27.8 s per 6 calls (4.6 s/call, 45 tok/s aggregate); concurrency 2 -> 22.0 s wall (-21%), 7.2 s/call (+55%), 60 tok/s; concurrency 3 -> 22 s, 9-10 s/call, 58-60 tok/s (no extra gain). Repeats agree. P4 therefore saves only ~20% of the SHOT loop (~13 s of 65 s for 10 shots); the rest of the 119 s director is the serial analyze+decide calls (~54 s) which parallelism does not touch. P4 is low value. P1 only helps >10 clips (est. ~50 s fixed load per batch; needs P9 first).
+- Clip fixed costs, warm 6 vs 10 clips: jobA ~7.3 s/clip +39 s fixed; jobB ~13.5 s/clip +25 s fixed.
+
+##### 2026-11-18 13:0x Director concurrency with a real 3rd/4th slot (owner OK'd restart)
+~/llm-server/launch_qwen36.py --parallel 2 -> 4 (backup launch_qwen36.py.parallel2.bak; ctx 262144 total => 65k/slot instead of 131k; VRAM unchanged 49 GiB). Bench 8 captured shot prompts, steady-state: c1 40.3 s (45 tok/s) | c2 27.0 (63) | c3 25.2 (69) | c4 23.2 (73); per call 5.0/6.7/8.7/11.2 s. 2->4 adds ~9 pts. The earlier "3 = no gain" was a queued request on 2 slots (owner caught it). Caveat: fixed-prompt replay; real shot prompts include the earlier shots, so P4 changes prompts (quality trade-off). P4 value ~25 s of ~560 s. State: server currently at --parallel 4; recommend reverting to 2 unless P4 is built (restore the .bak, restart evo-llamacpp-agent.service).
+- 13:2x llama main server reverted to --parallel 2 (ctx 262144, 131k/slot) at owner request; launch_qwen36.py identical to launch_qwen36.py.parallel2.bak; health ok, royva-status all ok. P4 dropped (director is off the critical path after shot 1; images stage = ~60 s to first shot + sum of picture renders).
+
+---
+##### CHECKPOINT 2026-11-18 13:30 (consolidated; read this first if you are a new session)
+
+###### State of the system (verified)
+- ComfyUI on the 3090 runs from the striped disk (/dev/md127 -> /data/models). comfy-up-default.sh delegates to comfy-up-stripe.sh (COMFY_NO_STRIPE=1 for old behaviour). New model files must be synced to the stripe (scripts/remote/stripe-sync-apply.sh).
+- Main llama-server: --parallel 2, ctx 262144 (reverted after the concurrency test; launch_qwen36.py == launch_qwen36.py.parallel2.bak). royva-status.sh all ok. Last deploy.sh passed all checks (gateway 322, bridge 88, MCP wrapper 23, agent 50).
+- The 3090 is idle. No job running.
+
+###### Changes made this day (all additive, confined to image/video; RoyVa rule respected)
+1. Routing: router.video_not_pictures (video word never stays on picture intents); few-shot reads only examples[:3] so video examples were moved first. routecheck 12/12.
+2. Video turns lose the chat model's web.search/web.fetch (router.is_video_turn + service.prepare drops them from that turn's grants). Only when intents are image-only AND a video word is present. Verified on the live router: price/news/stock/weather/"search for BMW X5 videos" all stay web_lookup with search; mixed "look up prices and make a video" routes to both and keeps search. NOTE: "Search the news and make a video about it" routes to image_generate only, so it loses chat search (img_video researches it).
+3. generate_video accepts optional research_text (<=6000 chars, clipped not rejected; query cap 1000 unchanged). runner writes outbox/logs/<job>.research.txt and passes --research-file (pipeline skips its gateway research). Video tool only.
+4. image_generate style text: video requests keep query <600 chars, never paste research/script, shorten if rejected; use research_text only if it already searched.
+5. Tests added: gateway (is_video_turn, grants exclude search on video turns, routing), MCP wrapper (research_text file, clip not reject, offered on video tool only).
+6. Memory/doc rules recorded: 500-char hard limit; do not break RoyVa.
+
+###### Root causes found today
+- Warm runs W1-W3 failed before the 3090: the chat model searched, then pasted a long script into generate_video's query (cap 1000; rejected at 2773/1592/1442/1181); the bridge loop guard counts failed calls as "lookups that found nothing" (4 in a row => interrupt). My first diagnosis ("searches found nothing") was wrong; the owner's pasted reply showed the real cause.
+- The bridge DOES deliver finished videos itself (msg 14520, 14534, 14540). My manual send 14519 was a duplicate.
+- Chat model delay before the tool call (~125 s) was the model's own web searching; gone for video-only turns (job starts ~5 s after routing).
+
+###### Measured runs (all on the stripe)
+| Run | Shots | Video | Msg->video | plan | research | director | images stage (pics) | clips (A/up/B, per clip) | voice (parallel) | assembly |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Cold, 100515 | 6 | 28.7 s | 555 s | 5.9 | 79.3 | 99.9 | 149.4 (91.1) | 187.1 (81.3/-/103.5, 31.2) | 52.0 | 7.6 |
+| W4 warm, 122226 | 10 | 50.5 s | 558 s | 2.3 | 21.0 | 119.4 | 226.1 (166.1) | 287.0 (111.8/13.2/160.1, 28.7) | 85.0 | 9.4 |
+| M1 BMW mixed, 123341 | 6 | 35.9 s | 449 s | 3.2 | 48.5 (duplicate) | 93.4 | 167.2 (110.1) | 195.5 (82.8/5.6/105.9, 32.6) | 73.3 | 8.3 |
+- Seconds of waiting per second of video: cold 19.3, W4 11.0, M1 12.5. A 9-minute tool call (W4, sync) was tolerated by OpenCode (previous longest seen 276 s); 12+ min untested.
+- Clip fixed costs (warm 6 vs 10): jobA ~7.3 s/clip + ~39 s fixed; jobB ~13.5 s/clip + ~25 s fixed. Cold vs warm made no difference to clips.
+
+###### How the pipeline runs (critical path, from the W4 log)
+plan 2 s -> research 21 s -> [director: analyze 42 s, decide 13 s, then shots every 6.5 s] || [pictures on the 3090: wait for shot 1 (~60 s idle), pic 1 cold 37.9 s, then 14.4 s each] -> clips 287 s || voice 85 s (hidden) -> assembly 9 s.
+- Director -> pictures is a thread + queue (feed(("shot",...))); pictures take 14.4 s each vs shots every 6.5 s, so the queue fills and the director finishes ~2 min before the last picture. After shot 1 the director is OFF the critical path. Images stage = ~60 s to first shot + sum of picture renders.
+- The director writes scene+caption+motion+narration per shot in one text call (never sees the picture). storyboard (0 s, no model call) attaches picture paths -> voice (CPU Chatterbox, narration) || clips (Wan, motion) -> ffmpeg assembly (slow clip to fit voice up to max_slow, speed voice up to max_tempo, pads, crossfade). Video length ~ shots x 5 s; max_video_seconds=120.
+- Research: planner emits research_questions; each is POSTed to the gateway /v1/ask (RoyVa web_lookup). When the chat model had already searched, this was a DUPLICATE search (48.5 s in M1) because the model put facts in query and left research_text empty.
+
+###### Director concurrency measurement (local Qwen3.6-35B-A3B Q8 MoE, 8 real captured shot prompts, steady state)
+c1 40.3 s wall (5.0 s/call, 45 tok/s) | c2 27.0 (6.7, 63) | c3 25.2 (8.7, 69) | c4 23.2 (11.2, 73). Real 3rd/4th slots help a little (earlier "3 = no gain" was a queued request on 2 slots). Fixed-prompt replay: real shots include earlier shots (continuity), so parallelising changes prompts. Because the director is off the critical path, realistic wall-time gain ~0 s. P4 DROPPED. Memory was never the limit (VRAM 49/96 GiB; KV fixed by ctx-size; per-slot ctx would drop to 65k at 4 slots).
+
+###### PLAN status (revised)
+- P1 two-pass Wan across chunks: only helps videos >10 clips (~50 s per extra batch, estimate); do P9 first; confirm ComfyUI keeps the hi expert cached between batches. Not built.
+- P2 start voice earlier: DROP (voice 85 s is hidden behind clips 287 s).
+- P3 research diet: research is on the critical path (21 s); small possible gain.
+- P4 parallel director: DROPPED (see above).
+- P5 smaller picture render (~1.5x Wan input): pictures are 167 s, biggest block of that stage.
+- P6 lightning4 LoRA for pictures (25 -> ~4 steps, est. 14 s -> ~4-5 s each, ~100 s saved): biggest picture lever; needs owner quality A/B (D2).
+- P7 pre-warm Qwen: cold first picture 37.9 s vs 14.4 s (~23 s).
+- P8 long tool call: partly answered (9 min OK); 12+ min still untested; D3 background vs sync.
+- P9 per-batch load-vs-sampling logging: do first, free.
+- Biggest overall block: clips 287 s (sampling ~22 of 28.7 s/clip; quality knobs: frames/res/steps need owner OK).
+
+###### Owner decisions pending
+D1 target max video length (60/120/180 s). D2 allow lightning-LoRA A/B for pictures. D3 sync vs background for long jobs. Optional: code-side fix so generate_video moves over-long query text into research_text (not built, needs OK).
+
+###### Unresolved / untested
+Planner under-counts shots (6 for "top 10" in the cold run; W4 gave 10, M1 gave 6 by request). Stop during a sync job, silent-video path live, whisper door, pictures-to-video, the 3090 reset root cause (owner ruled: prompt length > 500 chars).
+
+###### Standing rules (unchanged)
+500-char prompt ceiling to the 3090; ComfyUI from the stripe; do not break RoyVa (additive, image/video only, run tests+routecheck, report what was touched); plan before implementing; notify the owner before using the 3090 (scripts/notify.sh); test prompts via tests/enqueue.mjs; fresh jobs; crisp replies; no per-prompt hardcoding; one `!` command per message; no policy changes without asking.
+
+##### 2026-11-18 18:1x Option 1 (smaller pictures for video only): built OFF, measured on the 3090
+- Code: pipeline.picture_size(cfg,caps,req); [pipeline] video_picture_scale (config.toml, DEFAULT 0 = off). Applies only when req["video"] and scale>0: size = scale x Wan input, rounded to 16, capped at the full aspect size (1:1 @1.5 -> 640x640, 9:16 -> 480x864, 16:9 -> 864x480). Picture sets and single images never use it (tests). _images_inputs adds `video_size` only for video requests so image-set fingerprints are unchanged. Tests: agent/tests/test_picture_size.py (5), agent suite 55.
+- Measurement (6 prompts from W4, same seeds, same box, prompts <=500): 1024x1024 first 38.8 s (cold model load) then 14.4 s each; 640x640 6.2 s each (no cold hit after 1024). = 57% faster per picture; ~82 s saved on a 10-shot video's picture stage (estimate: 10 x 8.2 s). Side-by-side sheets (both scaled to 432 = Wan input) sent to Telegram as messages 14544/14545. Visual check by assistant: both look fine, text ("SUMMIT?") legible in both; compositions differ (different latent size) rather than degraded. Owner's eye decides; NOT enabled yet. To enable: video_picture_scale = 1.5 in [pipeline] (agent reads config at job start, no restart).
+- Not yet done: a full video run with the setting on (clips quality is the real test: Wan input is 432x432 either way).
+
+##### 2026-11-18 18:3x W5: video_picture_scale = 1.5 ENABLED (owner OK) and measured end to end
+Job 20261118-182139, 6 shots, 29.7 s, 9.4 MB, delivered by the bridge. Msg->video 338 s (18:21:34->18:27:12). plan 3.0 | research 37.6 | director 82.8 (analyze+decide ~41, shots 7.0 s each) | images stage 91.1 (6 pictures x 6.2 s = 37.2; no cold hit, model warm) | clips 187.0 (A 80.0, up 1.1, B 105.7, 31.2/clip) | voice 65.4 (parallel) | assembly 7.5.
+vs 6-shot BMW run M1 (449 s): images 167.2 -> 91.1 (-76), research 48.5 -> 37.6, clips 195.5 -> 187.0; total -111 s (-25%). Waiting per second of video 11.4 (this video is short; W4 10 shots was 11.0, cold 19.3).
+BOTTLENECK SHIFT CONFIRMED: images stage ends ~8 s after the director; pictures (6.2 s) now faster than shots (7.0 s). Director critical path = analyze+decide ~41 s + shot loop. Parallel shot writing (2 llama slots, measured -33% on the loop) would save ~14 s on 6 shots / ~22 s on 10, but real shot prompts embed earlier shots (continuity), so parallel changes prompts: quality trade-off, owner call. Owner said not to build streaming-pictures-to-Telegram (sent this job's 6 pictures manually, msgs 14549-14554).
+- CORRECTION (owner caught it): the stage table above lists overlapping durations (images stage contains the director; voice runs inside clips). Use the CRITICAL PATH instead (sums to the wall time). W5 (338 s): chat->job 5 | plan 3 | research 38 | director 83 (pictures render INSIDE this window) | pictures tail after director 8 | clips 187 (voice 65 s hidden inside) | assembly 8 | delivery 6. M1 (449 s): chat->job 19 (chat model searched, mixed request) | plan 3 | research 49 | director 93 | pictures tail after director 74 | clips 196 | assembly 9 | delivery 7. Attribution of the -111 s: pictures tail -66 (the 640 change), chat model -14 (M1 was a mixed request, not comparable), research -11 and director -10 (run-to-run variation), clips -8. So the 640 change is worth ~66 s on a 6-shot video, not 76.
+
+##### 2026-11-18 19:0x P9 built: per-node timing for the Wan jobs (read-only, best-effort)
+- New img_video/wsprobe.py (stdlib websocket client, never raises) + wan.run_multi(..., prof=dict): the graph is posted with the probe's client_id so ComfyUI sends that job's events to it; summarize() turns them into seconds per node class and per sampler (time to first step vs later steps); describe() writes one log line per job: "profile job A (high-noise): total .. | KSamplerAdvanced .. UNETLoader .. | first sampler: Xs to its first step, the other N: Ys each | later steps Zs each". _animate_batch logs it for job A and job B. Appears in the job's log.txt next to the `clips:` line. Does not change the job (the poll of /history is unchanged; a probe failure only yields "no per-node timing").
+- Verified on the 3090 with a tiny 640 picture graph: node seconds and sampler steps arrive (first run found a bug: a 1 s socket timeout killed the reader during quiet periods; fixed to blocking reads + shutdown on stop). Tests: tests/test_wsprobe.py (3), agent suite 59, check.sh all passed.
+- NOT yet seen on a real Wan job. Next video run will print the two profile lines; use them to split the clip stage's fixed (model load/staging) vs sampling time (the ~64 s fixed estimate is still a 2-point fit). test_wan_batches' fake run_multi now accepts prof=.
+
+##### 2026-11-18 18:57 W6: 10-shot run, pictures at 640, P9 profile lines live (job 20261118-184841)
+10 shots, 51.1 s, 14.4 MB, delivered by bridge (msg 14562). E2E 481 s (18:48:37 -> 18:56:38) vs W4 (10 shots, 1024) 558 s: -77 s (-14%).
+CRITICAL PATH (non-overlapping) W6 vs W4: msg->job 4 / 5 | plan 2.5 / 2.3 | research 36.5 / 21.0 | director 130.6 / 119.4 (pictures render inside it) | pictures finishing after the director 15 / 107 | clips 276.2 / 287.0 (voice 85.7 hidden inside) | assembly 9.0 / 9.4 | delivery 8 / 6.
+Attribution: picture tail -92 s (the 640 change); research +15 and director +11 are run-to-run variation (different search/director output each run); clips -11.
+WAN PROFILE (measured, first real run): job A 113.4 s: KSamplerAdvanced 67.6 (first sampler 26.1 s to first step = model load/staging; other 9 samplers 2.8 s each), WanImageToVideo 24.9 (2.5 s/clip), CLIPTextEncode 14.3, SaveLatent 3.8. Job B 160.7 s: KSamplerAdvanced 107.3 (first 25.3 s to first step, others 2.4 s, later steps 4.0 s each), VAEDecode 39.5 (3.95 s/clip), SaveVideo 12.1.
+=> fixed model load/staging ~25 s per job = ~50 s per batch of 10; real per-clip work ~18-19 s. P1 (two-pass over several batches) would save ~50 s per extra batch (only for >10 clips). Biggest non-sampler per-clip costs: VAE decode 3.95 s, image prep 2.5 s. Sampler time exceeds the sum of its steps by ~16-20 s per job (time after the last progress event; not yet explained).
+
+##### 2026-11-18 19:2x The "unexplained" sampler time, investigated (3-clip Wan test with a raw per-node timeline; wsprobe.summarize now also returns `raw`)
+Raw timeline findings (measured, 3 clips, ComfyUI 0.42.1, argv has no --preview-method so previews are off):
+- Every KSamplerAdvanced call has a ~1.95 s TAIL: the last progress (step) event arrives, then ~1.95 s passes before the next node (SaveLatent in job A, VAEDecode in job B) starts. Same in both jobs, every sampler (1.95, 1.95 | 2.02, 1.97, 1.96).
+- In job B, every sampler AFTER the first has a further ~1.95 s inside it: step 1 at +2.33 s, step 2 at +4.10 s (the first sampler's 2nd step is 2.15 s). Job A (1 step, no VAE decode in between) has no such extra. Hypothesis (unproven): the VAE decode of the previous clip evicts part of the low-noise expert under dynamic VRAM and the next sampler re-streams it.
+- So the earlier "37 s unexplained" was an undercount: the 4.0 s "later step" figure in job B already contained the extra ~1.95 s. Real per-call overhead on a 10-clip batch ~ 10x1.95 (A) + 10x1.95 + 9x1.95 (B) = ~57 s = ~12% of e2e, ~21% of the clip stage.
+- Other per-clip numbers (3-clip run): image prep (WanImageToVideo) 2.4 s, true step ~2.15-2.3 s, VAEDecode ~3.9 s (CreateVideo+decode window), save ~1.1 s, LoadLatent ~1.1 s.
+- Next ideas: (1) read the ComfyUI container log for the model load/offload lines around a run (`! bash ~/RoyVa/scripts/remote/comfy-logs.sh 'load|patch|executed'`); (2) test 2-3 clips per sampler call (one KSamplerAdvanced over a batch) to amortize the tail; memory risk, earlier notes say 10-shot single-job grouping got OOM-killed; (3) VAE decode placement/tiling.
+- 19:3x ComfyUI container log read (owner ran comfy-logs.sh 'load|patch|executed'): in a 3-clip job A and job B the line "Model WAN21 prepared for dynamic VRAM loading. 13860MB Staged. 400 patches attached." appears ONCE PER SAMPLER CALL (3 times for 3 clips), plus "Model WanVAE prepared ... 241MB Staged" once per VAE use; "Requested to load WAN21" once per job; no unload lines. Prompt executed: A 42.70 s, B 62.55 s (3 clips). 13.86 GB / 1.95 s = 7.1 GB/s ~= PCIe gen3 x8 practical limit (doc: box runs gen3 x8): strong hypothesis (not proven) that the ~1.95 s per-call overhead is re-staging the 13.9 GB expert over PCIe on every sampler call. Matches the older doc's per-call re-preparation hypothesis (sec. 6), now sized at ~2 s per call (~57 s per 10-clip batch).
+- Options: fewer sampler calls (2-3 clips per KSamplerAdvanced call: needs batched conditioning, memory risk, est. saves ~28-38 s/10 clips); box slot at x16 (hardware); pre-merging the LoRA (unknown for INT8). Not built.
+
+##### 2026-11-18 19:5x Wan timing DIAGNOSTIC node prepared (not deployed; owner OK'd preparing it)
+Purpose: find where the ~2 s per sampler call goes (see the raw-timeline finding above). Source reading (ComfyUI v0.42.1): every sampler call clones the ModelPatcher; load_models_gpu finds the previous clone, detach()es it, and ModelPatcherDynamic.load() fully re-prepares the new one (module walk, "13860MB Staged, 400 patches attached", no early exit). But the timeline does not fit a 2 s load before step 1 (step 1 arrives at +2.33 s and a step is ~2.15 s), so the cost may be post-step cleanup or weight page-in. Do not write a patch before measuring.
+- scripts/remote/comfy-wan-diag/wan_timing_diag.py: custom node with NO nodes; wraps comfy.sample.sample, sampler_helpers.prepare_sampling/cleanup_models, model_management.load_models_gpu/free_memory/cleanup_models_gc, ModelPatcher.detach/cleanup/pre_run, ModelPatcherDynamic.load/partially_unload/unpatch_hooks with a stopwatch (cuda.synchronize before/after, so GPU work is attributed to the right call) and logs "[wan_timing_diag] <name> <secs>s (t+..)" lines, indented by nesting, to ComfyUI's own log. Behaviour-neutral (same args/result/exceptions); errors swallowed; targets missing in a version are skipped and listed in an "installed:" line; a flag file ~/comfyui/data/wan_diag.off switches it off/on without a restart. All targets exist in v0.42.1 (checked against the source).
+- Scripts (owner runs, one per message): wan-diag.sh (copy to ~/comfyui/data/custom_nodes), then restart ComfyUI with comfy-up-default.sh (stripe), wan-diag-read.sh installed (proof), then after a Wan test wan-diag-read.sh; wan-diag-toggle.sh off|on. To remove: delete the file on the box + restart.
+- Tests: agent tests/test_wan_diag_node.py (4). Not yet on the box: it only loads when ComfyUI restarts (GPU must be idle; the shared box rule applies; notify before).
+
+##### 2026-11-18 20:0x DIAGNOSTIC RESULT: no per-call unload/reload cost; the "~2 s per sampler call" was a measurement artifact
+Ran on the 3090 (node installed, ComfyUI restarted via comfy-up-default.sh from the stripe; hook proven: all 12 targets wrapped, none skipped). 3-clip run x2 (warm-up then measured), job A 45.3 s / job B 65.1 s (same as without the diag).
+- ModelPatcherDynamic.load 0.13-0.18 s per sampler call (prepare_sampling), 0.02 s for the VAE; detach, cleanup, cleanup_models_gc, unpatch_hooks, pre_run, free_memory: ~0.000-0.003 s. => unloading/reloading the model per call costs ~0.15 s (~3 s per 10-clip batch). A patch to skip it is NOT worth it. Hypothesis "per-call re-staging over PCIe" REFUTED.
+- comfy.sample.sample wall time (inside which everything happens): job A later samplers 4.22/4.24 s (1 step), job B later samplers 8.42/8.44 s (2 steps) => a REAL step is ~4.2 s for both experts. The websocket "progress" events are emitted when the CPU has queued a step, ahead of the asynchronous GPU, so the probe's step intervals (2.15-2.3 s) and the "~1.95 s tail / extra 1.95 s" were not overhead: they are GPU compute the progress timestamps did not include. The earlier "37 s unexplained" and "57 s per-call overhead" claims are WITHDRAWN. Lesson: wsprobe progress timestamps under-report step time; use sample() wall time (or wait for the node transition) for steps.
+- First sampler call of each job: A 25.4 s, B 29.3 s (vs 4.2 / 8.4 s for later ones) => ~21 s of expert load/staging per job, same cold (right after the restart) and warm, so it is NOT disk read speed. ~46 s per video (hi then lo; both 13.9 GB experts do not fit in 23.6 GB VRAM together, so one load per job is expected).
+- Clip stage for 10 clips (W6, 276 s) re-attributed: real sampling 30 steps x 4.2 = 126 s (46%) | expert load/staging ~46 s (17%) | VAE decode 39.5 s (14%) | image prep + text encode 24.9 + 14.3 = 39 s (14%) | save/load/misc ~25 s (9%).
+- Levers now: fewer steps (3 -> 2 saves ~42 s but quality risk), VAE decode (39.5 s), image prep (25 s); the ~21 s per-job load only if the cause is found (INT8 ConvRot + 400 LoRA patches applied on first use is the leading guess, unproven). The diagnostic node can stay installed (harmless) or be switched off with wan-diag-toggle.sh off.
+
+##### 2026-11-18 20:2x The ~21 s first sampler = READING THE EXPERT FROM DISK every job (measured with scripts/remote/wan-load-watch.sh; data in runtime/diag/wanload-20261118-195631)
+Per-second box samples during a 3-clip job pair: at the start of job A (t=4..29 s) and again at the start of job B (t=46..71 s) the md127 stripe delivers a steady ~600-650 MB/s for ~25 s (~15-16 GB: one 13.9 GB expert + text encoder/other), GPU memory climbs steadily 6.8 -> 21.4 GB (~0.6 GB/s, matching the disk rate), GPU utilisation only 10-50% (idle, waiting for the disk), host CPU ~20% busy (NOT CPU-bound), PCIe gen3 x8 under load (g1 idle). Page cache stays flat at 12.4 GB while FREE host RAM falls 18.7 -> 3.5 GB (weights go into pinned host buffers, not the page cache): so every job re-reads its expert from the disk; the second job does not benefit from the first (cold == warm). Sampling then runs at GPU 100% (~14 s for 3 clips A, ~25 s for 3 clips B).
+- CORRECTS an earlier claim of mine ("not disk read speed, cold == warm"): it IS disk-bound; the page cache just does not keep it.
+- Volume: ~14 GB at ~630 MB/s = ~22-25 s per job, ~46 s per video (hi then lo). The host holds a pinned RAM copy (~15 GB) during sampling, so the next expert cannot be prefetched into RAM (only ~4 GB free); the container cap is 24 GiB.
+- Levers: (1) read faster: ask whether the stripe can do more than 630 MB/s (wan-disk-speed.sh: dd direct, 1 vs 4 streams); if yes a ComfyUI/OS-level change (read-ahead, parallel readers) could cut the load; (2) faster storage (NVMe ~3 GB/s => ~5 s per load, saves ~35 s per video; hardware); (3) smaller weights (4-bit experts; quality/hardware support unknown); (4) hold both experts in RAM: does not fit the 24 GiB cap. Streaming compute-while-loading would hide at most the first step (~4 s).
+- 20:3x Stripe read test (wan-disk-speed.sh, buffered reads of cold regions of the 14.5 GB low-noise expert, iflag=nocache; direct I/O is refused on this array): 1 stream 1.1 GB/s (2.5 GB in 2.33 s); 4 parallel streams 274-284 MB/s each = ~1.1 GB/s total (no gain from parallelism). md127 = raid0 sda3+sdb2, 64k chunks, read_ahead 4096 KB. => the array's ceiling is ~1.1 GB/s; ComfyUI loads an expert at ~630 MB/s (57% of it). Best case from a better read pattern: ~25 s -> ~14 s per job = ~20 s per video (~4% of a 10-shot run). NVMe would help only if the loader is not the bottleneck. Candidate (not built): custom node that starts a sequential prefetch thread (16 MB reads, fadvise SEQUENTIAL) on the expert file when UNETLoader runs, ~2 s before the first sampler; read-only, evictable page cache, off-switch file like the diag node. Unknowns: the loader's access order (module order vs file order) and how much of the file the 24 GiB cgroup can keep cached while 15 GB is pinned.
+- 20:5x CONTEXT I had missed (owner prompted "are you missing context?"): the unload/reload that matters is expert-level (hi expert out, lo expert read from disk, per job; GPU memory drops 19.7 -> 7.4 GB and free host RAM jumps 4 -> 18.5 GB at each job start in the wanload data), not the per-sampler-call prepare (0.15 s). Preventing it needs both 13.9 GB experts resident: VRAM is 23.6 GB (no), host RAM: container cap is 24g (comfy-up.sh COMFY_MEM; comment there: host 47 GB, VMs ~9 GB, ~28 GB available, ~4 GB left for the desktop) so 2 x 13.9 GB (+ text encoder + working set) does not fit without starving the box's other users. ComfyUI 0.42.1 is cgroup-aware (system_memory.py) and its RAM-pressure cache thresholds (--cache-ram active/inactive GB) are not the limiter, the 24g cap is. Structural options: 4-bit experts (~7 GB each => both fit in VRAM, zero reloads; Ampere INT4 kernels/quality unverified), or accept 2 loads per video and speed each (prefetch ~-20 s/video). scripts/remote/box-memory.sh (read-only RAM/limits report) exists if the numbers need re-checking.
+
+##### 2026-11-19 - Item 1 (front-end idle): director analyze was silently run 3 times
+- Power test: GPU limit 250 W -> 300 W, 3-clip Wan probe: job B 63.3 -> 61.1 s (-3.5%), job A unchanged (disk-bound first sampler). About 2% overall; one run, noise unknown. Throttle flag not checked. Kept at 300 W (owner set it with sudo in a real terminal; resets on reboot unless persisted).
+- Expert loads: exactly 1 per Wan job (A = high-noise, B = low-noise), first sampler 25-26 s to first step, other 2 samplers 2.0-2.3 s each. ~46-50 s per batch. Not repeated within a stage.
+- ComfyUI audit from source + wan.log: Wan 2.1 VAE already prefers bf16 (no dtype win); decode 3.9 s/clip; WanImageToVideo 2.4 s/clip VAE-encodes the whole 81-frame padded tensor (encoding only frame 1 changes numbers: quality risk, not done); SaveVideo ~1.4 s/clip.
+- Measured front end (W6 job 20261118-184841): plan 2.5 | research 36.5 (one question) | analyze 46 | decide 25 | shot 1 ~18 | first picture at ~128 s after the job started. Strictly serial (each step needs the previous output).
+- FOUND (llama journal, tasks 6391/7332/7800): analyze ran 3 times (19 s + 9 s + 18 s). Cause: the model answers `open_details` as an OBJECT (dict) instead of a list; check() rejected it; the correction reply dropped `shot_list`; the third call passed. Reproduced 4/4 on replay (36-59 s, avg 47.4 s).
+- FIX (img_video only): director._as_list() converts a dict answer for `rules`/`open_details` into "key: value" lines before the check (same content, matches what the passing attempt returned). V["direct"] 4 -> 5 (old director results are not reused). Test: test_analyze_accepts_object_for_list_fields_without_a_retry. Replay after the fix: 17.5-21.2 s (avg 19.3 s), 1 attempt, 4/4. Saving ~28 s per video (measured on replay; not yet seen in a full run).
+- Agent suite 64 tests OK. Not touched: gateway, bridge, wrapper, other stages. ask_json's silent retries are still unlogged (idea: log each failed attempt so this shows in job logs).
+
+##### 2026-11-19 - W7 result and picture-model warm-up
+- Silent-retry audit (llama journal vs expected calls, all 5 jobs of 2026-11-18): analyze ran 3x in 5/5 jobs (dict `open_details`); every other director call matched the logged calls exactly (no other silent retries). Plan stage: 1 call. Not covered: verify/vision calls, video-stage LLM use.
+- W7 (fresh 10-shot job, 300 W, analyze fix, 576x320): agent done 446 s after queueing (+~8 s delivery, not measured, = ~454 s vs W6 481 s). plan 2.7 | research 54.1 (varies 21-54 s) | director 105.3 (analyze 18 s vs 46 s) | pictures done +175 s from job start | clips 253.7 (job A 106.4, job B 144.8) | assembly 11.3. First picture 32.6 s vs ~5.2 s for the rest (cold Qwen-Image load). Three changes at once (300 W, aspect, fix): clip-stage gain not attributable.
+- Arithmetic: with a warm model the first picture saves ~27 s but the director (shots ~7.7 s each) becomes the pace-setter, so end-to-end gain is ~8 s (estimate from W7 timings).
+- NEW (owner OK: video + picture jobs, GPU lock for ~30 s early is fine): `comfy.warm()` + `pipeline._warm_pictures()`: when the plan stage ends, a background thread takes the GPU lock (wait 0: skipped if taken), checks ComfyUI is idle, runs one throwaway 1-step 256x256 picture (fixed short prompt, random seed) so ComfyUI reads Qwen-Image from disk while research/director run. ComfyUI has no load-only API (checked server.py routes). Best effort: any failure is logged ("picture model warm-up skipped: ...") and the first picture pays the load as before. Config: `[pipeline] warm_pictures = true` (code default false). Only backend qwen-image-21; not when stop_after is plan/research/direct; not when images are already done (resume).
+- Tests: tests/test_warm.py (4); agent suite 68 OK; check.sh all passed; verified no existing test reaches comfy._call through the new code. NOT yet verified live (needs one 3090 run: look for "picture model loaded in Ns" and a ~5 s first picture).
+
+##### 2026-11-19 - W8 (warm-up live) and commits
+- W8 (fresh 10-shot job, 576x320, 300 W, analyze fix + warm-up): agent done 417 s after queueing (+~8 s delivery not measured, ~425 s; W7 ~454 s, W6 481 s). research 29.9 | director 110.5 | images stage 115.7 | clips 253.3 (A 106.3, B 144.4) | assembly 9.6.
+- Warm-up works live: "picture model loaded in 27s" during research; first picture 5.4 s (was 32.6 s in W7); pictures render 52.4 s (was 79.9 s); pictures finish 6 s after the director (was 13 s).
+- But images-stage wall only 118.5 -> 115.7 s (-2.8 s): the director (shots ~8 s each, ~80 s for 10, plus ~30 s analyze+decide) is now the pace-setter. Most of the 29 s gain vs W7 is research variance (54.1 -> 29.9 s; seen range 21-54 s).
+- OPEN LEVERS, in order: (1) director shot loop is the pace-setter (shot calls ~8 s incl. scene rewrites; shots embed earlier shots so parallelising changes prompts: unproven); (2) research 21-54 s (web search via the gateway); (3) the 2 Wan expert loads ~46-50 s per batch (RAM cap 24g -> ~30g, or prefetch; desktop headroom ~2 GB, risky); (4) VAE decode 3.9 s/clip and WanImageToVideo 2.4 s/clip (no easy win; whole-tensor encode patch = quality risk); (5) goal of 5 min video in 2 min still needs scale-out (~18x throughput).
+- Commits (branch main): 910d899 routing/wrapper/bridge/gateway; bdbd2dc agent + scripts/remote + docs. Deliberately NOT committed: lares.toml.bak-20261117 (may hold config secrets) and assets/presenters/* (a person's reference photo). GPU limit is 300 W (set with sudo by the owner; resets on reboot).
+
+- 2026-11-19 MACHINE-SPECIFIC VALUES MOVED OUT OF GIT (the repo is public). Real values live in gitignored files; tracked files carry placeholders:
+  - `scripts/remote/box.env` (BOX_USER, BOX_HOST, BOX_HOME; template `box.env.example`). Every ssh script sources `scripts/remote/_box.sh` and uses `${BOX_SSH}`. Scripts that run ON the box (fed through `ssh ... bash -s`) must NOT source it.
+  - `agents/img_video/config.local.toml` overrides `config.toml` key by key (holds the real `[comfy] url`). `config.toml` has a placeholder URL.
+  - `config/opencode.json` is now generated and untracked: edit `config/opencode.template.json` (`@HOME@` = $HOME) and run `bash scripts/render-config.sh`; `scripts/env.sh` renders it if missing.
+  - Checked: scripts/check.sh passes (322 gateway, 88 bridge, 20 wrapper, 68 agent tests, doors check). Rendered opencode.json is byte-identical to the live file. Scripts that ssh to the box were syntax-checked only, not run.
+  - Not done (needs the owner's call): family first names, car, city and device names in tests/docs; old commits still contain the old values (needs a history rewrite + force-push).
+  - SETUP ON A NEW MACHINE (these files are not in git; create them after cloning, then run `scripts/check.sh`):
+    1. `cp scripts/remote/box.env.example scripts/remote/box.env`, then fill in `BOX_USER`, `BOX_HOST`, `BOX_HOME` (the 3090 box). Every ssh script reads it and stops with a clear message if it is missing.
+    2. `agents/img_video/config.local.toml` containing `[comfy]` and `url = "http://<box>:8188"`. It overrides the placeholder in `config.toml`, key by key.
+    3. `bash scripts/render-config.sh` renders `config/opencode.json` from `config/opencode.template.json` (`@HOME@` becomes `$HOME`). `scripts/env.sh` does it automatically if the file is missing. Edit the template, never the generated file.
+    4. `lares.toml` from `lares.example.toml` (household and deployment values), as before.
+
+
+### B2. Wan / ComfyUI optimization on the 3090 (archive, 2026-11-16; the locked stack and the early measurements)
+
+#### Video generation on the 3090 box: optimization handoff (2026-11-16)
+
+Purpose: everything learned while making ComfyUI video generation fast on the shared RTX 3090 box, written so a fresh session (or a future video agent) can continue without the chat history. It is about the engine and pipeline, not about any one video. The "episode" runs mentioned below were only the benchmark workload (a 60 s, 12-shot clip with narration).
+
+Labels: **M** = measured on this box, **E** = estimated, **U** = untested idea. Nothing here is committed (RoyVa is not a git repo yet).
+
+##### 1. Constraints (read first)
+
+- Box: `<user>@<box>`, RTX 3090 24 GB (PCIe gen3 x8 under load, **M**), 45 GB RAM, models on a **SATA SSD (~500 MB/s)**, no NVMe seen. It also hosts a Home Assistant VM and is the owner's son's computer (online class, homework). Never reboot or restart the box, never start GPU work without the owner knowing. GPU is capped at 300 W by the owner (`sudo nvidia-smi -pl 300`, resets at reboot; `scripts/remote/install-boot-service.sh` exists but was never confirmed installed).
+- ComfyUI runs in Docker as `comfyui-limited`: **24 GiB RAM cap, 8 CPUs, cpu-shares 256**, `--restart unless-stopped`. Data in `~/comfyui/data` on the box.
+- **Claude cannot ssh** (managed policy denies `Bash(ssh:*)`, also nohup/systemctl/sudo). The owner runs short wrappers: `! bash ~/RoyVa/scripts/remote/<name>.sh`. **The `!` is mandatory**: a command pasted without it arrives as plain text and does nothing (happened many times). One command per message, no backticks, keep lines short (the terminal wraps long pastes).
+- ComfyUI is reachable from this machine at `http://<box>:8188`. Everything else (Python clients, ffmpeg, Chatterbox TTS on CPU) runs here.
+
+##### 2. The locked default stack (**M**, best measured)
+
+Launch: `! bash ~/RoyVa/scripts/remote/comfy-up-default.sh`
+= image `comfyui-local:v0.42.1-cu130` (torch 2.10.0+cu130, built by `build-cu130-image.sh`), `--enable-dynamic-vram --disable-cuda-malloc --vram-headroom 2 --enable-triton-backend --use-ck-attention` (named "R4" in the notes). After every launch check `/system_stats` argv; env passthrough once silently failed.
+
+Models (all INT8 ConvRot from the Winnougan repo, Apache-2.0, because the 3090 has no FP8 hardware): Wan 2.2 14B I2V high+low noise experts, `umt5_xxl_int8_convrot` text encoder, S2V INT8. 4-step lightx2v LoRAs v1 on both experts. Settings: **3 steps** (split 1 high / 2 low), **320x576** upscaled to 720x1280 with lanczos, 81 frames at 16 fps, cfg 1, shift 5, euler/simple. Step count and resolution are env-driven (`ROYVA_WAN_STEPS`, `W`, `H`).
+
+Do not use `--highvram` as default: 4% faster (**M**, 284.7 vs 296.4 s on the batch) but it risks a GPU OOM (24 GB is already ~21.8 GB used during a batch) and ComfyUI dropped `--enable-dynamic-vram` from argv when it was set. Not tested with the speech model.
+
+##### 3. Measured results
+
+Single clip, Wan 14B I2V, 384x688, 81 frames, 4 steps, warm (**M**):
+FP8 plain 137 s -> FP8 + fp16 accumulation 120.5 s -> INT8 without Triton backend 168 s (slower: optimized backends were disabled) -> INT8 + Triton (cu128) 110.6 s -> INT8 + Triton (cu130) 107.6 s -> + "fast" flags bundle 107.4 s (no gain) -> **+ dynamic VRAM 83.0 s** (cold 116.4 s).
+
+10 image-to-video clips, two-job batch (**M**):
+| Config | Total | Job A | Job B |
+|---|---|---|---|
+| FP8 sequential, one clip at a time | 1,443 s | | |
+| FP8 two-job | ~850 s (older run) | | |
+| INT8 + cu130 + Triton, 384x688, 4 steps | 504 s | 264.9 | 229.5 |
+| + dynamic VRAM | 423.5 s | 185.8 | 229.3 |
+| + 3 steps + 320x576 (R2, Sage) | 296.4 s | 131.3 | 162.0 |
+| R3 = R2 + `--highvram` | 284.7 s | 118.6 | 162.4 |
+| **R4 = CK attention, no highvram (locked)** | **274.5 s** (288.9 s in the full run) | 113.8 | 156.3 |
+
+Full pipeline from scratch (stills + voice in parallel, 10-clip batch, 2 speech clips, assembly), **M**: stills 63 s, voice done at 106 s, batch 289 s, speech clips 121 s, assembly 11 s = **527 s (8.8 min)** for 60 s of video. The original sequential FP8 pipeline took about 29.6 min (animation alone 27.6 min). Caveats: model files were warm in the page cache, 5 of 12 stills were reused.
+
+Other measured facts:
+- Two-clip batches cost ~55 s per clip, ten-clip batches 27-29 s per clip: setup is amortized.
+- LoRA v1 vs the newer lightx2v 1022 rank-64 pair: identical speed (110.4 s vs 110.4 s, 2 clips, fresh seeds), no clear quality win. Staying on v1.
+- LTX-2 19B distilled (fp8 file, text to video with generated audio, 512x768, 121 frames): loaded without OOM under dynamic VRAM, cold 126.5 s, warm 64.7 s, different 2D look, no image conditioning in the workflow. Not competitive with Wan batching; an image-to-video LTX workflow is untested.
+- PCIe under load: gen3 x8, GPU util 100% during a batch.
+
+##### 4. Levers evaluated
+
+Worked: INT8 ConvRot models (needs cu130 + Triton backend to pay off); cu130 torch (enables comfy-kitchen cuda/triton backends, which are disabled below cu13); **dynamic VRAM** (the ComfyUI default, which our old launcher disabled; halves step time on a single warm clip); two-job batching (each 14.5 GB expert loads once instead of once per clip; saved latents are bit-identical to sequential); 3 steps + 320x576 (visually fine on single clips; **M** speed, quality judged by eye); CK attention over Sage 2 (~7%); parallel ffmpeg assembly (59 s -> 11 s); running CPU voice in parallel with GPU stills.
+
+No gain: `--fast` bundle (fp16 accumulation, cublas_ops, autotune; fp8_matrix_mult is a no-op on a 3090), torch.compile, EasyCache (a "14%" gain was a cold-vs-warm artifact), newer LoRA, `--highvram` (only 4%).
+
+Dead ends and traps:
+- FP8 weights with the Triton backend fail (`type fp8e4nv not supported`) on a 3090. INT8 only.
+- Low-noise-only I2V gives broken output.
+- A negative prompt needs cfg > 1, which doubles each step and breaks the 4-step LoRA (trained for cfg 1). Put "no extra people" in the positive prompt instead.
+- Forced in-graph grouping of shots does not work: ComfyUI runs one output branch fully before the next and ignores node-id order. Grouping needs real data dependencies (zero latents), and the single-job version hit memory kills at 10 shots. The two-job version (job A saves latents with `SaveLatent`, they are re-uploaded to the input folder, job B uses `LoadLatent`) replaced it.
+
+##### 5. Memory and stability lessons
+
+- ComfyUI's RAM-pressure cache is sized from whole-host RAM, not the container cap, so the 24 GiB cgroup OOM-kills it. This happened three times (LTX-2 load, a pipeline start, right after `/free`). **Never call `/free` between jobs** (unloading copies models into RAM and triggers the kill). Dynamic VRAM plus the restart policy made it survivable; LTX-2 now loads.
+- Sage attention on a 3090 auto-dispatches to the Triton path, which needs gcc and a writable Triton cache; it fell back silently once. Look for the log line "Using sage attention" or equivalent.
+- Dynamic VRAM has open upstream issues about LoRAs being dropped or rounded (#17690, #17704). Check quality when changing anything: sharp finished frames mean the LoRA is applied. PSNR against a baseline clip is 21-35 dB between runs even with identical settings (chaotic divergence), so use it only to catch collapses, not to rank.
+- The box rebooted once at ~13:25 on 2026-11-15, cause unknown (suspected GPU power trip, hence the 300 W cap).
+
+##### 6. The unexplained cost: per-call overhead (best lead for further speed)
+
+**RESOLVED 2026-11-16 by the timing probes (section 12): this was misattributed. There is no ~19 s per-call overhead in the locked stack.** Measured on a 10-clip job B (low expert, 2 steps per call, cold page cache after a restart): the FIRST sampler call took 47.2 s (first step 40.1 s, `cudaHostRegister` 3.38 s for 847 chunks / 14.8 GB, load() 0.15 s); every later call took 14.2 s (+-0.05) with load()+prepare 0.35 s and pin registration ~0. So the cost is one-time per expert load (weights streamed from the SATA SSD, ~33 s extra), plus ordinary GPU compute (~14 s per 2-step call, about 6-7 s per step) afterwards. The text below is the earlier, wrong reading; keep it only for the record.
+
+Profiling with the websocket client (`runtime/episodes/lib/comfy_profile.py`) shows each `KSamplerAdvanced` call takes ~23.5 s for 2 steps, but only ~4.5 s of that is the second denoise step: **~19 s passes before the first step of every sampler call**, in both jobs, with or without the LoRA node (**M**), with decode/encode taken out between samplers (**M**), and with conditioning cached (**M**). The container log prints, for every call: `Model WAN21 prepared for dynamic VRAM loading. 13630MB Staged. 400 patches attached` (and WanTEModel/WanVAE lines). GPU util reads 100% during it; PCIe is not the limit. Roughly 190 s of the 424 s batch (before the 3-step change) is this overhead. Caveat: the profiled runs were slower than the real batch (job B 340-390 s profiled vs 229 s real), so treat per-call attribution as approximate.
+
+Hypotheses (all **U**): per-call re-preparation/staging of the whole INT8 model (13.6 GB) and re-attachment of 400 patches; first-step kernel autotune/Triton compile per call; weights re-streamed from RAM each call under dynamic VRAM. How to find out: nsight/torch profiler on one KSampler call, ComfyUI `--verbose`, timing `load_models_gpu`, test the same call twice in one prompt.
+
+##### 7. Ideas for deeper optimization (including our own ComfyUI/runtime)
+
+All **U** unless stated. Roughly ordered by expected value.
+1. **Custom batching node**: one node that holds the model once and loops over N (conditioning, latent) pairs, so patching/staging happens once per expert instead of once per shot. Attacks the ~19 s/call overhead directly (potential ~100-190 s on 10 clips). Needs the ModelPatcher to stay loaded across items.
+2. **Persistent worker instead of per-prompt graphs**: a small Python service (or custom ComfyUI node pack) that keeps hi and lo experts resident in RAM as prepared INT8 tensors and runs sampler loops directly, bypassing per-call prepare.
+3. **Other inference stacks**: LightX2V has its own inference engine (quantization, offload, step distillation, the same LoRAs); also diffusers/Wan reference code with INT8 + block offload. Worth reading before writing our own. Not evaluated.
+4. **Faster disk**: NVMe or RAM-resident models. A cold episode reads ~60 GB (FLUX, text encoder, two Wan experts, speech model): ~2 min on SATA vs ~20 s on NVMe (**E**, best case); near zero gain when the page cache is warm. A read-only M.2 slot check on the box was offered but never written. Raising the container RAM cap above 24 GiB could let both experts stay cached, but it risks the son's workload and the OOM path.
+5. **Cache the text conditioning** across jobs and runs (umt5 encode is ~2 s per prompt plus a 6.4 GB model); run the text encoder on CPU or precompute.
+6. **Cheaper decode/save**: VAEDecode is ~5 s per 81-frame clip and SaveVideo ~1.2 s; tiled/INT8 VAE, decoding at lower res then upscaling on a different engine, hardware encode.
+7. **Fewer or cheaper frames**: shorter clips, reuse stills with pan/zoom for non-action shots, fewer animated shots (also a content decision). The owner dropped plain fps lowering.
+8. **Alternative LoRAs/models**: a community 2-step LoRA pair claims ~2.4x faster with quality loss (unverified); LTX-2 I2V workflow (never run); Hunyuan 1.5 4-step path exists but unverified here; Wan 5B TI2V is smaller but looked worse.
+9. **GPU**: raise the 300 W cap carefully (owner's call; earlier 300 W vs 350 W looked roughly equal), CUDA graphs, FP16 accumulation already tried.
+10. **Second box**: a 3060 machine was considered and rejected for the pipeline split ("not worth it").
+
+##### 8. Code map (all under `~/RoyVa`)
+
+- `mcp/image/comfy_client.py`: workflow builders: `wan14_i2v_workflow` (single clip), `wan14_i2v_hi_workflow` / `wan14_i2v_lo_workflow` (two-job batch; `_wan14_common` reads `ROYVA_WAN_STEPS`, `ROYVA_WAN_LORA_SET=1022`, `ROYVA_COMFYUI_WAN14_HI/LO`, `ROYVA_COMFYUI_WAN_CLIP`), `wan14_i2v_batch_workflow` (single-job grouping, superseded), `wan_s2v_workflow` (`ROYVA_COMFYUI_S2V`), `flux2_edit_workflow` (FLUX.2 klein reference edit for a consistent character), `ltx2_workflow`, `hunyuan_workflow`, `wan_workflow` (5B), `upload_image` (also used for wav and latent files), `run`, `run_multi` (all outputs plus saved latents), `free`.
+- `runtime/episodes/lib/comfy_profile.py`: per-node and per-step timing over `/ws`.
+- `runtime/episodes/newton60_e2e/`: the end-to-end template: `run_episode.sh` (timed stages), `stills.py`, `voice.py` (Chatterbox on CPU), `batch_two_job.py` (env `CLIP_PREFIX`, `W`, `H`, `SEED_OFF`, shot-number args), `animate.py` (speech-to-video and single clips), `assemble.py` (parallel ffmpeg: minterpolate to 24 fps, lanczos to 720x1280, loudnorm, `atempo` max 1.15, optional `CAPTIONS=1`, `CLIP_PREFIX`, `OUT`), `scenes.json` (shot list: kind i2v/s2v, still source, motion prompt, narration), `lora_timing.sh`, `ltx_test.py`. `runtime/episodes/newton60/` holds all earlier experiment scripts (`profile_*.py`, `exp_*.py`, `flags_test.sh`, `bench.py` in `newton1`) and their `timing.jsonl` logs.
+- `assets/presenters/physics-teacher/` (reference image + `presenter.json`): the reusable character; stills come from FLUX klein 4B edit with the reference.
+- `scripts/remote/`: `comfy-up-default.sh` (locked), `comfy-up-r2/r3/r4.sh`, `comfy-ctl.sh` (runs on the box; switches `COMFY_IMAGE`, `COMFY_SAGE`, `COMFY_FAST`, `COMFY_EXTRA`, `COMFY_DYNAMIC`, `COMFY_ENV`, `COMFY_RESTART`, `COMFY_MEM`, `COMFY_CPUS`), `fetch-wan.sh` (8-connection parallel downloader; sets `int8`, `int8te`, `int8s2v`, `loras`, `loras1022`, `flux2`, `ltx2`, ...), `build-cu130-image.sh`, `verify.sh` (read-only checklist), `comfy-logs.sh [pattern]`, `pcie.sh`, `oom.sh`, `disk.sh`, `cuda.sh`, `vm.sh`, `vm-balloon.sh`.
+- Telegram helpers: `scripts/notify.sh "text"` (text; `NOTIFY_PREFIX=""` for copy-paste commands), the scratchpad `send_*.mjs` scripts for photos/videos (flood control returns 429 with `retry_after`, so space sends out), `scripts/claude-inbox-watch.sh` under Monitor for incoming replies (30 min expiry, re-arm).
+
+##### 9. Quality findings (workload-independent)
+
+- Consistent character: FLUX.2 klein 4B reference edit works; Chatterbox (MIT) voice is acceptable, Kokoro sounded robotic.
+- Wan 14B I2V with 3 steps at 320x576: scenes and motion coherent; crowd scenes (many faces) drift and re-invent faces between frames; an unrelated extra person can appear if the still already contains one (a still problem, fix the still). Mitigations to test (**U**): positive-prompt constraints, 4 steps for hard shots, re-roll seeds and auto-pick, simpler compositions.
+- CK vs Sage attention clips look equivalent by eye; v1 vs 1022 LoRA likewise.
+
+##### 10. Licences (verify before reuse)
+
+Apache-2.0 / MIT seen: Wan 2.2, FLUX.2 klein 4B, Chatterbox (MIT), Kokoro (Apache-2.0), INT8 ConvRot repo (Apache-2.0). Not verified: LTX-2 (community licence), Hunyuan 1.5, lightx2v LoRAs, the INT8 text encoder, wav2vec2. Hold: HunyuanVideo H3 (licence). The owner wants modular, license-aware parts reusable for other work.
+
+##### 11. Open items
+
+- Decide next speed step: per-call overhead investigation (section 6) and/or custom batching node (7.1) vs NVMe vs fewer animated shots.
+- Quality: regenerate stills that already contain unwanted people; test 4 steps on crowd shots.
+- Install the 300 W boot service if the owner confirms; consider deleting unused FP8/INT8-tensor model files if disk is needed (287 GB free of 916 GB).
+- Scheduled-agents runner/price-watcher, PWA, optional Siri endpoint, Ford automation live edit run, Qwen3.5-122B-A10B evaluation, commit the uncommitted work, license inventory, the video agent itself (job queue + status endpoint + Telegram `/agents`).
+- Owner preferences: short replies; label measured vs estimated; do the research proactively instead of waiting for the owner to find options; no captions; one command per message with `!`; talk on Telegram when the owner steps away.
+
+##### 12. ComfyUI code audit and probes (2026-11-16, read from source v0.42.1, nothing measured yet)
+
+- Source cloned for reading only (scratchpad, public tag). Findings: `ModelPatcherDynamic.load()` (model_patcher.py ~1878) has no early exit and re-runs the full prepare on every sampler call (module walk, 400 `LowVramPatch` objects); LoRA is applied per weight per forward via `LowVramPatch`. Best candidate for the ~19 s: `cudaHostRegister` of ~13.6 GB pinned memory (pinned_memory.py), re-done if pins are released between calls (`unregister_inactive_pins`, `partially_unload_ram`, `ensure_pin_budget` under RAM pressure). **U**. Stripping `comfy_api_nodes`/tests/`comfy_extras` (~8 MB of Python) cannot speed up sampling; `comfy_aimdo` 0.5.6 (native, dynamic VRAM) is not auditable from source.
+- Experiment A: `! bash ~/RoyVa/scripts/remote/comfy-up-nopin.sh` = locked stack + `--disable-pinned-memory`. Run the 10-clip two-job batch and compare to 274-289 s.
+- Experiment B: `! bash ~/RoyVa/scripts/remote/comfy-up-instrument.sh` mounts timing probes (`runtime/comfy-instrument/`, patch in `perf-probes.patch`, checksums verified against the image first). Read with `! bash ~/RoyVa/scripts/remote/comfy-perf.sh`. Logs per sampler call: `load_models_gpu`, load() phases, `cudaHostRegister` seconds/MB, pin evictions, time to each step.
+- Go back to normal: `! bash ~/RoyVa/scripts/remote/comfy-up-default.sh`. `comfy-ctl.sh` gained `COMFY_MOUNTS` (extra bind mounts), forwarded by `comfy-up.sh`.
+
+###### 12b. Results (2026-11-16, locked INT8 stack, measured)
+
+- **Correction:** the first three runs of the day (386, 335, 386 s) accidentally used FP8 models because `batch_two_job.py` was launched without the INT8 env vars that `run_episode.sh` exports (defaults are FP8). Always take the env from `run_episode.sh`. Ignore the FP8 numbers (14.2 s per 2-step call etc.).
+- Locked default, 10 shots: **289.4 s (job A 128.0, job B 156.5)**, same as the earlier reference. The timing probes cost no measurable time (FP8 default 386 s vs FP8 probes 386 s).
+- Framework overhead per sampler call: load()+prepare 0.15-0.20 s, pin registration ~0 after the first call (**M**). The old "19 s per call" lead (section 6) is closed. Experiment A (`--disable-pinned-memory`) and the custom batching node are dropped.
+- GPU sampling (1 s, `scripts/remote/gpu-sample.sh`, 282 s window, **M**): SM >=95% in 141 s (50%), <50% in 129 s (46%). Idle stretches ~60 s at the start of job A and ~55 s at the start of job B, with PCIe-in ~300 MB/s: the SATA SSD reading each 14.5 GB expert (**E**). During compute: SM 86-89%, ~280 W, power-limit flag on ~95% of the busiest seconds, SM clock median 1485 MHz vs 1980 max, no thermal throttling, PCIe-in median 16 MB/s (no per-step streaming).
+- **Next levers, by size:** (1) expert load time: NVMe, or keep both experts in RAM cache (container cap is 24 GiB, owner's decision) -> up to ~110 s of a 289 s batch (**E**); (2) the 300 W cap during compute (owner's call; was judged roughly equal at 350 W earlier); (3) VAE decode/save and the job A -> job B hand-off.
+- Probe tooling stays available: `comfy-up-instrument.sh`, `comfy-perf.sh`, `gpu-sample.sh` (note: two samplers running at once write the same log).
+
+###### 12c. Timeline breakdown and what was ruled out (2026-11-16, INT8 locked stack, measured from docker timestamps)
+
+- 10-clip batch = ~275-289 s: sampling compute ~109 s (A: 1 step x 10 at ~3.9 s; B: 2 steps x 10 at ~7.0 s, i.e. ~3.5 s per INT8 step), per-clip VAE encode in job A (~2.3 s x 10) and VAE decode + save in job B (~4.4 s x 10) ~72 s, one-time loads ~80 s (T5 first load+encode 16.5 s, hi expert first sampler call ~27-31 s extra, lo expert ~37 s extra), uploads/hand-off ~8 s.
+- The 289 s result was NOT a warm-cache result: model files are at ~0-1% in the page cache after every batch (container pins ~14.8 GB per expert; box has ~17.5 GB used elsewhere). Pre-caching the hi expert from the host (`cache-warm.sh hi`, 29 s at ~470 MB/s, 100% cached) saved only 12.9 s on job A (275.2 s total), so disk explains only ~10-13 s of each ~30-37 s expert first-call cost; the rest (~25 s) is unexplained (candidates: pin registration 3.4 s, page faults/copy, first-use kernel setup). NVMe would save at most ~26 s per batch (**E**).
+- Ruled out: per-call load/prepare overhead (0.35 s), pinned memory, `--fast autotune` (cudnn.benchmark: 287.3 vs 289.4 s, no VAE gain), VAE dtype (Wan 2.1 VAE already bf16 per sd.py). Attention is already INT8 (`--use-ck-attention` -> `comfy_kitchen.int8_attention`).
+- Still open: the ~25 s per-expert first-call cost, the serial per-clip VAE work (ComfyUI runs one node at a time; overlapping decode/save with sampling would need decoding outside the executor, VRAM is tight at ~21.8 GB), T5 embedding cache (16.5 s), kernel profile (torch.profiler on one warm call), the 300 W power cap during compute.
+- Scripts added: `comfy-up-autotune.sh`, `comfy-timeline.sh`, `cache-check.sh`, `cache-warm.sh`, `gpu-sample.sh`.
+
+###### 12d. Parallelised pipeline (2026-11-16, implemented, NOT yet run end to end)
+
+`runtime/episodes/newton60_e2e/run_episode.sh` now overlaps CPU work (this machine) with GPU work (the box); GPU order is unchanged (stills -> 10-clip batch -> speech clips), no `/free` calls. Old serial script: `run_episode_serial.sh`; baseline: `timing_e2e_baseline_527s.txt` (527 s). New timings go to `timing_e2e_par.txt`.
+- Batch starts right after the stills (it only needs the stills); voice runs in the background and must be finished before the speech clips (they need say1/say12.wav) and assembly. Expected saving ~43 s (**E**: batch was waiting for the 106 s voice while stills took 63 s).
+- The 10 image-to-video segments are assembled here while the speech clips run on the box; afterwards only segments 1 and 12 plus the concat remain (expected ~6-9 s saved, **E**). `assemble.py` takes optional shot numbers, skips segments newer than their clip/wav/scenes.json, runs all segments at once (scratch test: 5.7 s vs ~11 s, rerun 0.2 s).
+- `batch_two_job.py` uploads stills and latents in parallel (a few seconds, **E**); `stills.py` now exits nonzero on a failed still; every stage's exit status is checked.
+- Control flow tested with stubs only (ordering and failure gating). Timing test must use a fresh prefix, because `animate.py` skips existing clip files: `CLIP_PREFIX=par OUT=episode_par.mp4 bash run_episode.sh`. Compare marks, not just the total (the batch alone varies 275-289 s with cache state); the real voice time is `voice_total` in `voice.log`.
+- Not implemented: moving SaveVideo's h264 encode off the box (unmeasured, ~1.2 s per clip), multi-process voice (already hidden behind the batch), cross-episode pipelining (belongs in the video agent's job queue: next episode's voice and stills prep while the current episode's speech clips run).
+
+###### 12e. First end-to-end run of the parallelised pipeline (2026-11-16 12:27, measured)
+
+`CLIP_PREFIX=par OUT=episode_par.mp4 bash run_episode.sh` on a freshly restarted default stack (cold start): **472 s (7.9 min) vs 527 s baseline, -55 s (-10%)**. Output equivalent (720x1280, 24 fps, h264+aac, 60.267 s, same size class), no stage errors.
+- Stills 64 s (63). **Batch started at 64 s (was 106 s): -42 s.** Voice finished at 113 s on its own clock (`voice_total` 108.6 s), hidden behind the batch. Batch 285.6 s (A 127.0, B 156.2; was ~289). Speech clips 120 s (was 121). After the speech clips only 3 s remain (was 11 s: -8 s; the 10 image-to-video segments were assembled during the speech clips).
+- New finding: speech-clip stage is dominated by a one-time load: shot 1 took 93 s, shot 12 took 26 s, so ~67 s of the 120 s is the first-use cost of the 17.3 GB S2V model (cold read alone would be ~37 s at ~470 MB/s, **E**).
+- Critical path now: stills 64 + batch 285 + speech clips 120 + final 3 = 472 s. Remaining levers: one-time model loads (batch ~80 s, S2V ~67 s), per-clip VAE (~72 s), sampling compute (~109 s batch), text encoder first load (16.5 s). Target 300 s still needs sampling/loads cut or fewer animated shots.
+
+###### 12f. Kernel profiling build (2026-11-16, built and unit-tested locally, not yet run on the box)
+
+`comfy-up-instrument.sh` now also profiles ONE warm call each of: high-expert sampler (#3), low-expert sampler (#13), VAE encode (#3), VAE decode (#3), with torch.profiler CUDA-only (no CPU buffers: host RAM is tight, the container has OOM-died at 24 GiB before). Output: `perf_profile_<kind>_<n>.txt` in ComfyUI's output folder (kernel-bucket table, top-25 kernels, stock `key_averages` table as fallback); fetch with `GET /view?filename=perf_profile_sampler_3.txt&type=output`. A capture with no kernels is reported as FAILED (CUPTI missing/blocked).
+- Call numbers are per process: restart with the instrument launcher, then run ONLY `batch_two_job.py` (INT8 env exported, `CLIP_PREFIX=prof RUN_NOTE=profiled`), no other prompt first. Do not use the timing from that run as a benchmark (profiler overhead; `RUN_NOTE` marks it in `timing.jsonl`). ~5 min GPU. Afterwards restore `comfy-up-default.sh`.
+- Headroom check to apply to the result (estimates, **E**): a step is ~4.2e14 INT8 linear ops + ~1.9e14 attention ops at ~15k tokens; at the measured 3.5-3.9 s per step that is ~155-175 TOPS, against a 3090 dense INT8 peak of ~284 TOPS (~250 at the power-capped ~1485 MHz): the stack may already be near ~65% of peak, so a custom kernel may only win at the margins. Compute achieved TOPS per bucket (gemm, attention) from the profile before deciding; read the raw top-25 list, the bucket regexes are loose.
+
+###### 12g. Kernel profile results (2026-11-16, measured with torch.profiler CUDA-only; raw files in `runtime/comfy-instrument/results/profile-2026-11-16/`)
+
+Profiled run = INT8 locked stack, cold start, profiler overhead (batch 295.7 s, marked `profiled` in timing.jsonl; not a benchmark). Per DiT step, GPU kernel time: job A call (1 step) 3.55 s, job B call (2 steps) 6.88 s = 3.44 s/step; GPU busy 94% / 99.7% of the call wall time, so there are no idle bubbles inside sampling.
+- Per step: INT8 GEMM (CUTLASS, `DefaultGemmWithVisitor`) ~1.55-1.60 s (44-47%); INT8 attention (`qk_int_sv_i8_attn_kernel`, QK and PV both INT8) ~1.15 s (33%); activation quantize (`quantize_int8_rowwise_convrot64`, `quant_v_int8`, `quant_qk_fused`) ~0.40 s (11%); norm 0.09, elementwise 0.1, adaln/rope 0.08, pinned HtoD weight copies 0.18 s (job A call only).
+- Achieved vs peak (**E**, FLOPs from Wan 14B dims: 15,120 tokens, dim 5120, ffn 13824, 40 layers): INT8 GEMM 3.61e14 ops/step / 1.55 s = ~230 TOPS = roughly 80-95% of the 3090's INT8 dense peak (284 TOPS at 1695 MHz; ~250-270 at the power-capped clocks): essentially at the roofline. Self-attention 1.87e14 / 1.06 s = ~176 TOPS = roughly 62-70% of peak (typical for a good attention kernel). No LoRA kernels appear in the step: the lightx2v LoRA is applied when weights are staged (part of the first-call cost), not per step.
+- VAE (bf16 cuDNN conv3d): encode 2.0 s/clip (conv 75%, elementwise 22%, NCHW<->NHWC layout conversions ~8%), decode 3.4 s/clip (conv 75%, elementwise 22% in 7,887 tiny launches, layout conversions ~9%).
+- Realistic kernel upside (**E**, needs real CUDA work): fuse norm/adaln with quantize (~0.1-0.25 s/step), a better attention kernel (<=0.2-0.3 s/step), VAE elementwise fusion + channels_last_3d (~0.4-0.7 s per clip). Total ~20-30 s of a 472 s episode (4-6%). Kernels are not the big lever; model loads (~150 s) and the compute floor (steps, resolution, number of animated shots, the 300 W cap) are.
+
+###### 12h. Full-episode kernel profile and the first-call stall (2026-11-16, measured; profiled run 501 s, not a benchmark; raw files in `runtime/comfy-instrument/results/profile-2026-11-16-full-episode/`)
+
+**CORRECTION to 12c/12e:** I earlier concluded disk explained only ~10-13 s of each expert's first-call cost. The profile of each model's FIRST sampler call (wall minus GPU kernel time = time the GPU sat idle inside the call) says otherwise:
+| Model | file | cold read at 467 MB/s (measured SATA speed) | first-call stall (wall - GPU) |
+|---|---|---|---|
+| FLUX klein fp8 | 3.79 GB | 8.1 s | 8.1 s (11.3 wall, 3.2 GPU) |
+| Wan high | 13.54 GB | 29.0 s | 35.3 s (41.4 wall, 6.0 GPU) |
+| Wan low | 13.54 GB | 29.0 s | 35.2 s (44.7 wall, 9.4 GPU) |
+| Wan S2V | 17.27 GB | 37.0 s | 39.4 s (58.4 wall, 18.9 GPU) |
+The stall matches size / SATA speed within ~10-20% for all four (the extra on the Wan experts is ~3.4 s pin registration plus LoRA staging). First-call stalls total ~118 s; with the T5 (6.3 GB, ~13-16 s) and the FLUX text encoder, a cold episode reads ~70 GB = ~150 s at 467 MB/s, i.e. the ~150-180 s of "loads". So the loads are cold SATA reads (strongly supported, not yet confirmed with a direct disk-throughput measurement). The earlier host pre-cache test saved only 12.9 s probably because the page cache and the 14.8 GB pinned copy cannot coexist in the box's RAM (as pins grow, not-yet-read cache pages are evicted) (**E**, explains the number).
+- Levers: NVMe (est. ~3 GB/s -> ~70 GB in ~25 s, saving ~100-130 s per episode, **E**); read less: S2V's workflow hardcodes the FP8 T5 (`umt5_xxl_fp8_e4m3fn_scaled`) instead of the INT8 T5 the batch just used (6.3 GB, ~13 s, **E**; generic fix: use `ROYVA_COMFYUI_WAN_CLIP` like the other workflows); dropping the speech-model stage would save its 17.3 GB + T5 + 120 s.
+- Warm kernel facts: FLUX klein sampler 2.55 s/still, GPU 99% busy, bf16 GEMM 73% (FP8 weights are dequantized each step, only 0.05 s), INT8 attention 10%; FLUX VAE decode 0.27 s; rest of the 4.7 s per still is text encode, save, HTTP. Speech clip sampler: 4 steps, 15.9 s GPU of 18.5 s wall (86% busy), ~4.0 s/step vs 3.44 s/step for the batch (INT8 GEMM 1.58 s/step and attention 1.13 s/step identical to Wan I2V; extra: fp16 (unquantized) GEMMs 1.14 s/call, pinned->GPU weight copies 0.77 s/call, 6,400 tiny elementwise launches). Wan VAE decode 3.4-3.6 s per clip (speech and batch alike); Wan I2V image encode 2.2 s per clip vs 0.045 s for the speech clips' single-frame encode (I2V encodes a full 81-frame mostly-gray sequence; an exact shortcut would need the encoder's temporal receptive field checked).
+
+###### 12i. Storage facts of the 3090 box (2026-11-16, measured by `scripts/remote/storage-check.sh`, board spec from web reviews/manual)
+
+- ASUS X99-A (LGA2011-v3), BIOS 1901. NO NVMe drive. Disks: Samsung 850 EVO 500GB x2, 850 EVO 1TB (`sdc`, root filesystem `/`, holds `~/comfyui/data/models`, 584 GB used / 286 GB free), USB Seagate Expansion 1TB. SATA links at 6 Gbps; measured model read speed 467 MB/s = the SATA ceiling.
+- Per reviews/manual (2015 sources, **E** that nothing changed): the X99-A has ONE M.2 Socket 3 (M key, PCIe 3.0 x4 from CPU lanes, PCIe-only, no SATA M.2). It shares bandwidth with the black PCIEX16_4 slot (BIOS option "PCIEX16_4 Slot Bandwidth": Auto disables that slot when an M.2 device is detected; X8 mode keeps the slot with M.2 disabled). Unknown: what sits in PCIEX16_4, the CPU model (28 vs 40 lanes; the GPU measured gen3 x8 under load), and drive-size limits (2280 vs 22110).
+- Installing a drive needs a power-off (the box also hosts a Home Assistant VM and the son's class machine): owner to schedule. A ~3 GB/s NVMe would cut ~70 GB of cold reads from ~150 s to ~25 s; expect ~100-120 s saved per episode after the unchanged ~10-15 s of pin registration/LoRA staging (**E**).
+
+###### 12j. SATA stripe for the model disk (2026-11-16, scripts written and unit-tested locally; NOT yet run on the box)
+
+Audit (`stripe-audit.sh`): `sda3` (UUID 37435b5b-...) and `sdb2` (UUID 9633129b-...) are empty ext4 (28 KB used, only lost+found), idle since boot, no open files, no container/VM references; VMs (`Haos` and a second VM) run under libvirt and have nothing open there. Models are 231 GB (142 diffusion, 39 checkpoints, 38 text encoders) on `sdc`, which also holds the OS and the VMs' disks (**E**). Expected: ~2x sequential read, first-call stalls ~118 s -> ~60 s, ~55-75 s saved per episode (**E**); ComfyUI's small mmap reads might not reach 2x, so verify.
+- Scripts (`scripts/remote/`): `stripe-push.sh` (copies the setup script to the box), `stripe-setup-remote.sh` (runs on the box as root: dry run by default, `--apply` + typed confirmation; refuses unless both partitions carry the audited UUIDs, are plain ext4, empty, unused, SMART-passed; RAID0 chunk 64K, ext4 stripe-aware, read-ahead 4 MB; COPIES the models (rate-limited to 200 MB/s, source stays on `sdc`); changes /etc/fstab (backup kept), /etc/mdadm/mdadm.conf, a udev read-ahead rule; fstab line has `nofail,x-systemd.before=docker.service` so a reboot cannot start ComfyUI on an empty models folder), `comfy-up-stripe.sh` (refuses unless /mnt/models is mounted with the model files; mounts it read-only over /data/models), `disk-sample.sh` (per-disk read counters once a second; run next to `gpu-sample.sh`).
+- Install prerequisites WITHOUT recommends (mdadm otherwise recommends a mail server): `sudo apt install --no-install-recommends mdadm smartmontools rsync psmisc`. The setup must run in a real terminal (sudo password): `ssh -t <user>@<box> 'sudo bash ~/stripe-setup.sh'` (dry run), then `... --apply`.
+- Success test = the cold first-call stalls (FLUX 8 s, experts 35 s, speech 39 s at SATA speed) in a full-episode profile run, plus `disk-sample.sh` showing sda and sdb both reading; the `dd` figure printed by the setup is only a first look. Rollback: remove the mount from the launcher (`comfy-up-default.sh`), then umount/stop md0 per the header of `stripe-setup-remote.sh`. If the stripe is not mounted after a reboot, do not run ComfyUI from it.
+
+###### 12k. Speech workflow now shares the episode's text encoder (2026-11-16, code change, not yet run on the GPU)
+
+`wan_s2v_workflow` (comfy_client.py) hardcoded the FP8 T5 (`umt5_xxl_fp8_e4m3fn_scaled`); it now reads `ROYVA_COMFYUI_WAN_CLIP` like the other Wan workflows, and `run_episode.sh` already exports the INT8 file. Expected: the speech stage no longer cold-loads a second 6.3 GB T5 (~13 s, **E**; whether the INT8 T5 is still resident after job B depends on RAM pressure). Quality check pending: the speech clips' text encoder changes from FP8 to INT8 (the batch has used the INT8 T5 all along). Other pieces have NO INT8 file on the box and were left alone: FLUX klein (fp8), Qwen3-4B text encoder (bf16), both VAEs, wav2vec2 (fp16), the lightx2v LoRAs. Defaults in the workflow builders still fall back to FP8 names when the env is not set (the trap behind the early 386 s runs); flip them only if INT8 files are guaranteed wherever this runs.
+
+###### 12l. Stripe verified (2026-11-16, measured by `stripe-verify.sh`)
+
+`stripe-setup` ran to completion (array, ext4, fstab line, udev read-ahead, 34 files / 247 GB copied with identical sizes; its own speed test crashed on `dd iflag=direct`, which is cosmetic). State confirmed: `md0` active raid0 on sda3+sdb2 (64K chunks), mounted at /mnt/models with `stripe=32`, fstab has `nofail,x-systemd.before=docker.service`, old lines gone, `mdadm.conf` ARRAY line present, read-ahead 4096 KB. Cold read of the 13.5 GB high expert: old disk 536 MB/s sequential / 524 MB/s mmap page-touch; stripe 1090 / 1042 MB/s = 2.0x in both patterns. The old disk reads 536 MB/s sequentially (not 467), so disk is ~70-85% of each first-call stall (FLUX 7 s, experts 25 s, speech 32 s of pure disk time vs stalls of 8/35/35/39 s); the remaining 1-10 s per model is pin registration/staging. Expected after the stripe: stalls ~118 s -> ~70 s, ~50-55 s saved per episode (**E**).
+- Fair test: `cache-evict.sh` (drops cached model pages after the copy), `comfy-up-stripe.sh`, then a full episode with a fresh `CLIP_PREFIX` plus `gpu-sample.sh` and `disk-sample.sh`; compare stage marks with `timing_e2e_par_run1_472s.txt` (stills 64, batch 285, speech 120, total 472). Note the run1 numbers were cold-start. Pending: optional `sudo systemctl daemon-reload` (owner).
+
+###### 12m. Episode from the stripe (2026-11-16 14:27, measured; cold start, page cache evicted first; default flags, no probes): 391 s vs 472 s (-81 s, -17%)
+
+`CLIP_PREFIX=stripe1 OUT=episode_stripe1.mp4 bash run_episode.sh` after `comfy-up-stripe.sh` (container verified: /data/models is /dev/md0, no extra search paths, no symlinks) and `cache-evict.sh`. Stage marks (timing in `timing_e2e_par.txt`; previous runs kept as `timing_e2e_par_run1_472s.txt` and `..._run2_profiled_501s.txt`): stills 53 s (was 64; first still 24.4 s vs 35.3), batch 248.4 s (A 104.4, B 140.8; was 285.6 / 127.0 / 156.2), speech clips 87 s (shot 1 58.6 s, shot 12 27.7 s; was 93 / 26), final assembly 3 s. Output identical in format (720x1280, 60.267 s), no stage errors. Disk (`disk-sample.sh`): 77.7 GB read from md0 (sda 38.8 + sdb 38.9 in parallel, peak 1057 MB/s), only 1.9 GB from the old disk.
+- Two changes are mixed in the speech stage: the stripe and the speech workflow now using the INT8 text encoder (12k). Speech-clip quality with the INT8 text encoder still needs a visual check.
+- Critical path now: stills 53 + batch 248 + speech 87 + final 3 = 391 s. Remaining cold reads ~78 s at ~1 GB/s; NVMe (~3 GB/s) would save ~50 s more (**E**). Compute floor (sampling ~109 s batch + ~52 s speech, VAE ~72 s) is unchanged. Reboot behaviour with the stripe (fstab `x-systemd.before=docker.service`) is untested; do not reboot just to test; fallback `comfy-up-default.sh`.
+
+###### 12n. Paris episode with a locally written script (2026-11-16, measured)
+
+First episode whose narration, still prompts and motion prompts were written by the local Qwen3.6-35B-A3B (`mcp/video/script_writer.py`, prototype) with RoyVa web-checking the facts. Script stage (draft-first with a per-fact RoyVa check and rewrite rounds): 559 s, of which 509 s were 22 sequential web checks (typical 11-16 s; two "wrapped" checks of 81 s and 90 s hit RoyVa's step cap; rounds 2-3 re-checked reworded versions of the same facts and led to three paint-related shots). The script stage was longer than the render. RoyVa's gateway handles concurrent `/v1/ask` calls: 4 web checks ran in 34 s wall vs ~99 s one by one; unprivileged identity `pipeline:video` can use `web_lookup`. Voice speed measured 18.2 chars/s (not 15.5).
+- Render (`CLIP_PREFIX=paris1`, stripe stack, cache not evicted): 408 s = stills 59, batch 256.2 (A 108.4, B 144.4), speech clips 89.2 (shot 1 56.8, shot 12 32.4), assembly 4. vs 391 s for the cold-evicted newton60 run: same within ~4%. Output 60.267 s, 720x1280, 27 MB.
+- Lessons: a still with extra people (workers in a boat) keeps them in the clip; the scene text said "no other people" but also "workers", a contradiction the model produced; "holding X" props unrelated to the topic (heart, lace) come from letting the model pick a prop per fact. The writer was a prototype: a redesign (brief -> research with source-and-recheck -> storyboard -> prompt compiler -> validation gates) was proposed and awaits the owner's decisions.

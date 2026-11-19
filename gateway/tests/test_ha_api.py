@@ -45,10 +45,10 @@ def test_dry_run_changes_nothing(monkeypatch):
 
 
 def test_protected_device_refused_in_a_multi_target_change(monkeypatch):
-    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Shivi Linux Box")
-    bad = ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": ["switch.shivi_linux_box", "light.kitchen"]})
+    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Test Linux Box")
+    bad = ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": ["switch.test_linux_box", "light.kitchen"]})
     assert bad and "protected" in bad
-    assert ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": "switch.shivi_linux_box"}) is None      # alone: allowed (the owner approves it)
+    assert ha.check_write("rest", "/api/services/switch/turn_off", "POST", {"entity_id": "switch.test_linux_box"}) is None      # alone: allowed (the owner approves it)
 
 
 def test_big_results_are_capped():
@@ -218,8 +218,8 @@ def test_ha_edit_dry_run_and_failed_save(monkeypatch):
 
 
 def test_ha_edit_will_not_name_a_protected_device(monkeypatch):
-    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Shivi Linux Box")
-    out = ha.ha_edit(_edit_args(edits=[{"op": "append", "path": "variables.msg", "text": " switch.shivi_linux_box off"}]), rest=FakeHA(STORED))
+    monkeypatch.setenv("ROYVA_PROTECTED_DEVICES", "Test Linux Box")
+    out = ha.ha_edit(_edit_args(edits=[{"op": "append", "path": "variables.msg", "text": " switch.test_linux_box off"}]), rest=FakeHA(STORED))
     assert "protected" in out["error"]
 
 

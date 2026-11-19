@@ -8,12 +8,13 @@ import { openCodeAPI, runText } from '../bridge/opencode.mjs';
 
 process.env.OPENCODE_TG_URL ||= `http://127.0.0.1:${process.env.ROYVA_PORT_OPENCODE || 49380}`;
 const GATEWAY = process.env.ROYVA_GATEWAY_URL || 'http://127.0.0.1:8300';
-const OWNER = process.env.ROYVA_TEST_USER || 'telegram:6064019420';
+const NAMES = (() => { try { return JSON.parse(readFileSync(new URL('./local_names.json', import.meta.url), 'utf8')); } catch { return {}; } })();   // gitignored: copy local_names.example.json and fill it in
+const OWNER = process.env.ROYVA_TEST_USER || (NAMES.OWNER_ID ? 'telegram:' + NAMES.OWNER_ID : (() => { throw new Error('set ROYVA_TEST_USER or tests/local_names.json (OWNER_ID)'); })());
 const args = process.argv.slice(2);
 const LIVE = args.includes('--live');
 const ONLY = (args.find(a => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 const JSON_OUT = (args.find(a => a.startsWith('--json=')) || '').slice(7);
-const cases = JSON.parse(readFileSync(new URL('./regress_cases.json', import.meta.url), 'utf8')).filter(c => !ONLY.length || ONLY.includes(c.id));
+const cases = JSON.parse(readFileSync(new URL('./regress_cases.json', import.meta.url), 'utf8').replace(/\{\{(\w+)\}\}/g, (m, k) => NAMES[k] ?? m)).filter(c => !ONLY.length || ONLY.includes(c.id));
 
 // Always true for every routed session, whatever the question was.
 const ALWAYS_DENIED = ['shell', 'edit', 'write', 'read', 'glob', 'grep', 'subagent', 'execute', 'question', 'skill', 'gmail_send_message', 'gmail_send_draft'];
