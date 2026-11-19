@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from . import comfy, config, director, guard, llm, local_sd, progress, research, verify, video
 from .jobs import Job, fingerprint
 
-V = {"plan": 6, "research": 2, "direct": 5, "images": 11}     # per-stage prompt version: bump when that stage's prompt or logic changes so old results are not reused
+V = {"plan": 6, "research": 2, "direct": 6, "images": 11}     # per-stage prompt version: bump when that stage's prompt or logic changes so old results are not reused
 
 
 def policy_text(cfg):
@@ -148,7 +148,7 @@ def _images(job, cfg, caps, source):
 def result(job, cfg, caps):
     d = job.read("items.json")
     vr = job.read("verify.json") if (job.dir / "verify.json").exists() else {}
-    out = {"title": d["title"], "images": [{"index": i, "path": str(job.dir / "images" / f"{i:02d}.png"), "topic": x["topic"], "caption": x["caption"],
+    out = {"title": d["title"], **({"cast": d["cast"]} if d.get("cast") else {}), "images": [{"index": i, "path": str(job.dir / "images" / f"{i:02d}.png"), "topic": x["topic"], "caption": x["caption"],
                                             **({"check": {"attempts": len(vr[str(i)]), "ok": vr[str(i)][-1]["ok"], "problems": vr[str(i)][-1]["problems"]}} if vr.get(str(i)) else {})} for i, x in enumerate(d["items"], 1)],
            "stage_seconds": {k: v.get("secs") for k, v in job.state["stages"].items()}}
     job.write("result.json", out)
