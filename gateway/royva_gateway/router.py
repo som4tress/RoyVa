@@ -3,12 +3,33 @@ Classifiers form an ordered chain with a circuit breaker; if none can route the 
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from .classifiers import CONFIRM, Prediction
 from .models import AskRequest, SessionState
+
+
+VIDEO_WORD = re.compile(r"\b(videos?|clips?|animations?|animate|animated)\b", re.I)
+PICTURE_INTENTS = {"image_set", "image_generate"}
+
+
+VIDEO_NO_SEARCH = ("web.search", "web.fetch")   # the video agent does its own web research (through RoyVa's web lookup), so the chat model must not search first
+
+
+def is_video_turn(text: str, intents: list) -> bool:
+    """A turn that is only a video request (never mixed with another kind of task, so a "search X and make a video" turn keeps its search)."""
+    return bool(intents) and set(intents) <= PICTURE_INTENTS and bool(VIDEO_WORD.search(text))
+
+
+def video_not_pictures(text: str, intents: list) -> list:
+    """A video is a video: a request for one that the classifier put only on picture intents goes to the single tool that makes videos
+    (image_generate, whose generate_video tool plans the whole video). Playback / other intents are never touched."""
+    if intents and set(intents) <= PICTURE_INTENTS and VIDEO_WORD.search(text):
+        return ["image_generate"]
+    return list(intents)
 
 
 class RouterUnavailable(Exception):
@@ -91,6 +112,7 @@ class Router:
                     tried.append(f"{e.name}: no match")
                     continue
                 return Decision("fallback", [], e.name, ms, 0.0)
+            pred.intents = video_not_pictures(req.text, pred.intents)
             mode = "continuation" if prior and set(pred.intents) <= set(prior["intents"]) else "new"
             return Decision(mode, list(pred.intents), e.name, ms, 1.0, degraded=e.degraded)
         raise RouterUnavailable("; ".join(tried) or "no classifiers configured")

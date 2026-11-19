@@ -1,4 +1,4 @@
-"""image door: input validation, photo-path restriction, size parsing, dry run and the subprocess command. sd-cli is never really run (subprocess is faked)."""
+"""photo editing door (the only thing left in mcp/image; pictures and videos are made by the img_video agent): photo-path restriction, size parsing, dry run and the subprocess command. sd-cli is never really run (subprocess is faked)."""
 import importlib.util
 import os
 import struct
@@ -50,53 +50,26 @@ def env(tmp_path, monkeypatch):
     return tmp_path, calls
 
 
-def test_generate_builds_command_and_returns_picture(env):
-    _, calls = env
-    r = g.generate_image({"prompt": "a sloth", "width": 1280, "height": 704, "steps": 99})
-    assert r["ok"] and Path(r["image_path"]).exists() and r["image_path"].startswith(str(g.OUT_DIR))
-    assert r["encoder_tokens"] == 44 and "secs" in r
-    cmd = calls[0]
-    assert cmd[cmd.index("--steps") + 1] == str(g.MAX_STEPS) and "-r" not in cmd
-    assert cmd[cmd.index("-W") + 1] == "1280" and cmd[cmd.index("-H") + 1] == "704"
-
-
-def test_default_quality_settings(env):
-    _, calls = env
-    g.generate_image({"prompt": "a sloth"})
-    cmd = calls[0]
-    assert cmd[cmd.index("--steps") + 1] == "30" and cmd[cmd.index("--cfg-scale") + 1] == "4.0"
-
-
-def test_720p_and_speed_cache(env, monkeypatch):
-    _, calls = env
-    assert g.generate_image({"prompt": "a sloth", "width": 1280, "height": 720})["ok"]
-    cmd = calls[0]
-    assert cmd[cmd.index("-H") + 1] == "720" and cmd[cmd.index("--cache-mode") + 1] == "easycache"
-    monkeypatch.setattr(g, "CACHE", "")
-    g.generate_image({"prompt": "a sloth"})
-    assert "--cache-mode" not in calls[1]
-
-
-@pytest.mark.parametrize("args", [{"prompt": ""}, {"prompt": "x" * 2000}, {"prompt": "a", "width": 1000}, {"prompt": "a", "height": 64}])
-def test_generate_rejects_bad_input(env, args):
-    try:
-        r = g.generate_image(args)
-    except ValueError:
-        return
-    assert r["ok"] is False
+def test_the_tool_list_is_edit_only_and_nothing_here_can_reach_the_gpu_box():
+    assert [t["name"] for t in g.TOOLS] == ["edit_image"] and list(g.FUNCS) == ["edit_image"]
+    src = (Path(__file__).resolve().parents[2] / "mcp" / "image" / "image_gen.py").read_text()
+    assert "comfy_client" not in src and "COMFY_URL" not in src and "8188" not in src                 # the 3090 is reached only through the img_video agent
 
 
 def test_dry_run_does_nothing(env, monkeypatch):
-    _, calls = env
+    tmp, calls = env
+    photo = tmp / "inbox" / "p.png"; png(photo, 64, 64)
     monkeypatch.setenv("ROYVA_DRY_RUN", "1")
-    assert "DRY RUN" in g.generate_image({"prompt": "a"})["did"] and not calls
+    assert "DRY RUN" in g.edit_image({"image": str(photo), "prompt": "ghibli"})["did"] and not calls
 
 
 def test_busy_lock_is_reported(env):
     import fcntl
+    tmp, _ = env
+    photo = tmp / "inbox" / "p.png"; png(photo, 64, 64)
     with open(g.LOCK, "w") as f:
         fcntl.flock(f, fcntl.LOCK_EX)
-        assert "still being generated" in g.generate_image({"prompt": "a"})["error"]
+        assert "still being generated" in g.edit_image({"image": str(photo), "prompt": "ghibli"})["error"]
 
 
 def test_edit_only_reads_photos_from_the_inbox(env):

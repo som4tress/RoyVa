@@ -1,0 +1,63 @@
+{
+ "id": "image_set",
+ "status": "active",
+ "description": "Make a SET or series of several pictures (two or more: 'ten images', 'a series of six pictures', 'a picture for each headline') from one request, with a short caption for each picture, including sets built from today's news or from facts that have to be looked up on the web. Not for one single picture, not for a video or animation, not for editing a photo the user sent. A request for a video, clip or animation is NEVER this intent, even when it is about headlines, news stories or a list: pictures are not a video.",
+ "examples": [
+  "Make a set of ten pictures, one for each of the biggest stories in the news today, with a snarky tone",
+  "Make 6 pictures explaining how the water cycle works",
+  "Create a series of 8 illustrations about the history of the bicycle",
+  "Give me 5 images, one for each of today's top tech headlines, in a funny style",
+  "Make a set of 4 pictures of a cat having a bad day",
+  "Draw 12 images of a day in the life of a lighthouse keeper",
+  "Generate three pictures about the planets of the solar system",
+  "I want a series of images about the top sports news this weekend",
+  "Make me 10 pictures, one per headline, with a one-line caption for each",
+  "Create 7 illustrations of fun facts about octopuses",
+  "Produce an image for every top news story today, sarcastic tone"
+ ],
+ "negatives": [
+  "Draw a cartoon sloth waving",
+  "Generate an image of a cozy cabin in the snow",
+  "Make me a logo for a bakery",
+  "Make a short video clip of a dog running",
+  "Turn this photo into a painting",
+  "What are the top news headlines today?",
+  "Show me pictures of the Eiffel Tower from the web",
+  "Plot my electricity usage as a chart",
+  "Turn off the kitchen lights",
+  "a sarcastic video without sound of the top 10 headlines across the globe",
+  "Make a video about the top 10 news headlines today",
+  "Take these images and make a video of it, no sound",
+  "Turn these pictures into a short video",
+  "Make a video with one scene per headline"
+ ],
+ "continuations": [
+  "make it 6 instead",
+  "same but in watercolor",
+  "do it again with different headlines",
+  "make them funnier"
+ ],
+ "profile": {
+  "tools": [
+   "image.set"
+  ],
+  "context": [
+   "current_time"
+  ],
+  "steps": 6,
+  "write_policy": "auto",
+  "sticky": false,
+  "style": "RULE: pictures are not a video. If the user asked for a video, clip or animation (even about headlines, news stories or a list), do NOT call the tool and do NOT make pictures instead: reply in one sentence that this request is for a video and ask them to send it again as 'make a video of ...'. Call generate_image_set exactly once with the user's request in their own words (include the tone or style they asked for and anything they said about what the captions should contain); pass count only if they gave a number. The tool plans the set, looks up facts on the web when needed, writes the captions and draws the pictures; the pictures are sent to the chat, each with its own caption (when the tool returns, or a little later if the tool says it started a background job), so do not search the web yourself. When it returns, reply with ONE short sentence, as the tool's result says (it says whether the pictures are already on their way or will be posted when ready). If it reports an error, say so plainly and offer to try again.",
+  "scope": ""
+ },
+ "provenance": {
+  "created_by": "agent",
+  "version": 1,
+  "approved_by": "owner, 2026-11-16: asked in a Claude Code session to wire the img_video agent into RoyVa and said 'lets do it'"
+ },
+ "stats": {
+  "routed": 0,
+  "succeeded": 0,
+  "corrected": 0
+ }
+}

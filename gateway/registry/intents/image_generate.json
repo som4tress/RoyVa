@@ -1,68 +1,87 @@
 {
- "id": "image_generate",
- "status": "active",
- "description": "Create a NEW picture, image, illustration, logo, poster, meme, icon, avatar or artwork from a text description (draw, generate, make, design an image), including a funny poster or meme about a current event or news story. Also restyle or edit a PHOTO the user just sent (turn it into a painting, museum canvas, Ghibli or cartoon style, change the background). Not for photos or snapshots from home cameras, not for describing or answering questions about a photo, not for charts of data, not for searching the web for existing pictures.",
- "examples": [
-  "Draw a cartoon sloth waving",
-  "Generate an image of a cozy cabin in the snow at sunset",
-  "Make me a logo for a bakery called Sweet Crumbs",
-  "Create a poster for Diwali dinner with warm lights",
-  "Can you paint a watercolor of the Golden Gate Bridge",
-  "Generate a wallpaper of a mountain lake, 16:9",
-  "Illustrate a dragon reading a book",
-  "Make a birthday card picture for Sam with balloons",
-  "Design an icon of a smiling sun, flat style",
-  "Generate a photorealistic image of a cup of masala chai",
-  "Make a funny meme about the latest news on Nvidia",
-  "Generate a satirical poster about the current situation in the stock market",
-  "Turn this photo into a Studio Ghibli style painting",
-  "Convert this picture into a museum style oil painting on canvas",
-  "Put a stadium background behind us in this photo",
-  "Make this photo look like a watercolor",
-  "Restyle my picture as a comic book panel"
- ],
- "negatives": [
-  "What's in this photo?",
-  "Show me pictures of the Eiffel Tower from the web",
-  "Plot my electricity usage as a chart",
-  "Turn off the kitchen lights",
-  "What's the weather forecast?",
-  "Capture a snapshot from the living room camera",
-  "Take a picture with the doorbell camera",
-  "Describe this picture",
-  "Is this plant safe for my cat?"
- ],
- "continuations": [
-  "make it more colorful",
-  "try another one",
-  "same but in a different style",
-  "make it wider",
-  "now in Ghibli style",
-  "try it with a night sky"
- ],
- "profile": {
-  "tools": [
-   "image.generate",
-   "image.edit",
-   "web.search",
-   "web.fetch"
+  "id": "image_generate",
+  "status": "active",
+  "description": "Create a NEW picture or a video, clip or animation, image, illustration, logo, poster, meme, icon, avatar or artwork from a text description (draw, generate, make, design an image), including a funny poster or meme about a current event or news story. Also restyle or edit a PHOTO the user just sent (turn it into a painting, museum canvas, Ghibli or cartoon style, change the background). Not for photos or snapshots from home cameras, not for describing or answering questions about a photo, not for charts of data, not for searching the web for existing pictures. Not for a SET of several pictures made from one request (that is image_set).",
+  "examples": [
+    "Make a video of the ten biggest stories in the news this week, with a snarky tone",
+    "Make a video explaining how photosynthesis works",
+    "Make a video with one scene per product launch announced this month",
+    "Make a short video about the biggest news stories of the week",
+    "Make a short video clip of a lighthouse in a storm",
+    "Draw a cartoon sloth waving",
+    "Generate an image of a cozy cabin in the snow at sunset",
+    "Make me a logo for a bakery called Sweet Crumbs",
+    "Create a poster for Diwali dinner with warm lights",
+    "Can you paint a watercolor of the Golden Gate Bridge",
+    "Generate a wallpaper of a mountain lake, 16:9",
+    "Illustrate a dragon reading a book",
+    "Make a birthday card picture for Sam with balloons",
+    "Design an icon of a smiling sun, flat style",
+    "Generate a photorealistic image of a cup of masala chai",
+    "Make a funny meme about the latest news on Nvidia",
+    "Generate a satirical poster about the current situation in the stock market",
+    "Turn this photo into a Studio Ghibli style painting",
+    "Convert this picture into a museum style oil painting on canvas",
+    "Put a stadium background behind us in this photo",
+    "Make this photo look like a watercolor",
+    "Restyle my picture as a comic book panel",
+    "Make a short video of a rocket launching at sunrise",
+    "Make a video that summarizes the top news story today",
+    "Make a cartoon video of a teacher explaining Newton's laws of motion",
+    "A sarcastic video without sound of the top 10 headlines across the globe",
+    "Make a video about today's top news headlines",
+    "Take these images and make a video of it, no sound",
+    "Turn these pictures into a short video clip",
+    "Make a video with one scene for each news story"
   ],
-  "context": [
-   "current_time"
+  "negatives": [
+    "What's in this photo?",
+    "Show me pictures of the Eiffel Tower from the web",
+    "Plot my electricity usage as a chart",
+    "Turn off the kitchen lights",
+    "What's the weather forecast?",
+    "Capture a snapshot from the living room camera",
+    "Take a picture with the doorbell camera",
+    "Describe this picture",
+    "Is this plant safe for my cat?",
+    "Play a video on the TV",
+    "Find a YouTube video of this song",
+    "Give me a bunch of illustrations, one per top story of the day",
+    "Make a series of 6 pictures about the planets",
+    "Give me 5 illustrations, one for each news story"
   ],
-  "steps": 8,
-  "write_policy": "auto",
-  "sticky": false,
-  "style": "If the request is about a current event, news story or situation (for example a meme about something happening now), first use web.search (and web.fetch if needed) to learn what is actually going on, then make a light-hearted, non-hateful joke from the real facts; if you cannot find what they mean, ask one short question instead of guessing. If the message has a line '[Attached photo: <path>]' and the user wants that photo restyled or changed, call edit_image once with image set to exactly that path and prompt as an English instruction ('Turn this photo into a Studio Ghibli style painting, keep the people recognizable'; for a background change say what to put behind them and to keep the people unchanged); never invent a path. Otherwise call generate_image exactly once with an English prompt that expands the request into a concrete visual description (subject, style, setting, lighting). For a meme or poster put the caption in quotes inside the prompt: short, big, legible ALL-CAPS text, at most two short lines of at most five words each, spelled exactly (the picture model garbles long or many texts, so never put names or long sentences in quotes; show people and companies as characters or props instead). Use width and height only if the user asked for a shape (wide 720p 1280x720, tall poster 720x1280). If generation fails or is busy, say so plainly and do not retry more than once. After it succeeds, answer in one short sentence saying what you made and the joke or caption; the picture itself is attached to your reply automatically, so never mention a file path or claim you attached anything yourself.",
-  "scope": ""
- },
- "provenance": {
-  "created_by": "human",
-  "version": 1
- },
- "stats": {
-  "routed": 0,
-  "succeeded": 0,
-  "corrected": 0
- }
+  "continuations": [
+    "make it more colorful",
+    "try another one",
+    "same but in a different style",
+    "make it wider",
+    "now in Ghibli style",
+    "try it with a night sky"
+  ],
+  "profile": {
+    "tools": [
+      "image.generate",
+      "image.edit",
+      "image.video",
+      "web.search",
+      "web.fetch"
+    ],
+    "context": [
+      "current_time"
+    ],
+    "steps": 12,
+    "write_policy": "auto",
+    "sticky": false,
+    "style": "RULE: a request for a video, clip or animation is never answered with a picture or a set of pictures: use generate_video. For a VIDEO request call generate_video exactly once with the user's whole request as the query The video tool researches any facts it needs by itself (news, people, events, products, science), so do not search the web for a video request (you have no search tool for it): call generate_video straight away. For a single picture about a current event, news story or situation (for example a meme about something happening now), first use web.search (and web.fetch if needed) to learn what is actually going on, then make a light-hearted, non-hateful joke from the real facts; if you cannot find what they mean, ask one short question instead of guessing. If the message has a line '[Attached photo: <path>]' and the user wants that photo restyled or changed, call edit_image once with image set to exactly that path and prompt as an English instruction ('Turn this photo into a Studio Ghibli style painting, keep the people recognizable'; for a background change say what to put behind them and to keep the people unchanged); never invent a path. Otherwise call generate_image exactly once with an English prompt that expands the request into a concrete visual description (subject, style, setting, lighting) of about 500 characters at most. For a meme or poster put the caption in quotes inside the prompt: short, big, legible ALL-CAPS text, at most two short lines of at most five words each, spelled exactly (the picture model garbles long or many texts, so never put names or long sentences in quotes; show people and companies as characters or props instead). Use width and height only if the user asked for a shape (wide 720p 1280x720, tall poster 720x1280). If generation fails or is busy, say so plainly and do not retry more than once. After it succeeds, answer in one short sentence saying what you made and the joke or caption; the picture itself is attached to your reply automatically, so never mention a file path or claim you attached anything yourself. VIDEO: if the user asks for a video, clip or animation (not playing an existing one), you MUST end by calling generate_video exactly once (never answer with a text summary instead). Pass the user's request in their own words (the subject, and any tone, style or narration they asked for); keep the request under 600 characters: never paste research, headlines or a script into it (the video tool looks up the facts and writes the script itself), and if it is rejected as too long, shorten it to the subject and tone instead of retrying with a long one. If you already searched the web in this turn (for example the user also asked for prices or facts), pass the key facts in generate_video's research_text so the video does not search again; otherwise leave research_text out. The director plans the video and decides whether it has a voice-over (an explanation, lesson, story or news summary) or none (a pure clip). The video is sent to the chat when it is ready (when the tool returns, or a little later if the tool says it started a background job). When it returns, reply with ONE short sentence, as the tool's result says. If it fails say why in one sentence; do not retry.",
+    "scope": ""
+  },
+  "provenance": {
+    "created_by": "human",
+    "version": 1
+  },
+  "stats": {
+    "routed": 0,
+    "succeeded": 0,
+    "corrected": 0
+  }
 }

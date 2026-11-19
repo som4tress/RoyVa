@@ -16,6 +16,8 @@ hosts = []                   # ssh hosts the owner-only machine tool may reach, 
 [voice]
 whisper_remote = ""         # "user@host" if whisper.cpp runs on another machine; empty = transcribe locally
 
+[image]
+
 [paths]
 node_bin = ""                # directory of the node binary if it is not on the default PATH (e.g. an nvm install)
 llm_server = ""              # directory with api.env, ha.env, llamacpp/ and models/ (default ~/llm-server)

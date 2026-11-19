@@ -1,5 +1,5 @@
-"""MCP server (stdio, newline JSON-RPC): text-to-image with Qwen-Image-2.1 (Q8) through stable-diffusion.cpp on the Vulkan GPU.
-Tool: generate_image(prompt, width, height, steps, seed). The picture is written under runtime/data/images/ and the result carries
+"""MCP server (stdio, newline JSON-RPC): editing a photo the user sent, with Qwen-Image-2.1 (Q8) through stable-diffusion.cpp on THIS machine's Vulkan GPU (never the 3090). Drawing pictures and making videos is done by the img_video agent (mcp/img_video).
+Tool: edit_image(image, prompt, steps, seed). The picture is written under runtime/data/images/ and the result carries
 `image_path`; the bridge sends that file back to the chat. One render at a time (a lock file), a hard timeout, bounded sizes, old pictures pruned.
 Honors the dry-run flag. Paths can be overridden with ROYVA_SD_BIN / ROYVA_IMAGE_MODELS / ROYVA_IMAGE_DIR."""
 import fcntl
@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
 SD_DIR = Path(os.environ.get("ROYVA_SD_BIN", HOME / "llm-server" / "sdcpp" / "master-1086"))
@@ -23,24 +24,14 @@ DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()
 FILES = {"diffusion": "qwen-image-2.1-Q8_0.gguf", "llm": "Qwen3-VL-8B-Instruct-Q8_0.gguf", "vae": "qwen_image_2.1_vae_bf16.safetensors"}
 VISION = "mmproj-Qwen3-VL-8B-F16.gguf"        # only needed for editing a photo
 INBOX = Path(os.environ.get("ROYVA_INBOX_DIR", ROOT / "runtime" / "data" / "inbox"))   # photos the bridge saved from chat; the only place edit_image reads from
-MAX_PROMPT, MIN_SIDE, MAX_SIDE, MIN_STEPS, MAX_STEPS, KEEP = 1500, 512, 1280, 8, 40, 60
+MAX_PROMPT, MIN_SIDE, MAX_SIDE, MIN_STEPS, MAX_STEPS, KEEP = 6000, 512, 1280, 8, 40, 60      # MAX_PROMPT: what a request may bring; gpu_guard shortens it to ~500 characters before the 3090 sees it
 DEFAULT_STEPS = int(os.environ.get("ROYVA_IMAGE_STEPS", "30"))   # measured: 20 steps leaves halos/noise, 30 with EasyCache is clean and ~120s
 CFG = os.environ.get("ROYVA_IMAGE_CFG", "4.0")                 # 6.0 over-saturated the pictures
 CACHE = os.environ.get("ROYVA_IMAGE_CACHE", "easycache")      # "" turns it off
 TIMEOUT = int(os.environ.get("ROYVA_IMAGE_TIMEOUT", "900"))
 HINT = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 
-TOOLS = [{
-    "name": "generate_image",
-    "description": ("Generate one picture from a text description and send it to the chat. Takes one to a few minutes and the GPU is shared with chat, so call it once per request. "
-                    "Write the prompt in English as a concrete visual description (subject, style, setting, lighting, any text that must appear in quotes). Width and height are multiples of 16 "
-                    f"between {MIN_SIDE} and {MAX_SIDE} (default 1024x1024)."),
-    "inputSchema": {"type": "object", "properties": {
-        "prompt": {"type": "string", "description": "What the picture should show."},
-        "width": {"type": "integer", "default": 1024}, "height": {"type": "integer", "default": 1024},
-        "steps": {"type": "integer", "default": DEFAULT_STEPS, "description": f"{MIN_STEPS}-{MAX_STEPS}; {DEFAULT_STEPS} is the measured sweet spot (fewer steps leave halos and noise)."},
-        "seed": {"type": "integer", "description": "Optional, for a repeatable result."}}, "required": ["prompt"], "additionalProperties": False},
-    "annotations": HINT},
+TOOLS = [
     {"name": "edit_image",
      "description": ("Restyle or edit a photo the user sent (for example turn it into a Ghibli-style painting, a museum canvas portrait, or put a stadium behind the person). "
                      "image is the photo's path exactly as given in the request's 'Attached photo' line. Describe the wanted result in English as an instruction ('Turn this photo into a Studio Ghibli style painting, keep the faces recognizable'). "
@@ -63,23 +54,6 @@ def _prune():
     pics = sorted(OUT_DIR.glob("*.png"), key=lambda p: p.stat().st_mtime)
     for p in pics[:-KEEP]:
         p.unlink(missing_ok=True)
-
-
-def generate_image(args):
-    prompt = str(args.get("prompt", "")).strip()
-    if not prompt:
-        return {"ok": False, "error": "prompt is empty"}
-    if len(prompt) > MAX_PROMPT:
-        return {"ok": False, "error": f"prompt is too long ({len(prompt)} > {MAX_PROMPT} characters)"}
-    width, height = _side(args.get("width", 1024), "width"), _side(args.get("height", 1024), "height")
-    steps = max(MIN_STEPS, min(MAX_STEPS, int(args.get("steps", DEFAULT_STEPS))))
-    seed = int(args["seed"]) if args.get("seed") is not None else secrets.randbelow(2**31)
-    if DRY():
-        return {"ok": True, "did": f"[DRY RUN, nothing happened] Would generate a {width}x{height} picture: {prompt[:80]}"}
-    missing = [n for n in [SD_DIR / "sd-cli", *(MODELS / f for f in FILES.values())] if not Path(n).exists()]
-    if missing:
-        return {"ok": False, "error": "image model files are missing: " + ", ".join(Path(m).name for m in missing)}
-    return _render(prompt, steps, seed, width, height, None, f"Generated a {width}x{height} picture")
 
 
 def _size(path):
@@ -161,7 +135,7 @@ def _render(prompt, steps, seed, width, height, ref, label):
     return {"ok": True, "did": f"{label} in {secs}s (seed {seed}); it is sent to the chat.", "image_path": str(out), "seed": seed, "secs": secs, "encoder_tokens": tokens}
 
 
-FUNCS = {"generate_image": generate_image, "edit_image": edit_image}
+FUNCS = {"edit_image": edit_image}
 
 
 def handle(msg):

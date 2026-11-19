@@ -20,7 +20,7 @@ class FakeOC:
     """Scripted stand-in for OpenCode. Normal turns finish at once; `runaway` makes the first prompt loop on tools until interrupted."""
     def __init__(self, runaway=False, mcp=None, fanout=0):
         self.sessions, self.msgs, self.calls = {}, {}, []
-        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"}
+        self.runaway, self.fanout, self.mcp = runaway, fanout, mcp or {"home-assistant": "connected", "gmail": "connected", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected", "img-video": "connected"}
         self.clock = itertools.count(100, 10)
         self.n = 0
 
@@ -210,7 +210,7 @@ def test_runaway_tool_loop_is_cut_off_and_wrapped_up(tmp_path):
 
 # ------------------------------------------------------------------ readiness (bug B3) and persistence
 def test_ready_only_when_all_mcp_connected(tmp_path):
-    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected"})
+    gw, _, _ = make(tmp_path, {}, mcp={"home-assistant": "connected", "gmail": "connecting", "ha-history": "connected", "ha-entity-history": "connected", "ha-speakers": "connected", "ha-routines": "connected", "gmail-tidy": "connected", "image-gen": "connected", "img-video": "connected"})
     assert asyncio.run(gw.wait_ready(timeout=0.2, poll=0.05)) is False
     gw2, _, _ = make(tmp_path, {})
     assert asyncio.run(gw2.wait_ready(timeout=1, poll=0.05)) is True
@@ -672,3 +672,65 @@ def test_prompts_tell_the_model_to_call_approval_tools_directly_not_ask_in_text(
     from royva_gateway import general
     assert "call them directly" in general.STYLE and "never ask for confirmation in plain text" in general.STYLE
     assert "ha_write" in REG.intents["home_control"].profile.style and "never ask in text first" in REG.intents["home_control"].profile.style
+
+
+
+# ------------------------------------------------------------------ restricted identities (programs calling /v1/ask): only the intents listed for them, whatever the router says
+AGENT_USERS = {"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "agent:x": {"person": "", "scopes": [], "mail": "", "only_intents": ["web_lookup"]}}
+
+
+def test_a_restricted_identity_is_rerouted_to_its_only_intent_even_if_the_router_picks_another(tmp_path):
+    gw, oc, _ = make(tmp_path, {"top 10 headlines": ["home_control"]}, users=AGENT_USERS)
+    r = ask_as(gw, "top 10 headlines", "agent:x")
+    assert r.status == "done" and r.routing.intents == ["web_lookup"]
+    create = next(c for c in oc.calls if c[0] == "create")
+    assert not any("light" in a or "turn_on" in a for a in granted(create))               # nothing from the intent the router chose reached the session
+    assert '"outcome": "restricted_reroute"' in (tmp_path / "traces.jsonl").read_text()
+
+
+def test_a_restricted_identity_that_already_routes_correctly_is_left_alone(tmp_path):
+    gw, oc, _ = make(tmp_path, {"weather?": ["web_lookup"]}, users=AGENT_USERS)
+    r = ask_as(gw, "weather?", "agent:x")
+    assert r.routing.intents == ["web_lookup"] and '"outcome": "restricted_reroute"' not in (tmp_path / "traces.jsonl").read_text()
+
+
+def test_restricted_identity_with_several_allowed_intents_keeps_only_those_and_fails_closed_when_none_match(tmp_path):
+    users = {"agent:y": {"person": "", "scopes": [], "mail": "", "only_intents": ["web_lookup", "home_state"]}}
+    gw, oc, _ = make(tmp_path, {"mixed": ["home_state", "home_control"], "nothing": ["home_control"]}, users=users)
+    assert ask_as(gw, "mixed", "agent:y").routing.intents == ["home_state"]
+    n = len(oc.calls)
+    r = ask_as(gw, "nothing", "agent:y")
+    assert "isn't something this account is allowed" in r.answer and len(oc.calls) == n          # no session, no model run
+
+
+def test_unrestricted_users_are_unaffected(tmp_path):
+    gw, oc, _ = make(tmp_path, {"lights": ["home_state"]}, users=AGENT_USERS)
+    assert ask_as(gw, "lights", "telegram:1").routing.intents == ["home_state"]
+
+
+def test_video_request_never_stays_on_picture_intents():
+    from royva_gateway.router import video_not_pictures as f
+    assert f("make a video of today's headlines", ["image_set"]) == ["image_generate"]
+    assert f("a sarcastic video of 10 stories", ["image_generate"]) == ["image_generate"]
+    assert f("Make 10 pictures, one per headline", ["image_set"]) == ["image_set"]
+    assert f("Play a video on the TV", ["media_playback"]) == ["media_playback"]
+    assert f("make a video and turn off the lights", ["image_generate", "home_control"]) == ["image_generate", "home_control"]
+    assert f("hello", []) == []
+
+
+def test_video_turn_loses_chat_search_only_for_pure_video_requests():
+    from royva_gateway.router import is_video_turn as f
+    assert f("make a satirical video of the top 10 headlines", ["image_generate"])
+    assert f("a video of cats", ["image_set"])
+    assert not f("search the news and make a video", ["web_lookup", "image_generate"])   # mixed turn keeps its search
+    assert not f("what are the top headlines today?", ["web_lookup"])
+    assert not f("make a meme about the news", ["image_generate"])                      # a picture keeps its news search
+    assert not f("hello", [])
+
+
+def test_video_turn_grants_exclude_web_search(tmp_path):
+    gw, oc, _ = make(tmp_path, {"make a video of cats": ["image_generate"], "make a meme about cats": ["image_generate"]})
+    v = ask_as(gw, "make a video of cats", "telegram:1")
+    m = ask_as(gw, "make a meme about cats", "telegram:2")
+    assert "web.search" not in v.routing.profile_tools and "image.video" in v.routing.profile_tools
+    assert "web.search" in m.routing.profile_tools

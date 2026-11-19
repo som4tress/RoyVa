@@ -7,7 +7,8 @@ import { homedir, tmpdir } from 'node:os';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { createTranscriber } from './whisper.mjs';
-import { generatedImages, imageRuns, sendPhotos, sendDocument } from './images.mjs';
+import { asyncJobs, generatedImages, generatedVideos, imageCaptions, imageRuns, sendPhotos, sendVideos, sendDocument } from './images.mjs';
+import { OUTBOX_DIR, registerJob, requestCancel, startOutboxWatcher } from './outbox.mjs';
 import { openCodeAPI, runText, replySession, steerText } from './opencode.mjs';
 import { tokenUsage, formatUsage, streamingTokens, UsageTotals, formatFinalUsage, loadPricing } from './usage.mjs';
 const PRICING_FILE = process.env.ROYVA_PRICING_FILE || fileURLToPath(new URL('../config/pricing.json', import.meta.url));
@@ -531,7 +532,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         const partial = pending.flatMap(row => (row.content || []).filter(part => part.type === 'text' || part.type === 'reasoning').map(part => part.text || '')).join('');
         const live = finished ? null : await streamingTokens(partial).catch(() => null);
         const tool = rows.flatMap(row => row.content || []).filter(part => part.type === 'tool').at(-1);
-        const imageRunning = !finished && /image.?gen|generate_image|edit_image/.test(tool?.name || '') && !['completed', 'error'].includes(tool?.state?.status);
+        const imageRunning = !finished && /image.?gen|generate_image|edit_image|generate_video/.test(tool?.name || '') && !['completed', 'error'].includes(tool?.state?.status);
         const elapsed = Math.round((Date.now() - started) / 1000);
         const blocks = Math.max(1, Math.ceil(elapsed / 3));
         const localBar = '▰'.repeat(blocks);
@@ -614,12 +615,16 @@ export async function main({transcriber = createTranscriber()} = {}) {
           },
         });
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
-        await updateStatus(true);
+        const bgJobs = asyncJobs(rows);
+        if (bgJobs.length) for (const j of bgJobs) registerJob(OUTBOX_DIR, j.job, { chatId: run.replyTo.chat.id, replyTo: run.replyTo.message_id, statusMessageId: status?.message_id, startedAt: started, kind: j.kind });      // a set or video is being made in the background: remember who asked, and the live bar now follows the job
+        else await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
         usageTotals.recordImages(imageRuns(rows));
         // The picture goes first and on its own, so a failed or rate-limited text reply can never lose it.
         const pictures = generatedImages(rows);
-        if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
+        if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id, undefined, { captions: imageCaptions(rows) }); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
+        const videos = generatedVideos(rows);
+        if (videos.length) try { await sendVideos(token, run.replyTo.chat.id, videos, run.replyTo.message_id); } catch (error) { console.error('Could not send video:', error.message); await send(run.replyTo, `I made the video but could not send it: ${error.message}`, sessionID).catch(() => {}); }
         await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
@@ -630,6 +635,14 @@ export async function main({transcriber = createTranscriber()} = {}) {
     void job.finally(() => { if (queues.get(sessionID) === job) queues.delete(sessionID); }).catch(() => {});
   }
   // The Stop button under the "Processing" status message: same effect as /stop for that request.
+  // The Stop button under the live bar of a background job (picture set or video): the runner sees the marker, stops the agent, and the agent tells ComfyUI to interrupt its current graph.
+  async function jobStopButton(callback) {
+    const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
+    if (!(await live.has(callback.from?.id))) return;
+    const job = String(callback.data || '').slice('job:stop:'.length);
+    if (!requestCancel(OUTBOX_DIR, job)) return answer('That job is not known.');
+    await answer('Stopping…');
+  }
   async function stopButton(callback) {
     const answer = text => tg('answerCallbackQuery', {callback_query_id: callback.id, text}).catch(() => {});
     if (!(await live.has(callback.from?.id))) return;
@@ -737,6 +750,9 @@ export async function main({transcriber = createTranscriber()} = {}) {
   await tg('deleteWebhook' , { drop_pending_updates: false });
   const me = await tg('getMe', {});
   console.log(`Telegram connected as @${me.username}; standalone messages create native sessions.`);
+  startOutboxWatcher({ token, sendText: (chatId, text, replyTo) => tg('sendMessage', { chat_id: chatId, text, ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}) }),
+    editStatus: (chatId, messageId, text, { stop } = {}) => tg('editMessageText', { chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: stop ? [[{ text: '⏹ Stop', callback_data: `job:stop:${stop}` }]] : [] } }),
+    onImages: runs => usageTotals.recordImages(runs) });      // posts finished picture sets and videos
   await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: BRAND.command, description: `Talk to ${BRAND.assistant} (default)` }, { command: 'status', description: 'Connection and mode' }, { command: 'approve', description: 'Approve the pending request (reply to it)' }, { command: 'deny', description: 'Deny the pending request (reply to it)' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
   // RoyVa test hook (additive): ROYVA_INJECT_DIR holds {label,text}.json jobs. Each is mirrored into the owner's chat
   // as a visible "test" message, then fed to handle() as if the owner typed it, so the whole run is watchable on Telegram.
@@ -762,7 +778,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       for (const update of updates) {
         // Record admission before execution; never automatically replay household actions after restart.
         state.offset = update.update_id; save();
-        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : update.callback_query.data === 'forget:session' ? forgetButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
+        if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : String(update.callback_query.data || '').startsWith('job:stop:') ? jobStopButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : update.callback_query.data === 'forget:session' ? forgetButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
         if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
       }
     } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }

@@ -79,13 +79,18 @@ class EmbeddingClassifier:
     def __init__(self, reg: Registry, url: str, use_prefix: bool = False):   # sweep: prefix hurt (70% vs 87% top-1)
         self.url, self.use_prefix = url.rstrip("/"), use_prefix
         self.http = httpx.Client(timeout=60)
-        self.labels, texts = [], []
+        self.rebuild(reg)
+        self.thr, self.margin, self.prior_boost = 0.45, 0.06, 0.0   # defaults; calibrate() overrides
+
+    def rebuild(self, reg: Registry) -> None:
+        """Re-embed the registry's examples (called at start and on /v1/reload, so edited examples take effect without a restart)."""
+        labels, texts = [], []
         for i in reg.intents.values():
             for s in i.examples + i.continuations:
-                self.labels.append(i.id)
+                labels.append(i.id)
                 texts.append(s)
-        self.mat = self._embed(texts, query=False)
-        self.thr, self.margin, self.prior_boost = 0.45, 0.06, 0.0   # defaults; calibrate() overrides
+        mat = self._embed(texts, query=False)
+        self.labels, self.mat = labels, mat
 
     def _embed(self, texts: list[str], query: bool) -> np.ndarray:
         inp = [(self.TASK + t) if (query and self.use_prefix) else t for t in texts]
@@ -192,6 +197,10 @@ class HybridClassifier:
         self.name = f"hybrid(emb→{llm.name})"
         self.llm_calls = 0
         self.calls = 0
+
+    def rebuild(self, reg) -> None:
+        self.emb.rebuild(reg)
+        self.llm.rebuild(reg)
 
     def __call__(self, text, prior, state) -> Prediction:
         t0 = time.perf_counter()

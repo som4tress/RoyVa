@@ -425,10 +425,10 @@
  },
  {
   "id": "image.generate",
-  "action": "image-gen_generate_image",
-  "server": "image-gen",
+  "action": "img-video_generate_image",
+  "server": "img-video",
   "risk": "write",
-  "description": "Generate one picture from a text description (Qwen-Image-2.1, local GPU) and send it to the chat.",
+  "description": "Draw ONE picture from a text description and send it to the chat. The description is used as written (a very long one is shortened automatically); nothing is planned or added. About 15 seconds on the GPU box, with this machine's GPU as the fallback.",
   "available": true
  },
  {
@@ -437,6 +437,14 @@
   "server": "image-gen",
   "risk": "write",
   "description": "Restyle or edit a photo the user sent (painting, canvas, Ghibli, new background) and send the result to the chat.",
+  "available": true
+ },
+ {
+  "id": "image.video",
+  "action": "img-video_generate_video",
+  "server": "img-video",
+  "risk": "write",
+  "description": "Make a VIDEO from one request (planned by the director, which decides whether it needs a voice-over). It is made in the background: the call returns at once and the video is posted to the chat when it is ready.",
   "available": true
  },
  {
@@ -575,6 +583,14 @@
   "server": "machine",
   "scope": "admin",
   "door": true,
+  "available": true
+ },
+ {
+  "id": "image.set",
+  "action": "img-video_generate_image_set",
+  "server": "img-video",
+  "risk": "write",
+  "description": "Make a set of several pictures from one request (planned, looked up on the web if needed, captioned and drawn on the GPU box). It is made in the background: the call returns at once and the pictures are posted to the chat, each with its caption, when they are ready.",
   "available": true
  }
 ]

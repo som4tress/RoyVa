@@ -11,7 +11,7 @@ import statistics
 import time
 import uuid
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -22,7 +22,7 @@ from . import registry as registry_mod
 from .config import Settings
 from .models import AskRequest, AskResponse, RoutingInfo, SessionState
 from .registry import Registry
-from .router import Decision, Router, RouterUnavailable
+from .router import Decision, Router, RouterUnavailable, is_video_turn, VIDEO_NO_SEARCH
 from .runner import WRAP_UP, CALLS_PER_ROUND_CEILING, run_turn
 from .sessions import SessionStore
 
@@ -244,6 +244,12 @@ class Gateway:
         """Scopes whose refusals send NO reply at all (users file: {"_policy": {"silent_scopes": ["gmail"]}})."""
         return set((self._users().get("_policy") or {}).get("silent_scopes", []))
 
+    def only_intents(self, user: str) -> list[str] | None:
+        """A restricted identity (users file: {"agent:x": {"only_intents": ["web_lookup"]}}) can only ever be routed to these intents, whatever the router thinks.
+        None = not restricted. Meant for programs that call /v1/ask (their own identity has no scopes, and most intents need none)."""
+        v = (self._users().get(user) or {}).get("only_intents")
+        return [str(x) for x in v] if isinstance(v, list) else None
+
     def may_use(self, user: str, intent) -> bool:
         scope = intent.profile.scope
         if not scope:
@@ -283,6 +289,16 @@ class Gateway:
         if req.session_id and state is None:                  # a session created outside the gateway (e.g. before it existed)
             state = SessionState(session_id=req.session_id, created_at=datetime.now(timezone.utc).isoformat())
         d = await self.router.decide(req, state)
+        only = self.only_intents(req.user)
+        if only is not None and (not d.intents or any(i not in only for i in d.intents)):
+            chosen = [i for i in d.intents if i in only]
+            self._trace(trace_id=trace_id, session_id=req.session_id, text=req.text[:200], mode=d.mode, chosen=d.intents, outcome="restricted_reroute", classifier=d.classifier,
+                        latency_ms=d.latency_ms, allowed=only)
+            if not chosen and len(only) == 1:                      # a single-purpose identity: its one intent, no matter what the classifier thought
+                chosen = list(only)
+            if not chosen:                                         # fail closed: nothing this identity may do matches
+                return Prepared("answer", d, trace_id, req.session_id, state=state, answer="That isn't something this account is allowed to do here.")
+            d = replace(d, intents=chosen, classifier="restricted", mode="new" if d.mode == "steer" else d.mode)
 
         if d.mode == "steer":
             self._trace(trace_id=trace_id, session_id=state.session_id, text=req.text[:200], mode="steer", chosen=[], outcome="steered")
@@ -321,6 +337,8 @@ class Gateway:
             session_intents = list({i.id: i for i in seen + acting}.values())        # tools are the union over the whole conversation, recomputed each turn
             grant_map = profiles.grants(self.reg, session_intents)
             grant_map = {t: e for t, e in grant_map.items() if self.may_use_tool(req.user, self.reg.tools[t])}      # a tool may carry its own scope (e.g. the Home Assistant API door is owner-only)
+            if is_video_turn(req.text, d.intents):               # video turns only: the video agent researches by itself, so the chat model gets no web search
+                grant_map = {t: e for t, e in grant_map.items() if t not in VIDEO_NO_SEARCH}
             have = set(state.contexts_sent) if state else set()
             new_ctx = list(dict.fromkeys(c for i in acting for c in i.profile.context if c not in have or c in profiles.PER_TURN_PROVIDERS))
             hint = profiles.capability_hint(self.reg, acting)

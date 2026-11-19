@@ -2,6 +2,10 @@
 
 Older, section-by-section history is in `docs/handoff-log-2026-11.md`. This file is the current picture.
 
+**Video generation / ComfyUI speed work (2026-11-16):** the full state, measured numbers, code map and next ideas are in `docs/video-gen-optimization-handoff.md`. Start there for anything about the 3090 box, Wan, or the video agent.
+
+**READ FIRST (2026-11-17 evening): the shared 3090 box reset abruptly 7 times that day and the cause is unknown; all picture and video requests now go through the img_video agent; nothing over 500 characters may reach the box.** Full findings, measurements, the guard layers, the list of every door to the box, what is deployed and what is not: `docs/handoff-2026-11-17-img-video-agent.md`, section "UPDATE, evening" (U1-U8). `scripts/check.sh` now also runs the agent tests and `tools/check_3090_doors.py` (fails on any new code that can reach the box). The deploy that loads the new wiring has NOT been run yet (U6).
+
 ## 0. Resume in two minutes
 1. Start `claude` in `~/RoyVa` and say "resume from HANDOFF.md".
 2. Arm the Telegram listener under Monitor: `~/RoyVa/scripts/claude-inbox-watch.sh` (30-minute cap; re-arm on every expiry). It replays anything missed.
