@@ -4,7 +4,7 @@ Older, section-by-section history is in `docs/handoff-log-2026-11.md`. This file
 
 **Video generation / ComfyUI speed work (2026-11-16):** the full state, measured numbers, code map and next ideas are in `docs/video-gen-optimization-handoff.md`. Start there for anything about the 3090 box, Wan, or the video agent.
 
-**READ FIRST (2026-11-17 evening): the shared 3090 box reset abruptly 7 times that day and the cause is unknown; all picture and video requests now go through the img_video agent; nothing over 500 characters may reach the box.** Full findings, measurements, the guard layers, the list of every door to the box, what is deployed and what is not: `docs/handoff-2026-11-17-img-video-agent.md`, section "UPDATE, evening" (U1-U8). `scripts/check.sh` now also runs the agent tests and `tools/check_3090_doors.py` (fails on any new code that can reach the box). The deploy that loads the new wiring has NOT been run yet (U6).
+**READ FIRST (2026-11-17 evening): the shared 3090 box reset abruptly 7 times that day and the cause is unknown; all picture and video requests now go through the img_video agent; nothing over 500 characters may reach the box.** Full findings, measurements, the guard layers, the list of every door to the box, what is deployed and what is not: `docs/handoff-img-video-agent.md`, section "UPDATE, evening" (U1-U8). `scripts/check.sh` now also runs the agent tests and `tools/check_3090_doors.py` (fails on any new code that can reach the box). The deploy that loads the new wiring has NOT been run yet (U6).
 
 ## 0. Resume in two minutes
 1. Start `claude` in `~/RoyVa` and say "resume from HANDOFF.md".
@@ -12,6 +12,14 @@ Older, section-by-section history is in `docs/handoff-log-2026-11.md`. This file
 3. Check health: `scripts/royva-status.sh` (every line `ok`; the last line goes DOWN when the running process is older than the last commit, which means: run deploy).
 4. Replies to the owner go through `scripts/notify.sh "text"`. Keep them short (5-8 points). Owner replies land in `runtime/claude/inbox.jsonl`.
 5. Before restarting anything: `scripts/check.sh`. To load changes: the owner runs `scripts/deploy.sh` (checks, then restarts opencode -> gateway -> bridge, waits for health). Claude cannot run `systemctl`, `sudo`, `gh repo create` or `git push` (org policy / permission classifier). Claude's own ssh to `<box>` was also denied.
+
+## 0a. Setting up on a new machine (machine-specific files are NOT in git)
+The repo is public, so hostnames, usernames and absolute paths live in gitignored files. After cloning, create these:
+1. `cp scripts/remote/box.env.example scripts/remote/box.env` and fill in `BOX_USER`, `BOX_HOST`, `BOX_HOME` (the 3090 box). Every ssh script in `scripts/remote/` reads it and stops with a clear message if it is missing. Scripts that run ON the box must not source it.
+2. `agents/img_video/config.local.toml` with `[comfy]` and `url = "http://<box>:8188"` (it overrides the placeholder in `config.toml`, key by key).
+3. `bash scripts/render-config.sh` renders `config/opencode.json` from `config/opencode.template.json` (`@HOME@` becomes `$HOME`); `scripts/env.sh` does it automatically if the file is missing. Edit the template, never the generated file.
+4. `lares.toml` (copy `lares.example.toml`) for household and deployment values, as before.
+Then run `scripts/check.sh`.
 
 ## 1. What RoyVa is
 A household assistant. The owner talks to it on Telegram; it controls Home Assistant devices, reads/tidies Gmail, searches the web, answers from home history, and (new) can attempt things no skill covers.

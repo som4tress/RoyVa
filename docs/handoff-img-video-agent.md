@@ -380,3 +380,8 @@ Per-second box samples during a 3-clip job pair: at the start of job A (t=4..29 
   - `config/opencode.json` is now generated and untracked: edit `config/opencode.template.json` (`@HOME@` = $HOME) and run `bash scripts/render-config.sh`; `scripts/env.sh` renders it if missing.
   - Checked: scripts/check.sh passes (322 gateway, 88 bridge, 20 wrapper, 68 agent tests, doors check). Rendered opencode.json is byte-identical to the live file. Scripts that ssh to the box were syntax-checked only, not run.
   - Not done (needs the owner's call): family first names, car, city and device names in tests/docs; old commits still contain the old values (needs a history rewrite + force-push).
+  - SETUP ON A NEW MACHINE (these files are not in git; create them after cloning, then run `scripts/check.sh`):
+    1. `cp scripts/remote/box.env.example scripts/remote/box.env`, then fill in `BOX_USER`, `BOX_HOST`, `BOX_HOME` (the 3090 box). Every ssh script reads it and stops with a clear message if it is missing.
+    2. `agents/img_video/config.local.toml` containing `[comfy]` and `url = "http://<box>:8188"`. It overrides the placeholder in `config.toml`, key by key.
+    3. `bash scripts/render-config.sh` renders `config/opencode.json` from `config/opencode.template.json` (`@HOME@` becomes `$HOME`). `scripts/env.sh` does it automatically if the file is missing. Edit the template, never the generated file.
+    4. `lares.toml` from `lares.example.toml` (household and deployment values), as before.
