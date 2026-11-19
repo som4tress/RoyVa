@@ -64,6 +64,7 @@ vae = "wan_2.1_vae.safetensors"
 lora_hi = "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
 lora_lo = "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
 steps = 3                                  # measured: the locked setting (4 is the LoRA default)
+two_pass_batches = true                    # more than one batch: run every high-noise job first, then every low-noise job, so each 13.9 GB expert is read from disk once per video instead of once per batch (wan.animate)
 max_batch_clips = 10                       # most clips per ComfyUI batch (memory: a batch holds every clip's latent and decoded video; 10 is the size proven on this box)
 shift = 5.0
 timeout = 7200

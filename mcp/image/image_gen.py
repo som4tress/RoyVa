@@ -11,6 +11,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))               # mcp/stdio_cancel.py (shared)
+import stdio_cancel  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -123,7 +125,7 @@ def _render(prompt, steps, seed, width, height, ref, label):
             cmd += ["-r", str(ref), "--llm_vision", str(MODELS / VISION)]
         started = time.time()
         try:
-            run = subprocess.run(cmd, cwd=SD_DIR, env={**os.environ, "LD_LIBRARY_PATH": str(SD_DIR)}, capture_output=True, text=True, timeout=TIMEOUT)
+            run = stdio_cancel.run(cmd, cwd=SD_DIR, env={**os.environ, "LD_LIBRARY_PATH": str(SD_DIR)}, capture_output=True, text=True, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
             out.unlink(missing_ok=True)
             return {"ok": False, "error": f"image generation timed out after {TIMEOUT}s"}
@@ -159,9 +161,4 @@ def handle(msg):
 
 
 if __name__ == "__main__":
-    for line in sys.stdin:
-        if line.strip():
-            try:
-                handle(json.loads(line))
-            except Exception as e:                                      # noqa: BLE001
-                print(json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)[:200]}}), flush=True)
+    stdio_cancel.serve(handle)                                          # reads stdin while a tool runs, so Stop (notifications/cancelled) reaches it

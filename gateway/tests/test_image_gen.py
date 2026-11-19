@@ -46,7 +46,7 @@ def env(tmp_path, monkeypatch):
         Path(cmd[cmd.index("-o") + 1]).write_bytes(b"P" * 5000)
         return Done()
 
-    monkeypatch.setattr(g.subprocess, "run", fake_run)
+    monkeypatch.setattr(g.stdio_cancel, "run", fake_run)
     return tmp_path, calls
 
 

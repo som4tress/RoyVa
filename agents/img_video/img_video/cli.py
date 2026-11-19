@@ -26,6 +26,7 @@ def cmd_research(a, cfg, caps):
 
 def cmd_image(a, cfg, caps):
     import json as _json
+    _stop_on_sigterm(cfg)                                   # Stop on a single picture also tells ComfyUI to interrupt it
     text = sys.stdin.read() if a.stdin else (a.prompt or "")
     size = tuple(int(x) for x in a.size.split("x")) if a.size else None
     r = single.make_image(cfg, caps, text, aspect=a.aspect, size=size, seed=a.seed)

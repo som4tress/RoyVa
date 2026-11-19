@@ -15,8 +15,10 @@ MAX_FILE = 300_000_000
 
 
 def _fetch(base, path, timeout=120):
-    with urllib.request.urlopen(urllib.request.Request(base.rstrip("/") + path), timeout=timeout) as r:
-        return r.read(MAX_FILE + 1)
+    def go():
+        with urllib.request.urlopen(urllib.request.Request(base.rstrip("/") + path), timeout=timeout) as r:
+            return r.read(MAX_FILE + 1)
+    return comfy.retrying(go)
 
 
 def upload(base, data: bytes, name: str):
@@ -26,8 +28,10 @@ def upload(base, data: bytes, name: str):
            (f'\r\n--{bd}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--{bd}--\r\n').encode()
     req = urllib.request.Request(base.rstrip("/") + "/upload/image", data=body, headers={"Content-Type": f"multipart/form-data; boundary={bd}"})
     try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            return json.loads(r.read()).get("name", name)
+        def go():
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read()).get("name", name)
+        return comfy.retrying(go)
     except (urllib.error.URLError, OSError, ValueError) as e:
         raise comfy.ComfyError(f"upload of {name} failed: {e}")
 
@@ -84,7 +88,7 @@ def run_multi(base, wf, timeout, poll=2.0, prof=None):
         guard.trim_workflow(wf, comfy._hard(), log=lambda m: print(m, flush=True))      # the same 3090 ceiling as comfy._call: this client posts graphs itself
         body = {"prompt": wf, **({"client_id": probe.cid} if probe and probe.ok else {})}
         req = urllib.request.Request(base.rstrip("/") + "/prompt", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-        pid = json.loads(urllib.request.urlopen(req, timeout=60).read())["prompt_id"]
+        pid = json.loads(comfy.retrying(lambda: urllib.request.urlopen(req, timeout=60).read()))["prompt_id"]
     except urllib.error.HTTPError as e:
         raise comfy.ComfyError(f"ComfyUI refused the graph (HTTP {e.code}): {e.read(600).decode('utf-8', 'replace')}")
     except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
@@ -118,21 +122,38 @@ def run_multi(base, wf, timeout, poll=2.0, prof=None):
 def animate(cfg, caps, shots, size, job_tag, out_for, log=lambda m: None):
     """shots = [{"i", "image" (png path), "motion"}]. Writes out_for(i) for each shot. Returns a dict of measured seconds (summed over the batches).
     The clips go to ComfyUI in batches of at most [wan] max_batch_clips (default 10, the size proven on this box): one batch holds every clip's latent and decoded video in memory, and a 4-clip batch already used about 22 of the
-    container's 24 GiB. Each batch pays the model loading again; that is the price of not being killed for memory."""
+    container's 24 GiB. A batch is two ComfyUI jobs, A (high-noise expert) then B (low-noise expert), and each expert is read from disk (about 25 s) whenever the other one ran in between.
+    With [wan] two_pass_batches the order is A1 A2 A3 then B1 B2 B3 instead of A1 B1 A2 B2 A3 B3: each expert is loaded once per video if ComfyUI keeps it between consecutive jobs. Every job still has at most max_batch_clips clips,
+    so the memory use on the box is the same; the latents of the finished A jobs wait on THIS machine (a few MB per clip)."""
     size_n = max(1, int((cfg.get("wan") or {}).get("max_batch_clips", 10))); chunks = [shots[k:k + size_n] for k in range(0, len(shots), size_n)]
     if len(chunks) == 1: return _animate_batch(cfg, caps, shots, size, job_tag, out_for, log)
-    total = {}; t0 = time.time()
-    for n, chunk in enumerate(chunks, 1):
-        log(f"clip batch {n} of {len(chunks)} ({len(chunk)} shots)")
-        T = _animate_batch(cfg, caps, chunk, size, f"{job_tag}b{n}", out_for, log)
+    two_pass = bool((cfg.get("wan") or {}).get("two_pass_batches", False))
+    total = {}; t0 = time.time(); states = []
+    def add(T):
         for k, v in T.items():
             if k not in ("total", "per_clip"): total[k] = round(total.get(k, 0) + v, 1)
+    if two_pass:
+        for n, chunk in enumerate(chunks, 1):
+            log(f"clip batch {n} of {len(chunks)} ({len(chunk)} shots): high-noise pass"); states.append(_hi_pass(cfg, caps, chunk, size, f"{job_tag}b{n}", log))
+        for n, st in enumerate(states, 1):
+            log(f"clip batch {n} of {len(chunks)} ({len(st['shots'])} shots): low-noise pass"); _lo_pass(cfg, caps, st, size, out_for, log)
+        for st in states: add(st["T"])
+    else:
+        for n, chunk in enumerate(chunks, 1):
+            log(f"clip batch {n} of {len(chunks)} ({len(chunk)} shots)"); add(_animate_batch(cfg, caps, chunk, size, f"{job_tag}b{n}", out_for, log))
     total["batches"] = len(chunks); total["total"] = round(time.time() - t0, 1); total["per_clip"] = round(total["total"] / len(shots), 1)
     return total
 
 
 def _animate_batch(cfg, caps, shots, size, job_tag, out_for, log):
-    base, w, v = cfg["comfy"]["url"], cfg["wan"], caps["video"]; width, height = size; frames, fps = v["frames"], v["wan_fps"]
+    st = _hi_pass(cfg, caps, shots, size, job_tag, log); _lo_pass(cfg, caps, st, size, out_for, log)
+    st["T"]["total"] = round(time.time() - st["t0"], 1); st["T"]["per_clip"] = round(st["T"]["total"] / len(shots), 1)
+    return st["T"]
+
+
+def _hi_pass(cfg, caps, shots, size, job_tag, log):
+    """Uploads the stills and runs job A (high-noise expert) for these shots. Returns the state _lo_pass needs; the latents stay in memory."""
+    base, w, v = cfg["comfy"]["url"], cfg["wan"], caps["video"]; width, height = size; frames = v["frames"]
     needed = [("UNETLoader", "unet_name", w["hi"]), ("UNETLoader", "unet_name", w["lo"]), ("CLIPLoader", "clip_name", w["clip"]), ("VAELoader", "vae_name", w["vae"]),
               ("LoraLoaderModelOnly", "lora_name", w["lora_hi"]), ("LoraLoaderModelOnly", "lora_name", w["lora_lo"])]
     missing = [f"{n}: {name}" for n, f, name in needed if name not in comfy._combo(base, n, f)]
@@ -145,11 +166,18 @@ def _animate_batch(cfg, caps, shots, size, job_tag, out_for, log):
     pa = {}; t = time.time(); _, lat = run_multi(base, hi_workflow(w, batch, width, height, frames), w["timeout"], prof=pa); T["job_a"] = round(time.time() - t, 1); log(wsprobe.describe("job A (high-noise)", pa))
     ids = [str(2200 + k) for k in range(len(shots))]
     if not all(i in lat for i in ids): raise comfy.ComfyError("the high-noise pass did not return every latent")
-    t = time.time(); lnames = list(pool.map(lambda k: upload(base, lat[ids[k]], f"{job_tag}_hi{k}.latent"), range(len(shots)))); T["upload_latents"] = round(time.time() - t, 1)
+    return {"shots": shots, "batch": batch, "lat": [lat[i] for i in ids], "tag": job_tag, "T": T, "t0": t0}
+
+
+def _lo_pass(cfg, caps, st, size, out_for, log):
+    """Uploads the latents of _hi_pass and runs job B (low-noise expert); writes the clips."""
+    base, w, v = cfg["comfy"]["url"], cfg["wan"], caps["video"]; width, height = size; frames, fps = v["frames"], v["wan_fps"]; shots, batch, T = st["shots"], st["batch"], st["T"]
+    comfy.wait_until_free(base, log=log)
+    pool = ThreadPoolExecutor(6)
+    t = time.time(); lnames = list(pool.map(lambda k: upload(base, st["lat"][k], f"{st['tag']}_hi{k}.latent"), range(len(shots)))); T["upload_latents"] = round(time.time() - t, 1)
     pb = {}; t = time.time(); vids, _ = run_multi(base, lo_workflow(w, batch, lnames, width, height, frames, fps), w["timeout"], prof=pb); T["job_b"] = round(time.time() - t, 1); log(wsprobe.describe("job B (low-noise)", pb))
     for k, s in enumerate(shots):
         d = vids.get(str(4200 + k))
         if not d: raise comfy.ComfyError(f"no clip came back for shot {s['i']}")
         out_for(s["i"]).write_bytes(d)
-    T["total"] = round(time.time() - t0, 1); T["per_clip"] = round(T["total"] / len(shots), 1)
-    return T
+    st["lat"] = None                                                                                   # the latents are not needed again

@@ -9,6 +9,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))               # mcp/stdio_cancel.py (shared)
+import stdio_cancel  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 AGENT_DIR = Path(os.environ.get("ROYVA_IMGVIDEO_DIR", ROOT / "agents" / "img_video"))
@@ -51,7 +53,7 @@ def run_agent(spec):
         proc = subprocess.Popen(agent_cmd(spec), cwd=AGENT_DIR, stdout=fo, stderr=fe, stdin=subprocess.DEVNULL, env=env, start_new_session=True)
         t0 = time.time(); how = "ok"
         while proc.poll() is None:
-            if cancel.exists(): how = "cancelled"
+            if cancel.exists() or stdio_cancel.cancelled(): how = "cancelled"                # the Stop button's marker file (background job) or an MCP cancel (synchronous call)
             elif time.time() - t0 > (spec.get("timeout") or TIMEOUT[spec["kind"]]): how = "timeout"
             if how != "ok":
                 try: os.killpg(proc.pid, signal.SIGTERM)                  # the agent tells ComfyUI to interrupt its current job, then exits

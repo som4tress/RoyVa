@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))               # mcp/stdio_cancel.py (shared)
+import stdio_cancel  # noqa: E402
 
 HOME = Path.home()
 ROOT = Path(__file__).resolve().parents[2]
@@ -130,7 +132,7 @@ def _cap(text: bytes) -> str:
     return s if len(s) <= MAX_OUT else s[:MAX_OUT] + f"\n[output cut at {MAX_OUT} characters]"
 
 
-def _exec(argv, env, timeout, cwd=None, runner=subprocess.run) -> dict:
+def _exec(argv, env, timeout, cwd=None, runner=stdio_cancel.run) -> dict:
     try:
         p = runner(argv, env=env, cwd=cwd, capture_output=True, timeout=timeout, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired:
@@ -154,7 +156,7 @@ def _with_hint(res: dict, approved_tool: str) -> dict:
     return res
 
 
-def run(args, runner=subprocess.run) -> dict:
+def run(args, runner=stdio_cancel.run) -> dict:
     command = args.get("command")
     bad = refuse(command)
     if bad:
@@ -171,7 +173,7 @@ def run(args, runner=subprocess.run) -> dict:
     return _with_hint(res, "run_approved")
 
 
-def run_approved(args, runner=subprocess.run) -> dict:
+def run_approved(args, runner=stdio_cancel.run) -> dict:
     command = args.get("command")
     bad = refuse(command)
     if bad:
@@ -198,11 +200,11 @@ def _remote(args, sandboxed: bool, runner) -> dict:
     return _with_hint(res, "remote_run_approved") if sandboxed else res
 
 
-def remote_run(args, runner=subprocess.run) -> dict:
+def remote_run(args, runner=stdio_cancel.run) -> dict:
     return {**_remote(args, True, runner), "sandbox": True}
 
 
-def remote_run_approved(args, runner=subprocess.run) -> dict:
+def remote_run_approved(args, runner=stdio_cancel.run) -> dict:
     return _remote(args, False, runner)
 
 
@@ -249,9 +251,4 @@ def handle(msg):
 
 
 if __name__ == "__main__":
-    for line in sys.stdin:
-        if line.strip():
-            try:
-                handle(json.loads(line))
-            except Exception as e:                                      # noqa: BLE001
-                print(json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)[:200]}}), flush=True)
+    stdio_cancel.serve(handle)                                          # reads stdin while a tool runs, so Stop (notifications/cancelled) reaches it

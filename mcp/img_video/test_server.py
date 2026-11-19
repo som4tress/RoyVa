@@ -32,6 +32,9 @@ print(json.dumps({"ok": True, "job": "s1", "image_path": str(f), "prompt_used": 
 '''
 
 
+os.environ.setdefault("ROYVA_MCP_CANCEL_LOG", str(Path(tempfile.gettempdir()) / "royva_test_mcp_cancel.log"))        # tests never write the real runtime log
+
+
 class Server:
     def __init__(self, tmp, mode="ok", dry=False, sleep="0", bg="async"):        # bg: "async" | "sync" | "flag" (decided per call by the flag file, like production)
         (tmp / "stub.py").write_text(STUB); (tmp / "image_stub.py").write_text(IMAGE_STUB)
@@ -162,6 +165,21 @@ class T(unittest.TestCase):
     def test_sync_video_returns_a_video_path_the_bridge_can_send(self):
         s = Server(self.tmp, bg="sync"); parts, _ = s.call({"query": "how rainbows form"}, "generate_video"); r = parts[0]
         self.assertTrue(r["ok"] and "async_job" not in r); f = Path(r["video_path"]); self.assertTrue(f.is_file()); self.assertEqual(f.parent, self.tmp / "videos"); self.assertIn("Test video", r["did"]); s.close()
+
+    def test_an_mcp_cancel_during_a_synchronous_call_stops_the_agent_frees_the_lock_and_sends_no_reply(self):
+        """The Stop button: OpenCode aborts the call and sends notifications/cancelled. Before 2026-11-19 the server was blocked inside the tool and never read it, so the agent kept using the 3090."""
+        s = Server(self.tmp, sleep="60", bg="sync"); stub = str(self.tmp / "stub.py")
+        running = lambda: bool(subprocess.run(["pgrep", "-f", stub], capture_output=True, text=True).stdout.split())
+        s.p.stdin.write(json.dumps({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "generate_image_set", "arguments": {"query": "pictures"}}}) + "\n"); s.p.stdin.flush()
+        t0 = time.time()
+        while not running() and time.time() - t0 < 10: time.sleep(0.1)
+        self.assertTrue(running()); t0 = time.time()
+        s.p.stdin.write(json.dumps({"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": 7, "reason": "stopped"}}) + "\n"); s.p.stdin.flush()
+        while running() and time.time() - t0 < 30: time.sleep(0.2)
+        self.assertFalse(running()); self.assertLess(time.time() - t0, 25)                                           # the 60 s stub was terminated, not waited for
+        r = s.rpc("tools/list", ident=8); self.assertEqual(r["id"], 8)                                              # the first reply is the next request's: the cancelled call was not answered
+        held = open(self.tmp / "lock", "w"); fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(held, fcntl.LOCK_UN)   # the GPU lock was released
+        s.close()
 
     def test_sync_failure_busy_and_the_lock_released_after(self):
         s = Server(self.tmp, mode="fail", bg="sync"); parts, _ = s.call({"query": "x"}); self.assertFalse(parts[0]["ok"]); self.assertIn("ComfyUI", parts[0]["error"]); s.close()

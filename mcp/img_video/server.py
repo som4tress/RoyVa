@@ -14,6 +14,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))               # mcp/stdio_cancel.py (shared)
+import stdio_cancel  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -96,7 +98,7 @@ def generate_image(args):
     cmd = (json.loads(os.environ["ROYVA_IMGVIDEO_IMAGE_CMD"]) if os.environ.get("ROYVA_IMGVIDEO_IMAGE_CMD") else
            ["/usr/bin/python3", "-m", "img_video", "image", "--stdin", "--json", "--size", f"{width}x{height}"] + (["--seed", str(int(args["seed"]))] if args.get("seed") is not None else []))
     try:
-        p = subprocess.run(cmd, input=prompt, cwd=AGENT_DIR, capture_output=True, text=True, timeout=SINGLE_TIMEOUT)
+        p = stdio_cancel.run(cmd, input=prompt, cwd=AGENT_DIR, capture_output=True, text=True, timeout=SINGLE_TIMEOUT)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"the picture did not finish within {SINGLE_TIMEOUT} s"}
     lines = [l for l in p.stdout.splitlines() if l.strip().startswith("{")]
@@ -192,9 +194,4 @@ def handle(msg):
 
 
 if __name__ == "__main__":
-    for line in sys.stdin:
-        if line.strip():
-            try:
-                handle(json.loads(line))
-            except Exception as e:                                      # noqa: BLE001
-                print(json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)[:200]}}), flush=True)
+    stdio_cancel.serve(handle)                                          # reads stdin while a tool runs, so Stop (notifications/cancelled) reaches it

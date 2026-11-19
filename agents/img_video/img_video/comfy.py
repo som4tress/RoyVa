@@ -2,6 +2,7 @@
 Rules from the handoff: never call /free (host-RAM OOM at the container cap), one job at a time on the shared box, check model names before any GPU work."""
 import json
 import random
+import socket
 import time
 import urllib.error
 import urllib.parse
@@ -17,6 +18,19 @@ class ComfyError(RuntimeError):
     pass
 
 
+TRANSIENT_WAITS = (2, 4, 8, 15)
+
+
+def retrying(fn, waits=None):
+    """Runs fn(); if the box cannot be reached AT ALL (the name does not resolve: the .local mDNS name drops out for a second now and then, or the connection is refused) it waits and tries again, up to 4 times.
+    Only failures that happen before any request is sent are retried, so posting a job twice is not possible; every other error is raised at once. A 17-minute video must not die of a one-second name lookup glitch (seen 2026-11-19)."""
+    for w in tuple(TRANSIENT_WAITS if waits is None else waits) + (None,):
+        try: return fn()
+        except urllib.error.URLError as e:
+            if w is None or not isinstance(getattr(e, "reason", None), (socket.gaierror, ConnectionRefusedError)): raise
+            print(f"  ComfyUI not reachable ({e.reason}); trying again in {w} s", flush=True); time.sleep(w)
+
+
 def _hard():
     if not _HARD: lim = config.load()[0]["limits"]; _HARD.append(min(lim["hard_prompt_chars"], lim["image_prompt_chars"]))       # never above the cap
     return _HARD[0]
@@ -25,8 +39,10 @@ def _hard():
 def _call(base, path, body=None, timeout=30, limit=MAX_PNG):
     if path == "/prompt" and body: guard.trim_workflow(body.get("prompt"), _hard(), log=lambda m: print(m, flush=True))      # nothing oversized reaches the 3090, whoever the caller is
     req = urllib.request.Request(base.rstrip("/") + path, data=None if body is None else json.dumps(body).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read(limit + 1)
+    def go():
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.read(limit + 1)
+    return retrying(go)
 
 
 def _combo(base, node, field):
