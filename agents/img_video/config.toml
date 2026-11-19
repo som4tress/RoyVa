@@ -1,0 +1,100 @@
+# Endpoints and paths of the img_video agent. Override any value with an environment variable IMG_VIDEO_<SECTION>_<KEY> (upper case), e.g. IMG_VIDEO_COMFY_URL.
+
+[llm]
+url = "http://127.0.0.1:8000/v1"       # local llama-server (Qwen3.6-35B-A3B Q8)
+model = "qwen36-35b"
+keyfile = "~/.local/state/llamacpp/api-key"   # the key is read from this file and never logged
+
+[research]
+provider = "royva"                      # the only provider today; web search is used for narration facts only
+url = "http://127.0.0.1:8300"           # RoyVa gateway
+identity = "agent:img_video"            # unlisted identity: no private scopes, traces are attributable
+token = ""                              # ROYVA_GATEWAY_TOKEN if the gateway uses one
+
+[image]
+backend = "comfy"                          # comfy (ComfyUI on the 3090, see [comfy].backend) | qwen-image-local (sd.cpp on this machine's GPU, about 10x slower)   IMG_VIDEO_IMAGE_BACKEND overrides
+
+[local]
+bin = "~/llm-server/sdcpp/master-1086"
+models = "~/llm-server/models/image/qwen-image-2.1"
+diffusion = "qwen-image-2.1-Q8_0.gguf"
+llm = "Qwen3-VL-8B-Instruct-Q8_0.gguf"
+vae = "qwen_image_2.1_vae_bf16.safetensors"
+lora = ""                                   # step-distilled LoRA in <models>/loras (e.g. "lightning4": 4 steps, cfg 1, faster but follows prompts less closely); "" = base model. Chosen 2026-11-17 after a side-by-side: 8 steps, cfg 4 (79 s/picture)
+lora_weight = 1.0
+steps = 8
+cfg = 4.0
+timeout = 900
+lock = "~/RoyVa/runtime/gateway/image.lock"   # shared with RoyVa's own image tool
+tmp_dir = "~/RoyVa/runtime/tmp"
+
+[comfy]
+url = "http://somdutta-linux.local:8188"   # ComfyUI on the 3090 box (shared machine: never /free, one job at a time)
+unet = "flux-2-klein-4b-fp8.safetensors"
+clip = "qwen_3_4b.safetensors"             # FLUX.2 klein's text encoder
+vae = "flux2-vae.safetensors"
+steps = 4
+timeout = 600
+backend = "qwen-image-21"                   # which model draws the pictures on the 3090: qwen-image-21 | z-image-turbo | flux2-klein   (IMG_VIDEO_COMFY_BACKEND overrides). Qwen-Image 2.1 chosen 2026-11-17: 25 steps, cfg 1 (12.4 s/picture; cfg 2 measured 22.2 s and was not preferred; cfg above 1 costs a second guidance pass)
+zimage_unet = "z_image_turbo_bf16.safetensors"
+zimage_clip = "qwen_3_4b.safetensors"
+zimage_vae = "ae.safetensors"
+zimage_steps = 8
+qwen_unet = "qwen_image_2.1_int8_convrot.safetensors"     # backend "qwen-image-21" (Qwen-Image 2.1 on the 3090, INT8 ConvRot; files fetched by scripts/remote/fetch-qwen-image.sh)
+qwen_clip = "qwen3vl_8b_int8_convrot.safetensors"
+qwen_vae = "qwen_image_2.1_vae_bf16.safetensors"
+qwen_steps = 25
+qwen_cfg = 1.0
+qwen_lora = ""                                            # e.g. "qwen_image_2.1_lightning4.safetensors" with qwen_steps 4, qwen_cfg 1.0
+
+[tts]
+python = "~/RoyVa/runtime/tts/cb/bin/python"   # venv with Chatterbox; runs on this machine's CPU
+
+[verify]
+# OFF by default (measured 2026-11-16: 1066 s vs 274 s for 10 pictures, and 8 of 10 never passed the strict check). Look at each finished picture with the local vision model and draw it again (up to `retries` times, new seed, details stated explicitly) when it does not match what it should show.
+enabled = false
+retries = 2
+
+[wan]
+# Wan 2.2 14B image-to-video on the ComfyUI box: the locked INT8 stack. The names are explicit here on purpose: a silent fall-back to FP8 once cost a day of misleading numbers.
+hi = "wan2.2_i2v_high_noise_14B_int8_convrot.safetensors"
+lo = "wan2.2_i2v_low_noise_14B_int8_convrot.safetensors"
+clip = "umt5_xxl_int8_convrot.safetensors"
+vae = "wan_2.1_vae.safetensors"
+lora_hi = "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+lora_lo = "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+steps = 3                                  # measured: the locked setting (4 is the LoRA default)
+max_batch_clips = 10                       # most clips per ComfyUI batch (memory: a batch holds every clip's latent and decoded video; 10 is the size proven on this box)
+shift = 5.0
+timeout = 7200
+negative = "blurry, distorted, extra limbs, deformed face, text, watermark, subtitles, static, low quality"
+
+[voice]
+exaggeration = 0.4
+cfg_weight = 0.5
+
+[paths]
+jobs = "jobs"                            # relative to the agent folder
+
+[limits]
+max_images = 30
+max_video_seconds = 120                  # longest video the planner may plan: the number of shots is cut to fit (25 silent or 20 narrated shots at 120 s; was 30 s for the first tests)
+hard_prompt_chars = 500                  # never-exceed ceiling on any text sent to the 3090 (img_video/guard.py, applied where graphs are posted; it can never be above image_prompt_chars); every text input sent is recorded in runtime/gateway/prompts_sent.jsonl
+image_prompt_chars = 500                 # most characters in the final picture prompt (scene + style + no-text clause). Prompts of ~1200+ chars reset the 3090 box on 2026-11-17 (6 of 6 at <=695 chars fine). The director is told this; a scene may exceed its share by 10%, otherwise it is rewritten by the model, and if it still does not fit the job fails (nothing is cut blindly)
+max_research_queries = 4                 # safety cap on extra searches while looking for enough items (a bound, not a target)
+
+[pipeline]
+video_picture_scale = 1.5                 # VIDEO ONLY: draw the pictures at this multiple of the Wan input size (e.g. 1.5 -> 640x640 for 1:1) instead of the full 1024 size; 0 = full size. Picture sets and single images never use it.
+warm_pictures = true                 # load the picture model on the 3090 while the research and the director run (they leave the GPU idle ~85 s), so the first picture is not 27 s slower. Best effort; picture sets and videos.
+stream_pictures = true             # draw pictures while the director is still writing the next shots (only when the pictures are drawn on the 3090: this machine's GPU would compete with the writer)
+
+[director]
+style_share = 0.25                      # share of the prompt cap the style line may use (the rest goes to the scene and the no-text clause)
+scene_weights = { subject = 0.50, setting = 0.25, colors = 0.25 }     # how the scene's character budget is split between its fields (must name exactly the scene fields)
+
+[policy]
+# How real people may appear in the pictures. NOTHING is blocked either way: this only shapes the picture descriptions the writer produces.
+real_people = "allow"        # allow: real public figures may be depicted by name (parody, satire) | alter: depict a clearly stylised, changed likeness and leave the name out
+image_text = "clean image without any text, labels, captions, annotations or lettering"   # appended to every picture prompt (measured 2026-11-16: Qwen-Image otherwise draws garbled or Chinese labels on diagram-like pictures); "" lets the model draw text
+allow = """Real public figures may appear, by name, in parody and satire."""
+alter = """When a real person is needed, describe a clearly stylised caricature with deliberately changed features (different hair, glasses, nose, clothing) and do not use their name in the picture description."""

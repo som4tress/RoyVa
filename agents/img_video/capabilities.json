@@ -1,0 +1,88 @@
+{
+  "_comment": "Measured or chosen numbers. Change them here, never in code. 'measured' entries come from benchmark runs (see RoyVa/docs/video-gen-optimization-handoff.md).",
+  "tts_chars_per_second": {
+    "value": 18.2,
+    "source": "measured: Chatterbox, 12 lines, 2026-11-16"
+  },
+  "pacing": {
+    "beat_seconds_min": 4.0,
+    "beat_seconds_max": 8.0,
+    "beat_seconds_target": 5.5,
+    "source": "chosen"
+  },
+  "padding": {
+    "lead_seconds": 0.3,
+    "tail_seconds": 0.5,
+    "crossfade_seconds": 0.4,
+    "source": "chosen"
+  },
+  "duration": {
+    "default_seconds": 60,
+    "tolerance_fraction": 0.12,
+    "source": "chosen"
+  },
+  "aspect": {
+    "9:16": [
+      720,
+      1280
+    ],
+    "16:9": [
+      1280,
+      720
+    ],
+    "1:1": [
+      1024,
+      1024
+    ]
+  },
+  "image": {
+    "flux_klein_seconds_per_image_warm": {
+      "value": 4.7,
+      "source": "measured: 720x1280, 4 steps, reference-edit"
+    },
+    "cold_load_seconds": {
+      "value": 24,
+      "source": "measured on the stripe"
+    }
+  },
+  "video": {
+    "frames": 81,
+    "wan_fps": 16,
+    "out_fps": 24,
+    "max_slow": 1.25,
+    "max_tempo": 1.15,
+    "sizes": {
+      "1:1": {
+        "wan": [
+          432,
+          432
+        ],
+        "out": [
+          720,
+          720
+        ]
+      },
+      "9:16": {
+        "wan": [
+          320,
+          576
+        ],
+        "out": [
+          720,
+          1280
+        ]
+      },
+      "16:9": {
+        "wan": [
+          576,
+          320
+        ],
+        "out": [
+          1280,
+          720
+        ]
+      }
+    },
+    "source": "chosen/measured in the 2026-11-16 rainbow dry run: Wan sizes keep ~187k pixels (the locked INT8 stack's measured size); an 81-frame clip is 5.06 s at 16 fps"
+  }
+}
