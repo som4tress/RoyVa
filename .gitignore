@@ -11,3 +11,8 @@ __pycache__/
 *.pyc
 gateway/eval/real_v1.jsonl
 lares.toml
+
+# Machine-specific values (hostnames, users, paths)
+scripts/remote/box.env
+agents/img_video/config.local.toml
+config/opencode.json

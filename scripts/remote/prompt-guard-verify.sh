@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_box.sh"
 # Proves the server-side guard is really active (ComfyUI would otherwise let graphs through silently). Sends ONE deliberately invalid graph (a node class that does not exist, so ComfyUI rejects it and never runs any GPU work)
 # carrying a 2,000-character string, then reads the guard's log on the box: the last line must say was 2000, sent <= 500. Run:  ! bash ~/RoyVa/scripts/remote/prompt-guard-verify.sh
-B=somdutta@somdutta-linux.local; U=http://somdutta-linux.local:8188
+B=${BOX_SSH}; U=http://${BOX_HOST}:8188
 python3 - <<'PY'
 import json, urllib.request, urllib.error
 body = json.dumps({"prompt": {"1": {"class_type": "PromptGuardProbeNotARealNode", "inputs": {"text": "probe " * 334}}}}).encode()
-try: urllib.request.urlopen(urllib.request.Request("http://somdutta-linux.local:8188/prompt", data=body, headers={"Content-Type": "application/json"}), timeout=15)
+try: urllib.request.urlopen(urllib.request.Request("http://${BOX_HOST}:8188/prompt", data=body, headers={"Content-Type": "application/json"}), timeout=15)
 except urllib.error.HTTPError as e: print("ComfyUI rejected the probe graph (expected), HTTP", e.code)
 PY
 echo "--- last lines of the guard's log on the box:"

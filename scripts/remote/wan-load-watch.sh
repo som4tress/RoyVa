@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_box.sh"
 # Read-only investigation of the ~21 s first-sampler load in each Wan job. Starts one small Wan test (3 clips, about 2 min on the 3090) from this machine and, at the same time, samples the 3090 box once a second for 100 s:
 # disk read rate of the model stripe (md127), host CPU busy %, RAM (Cached / free), GPU utilisation, GPU memory, current PCIe generation and width. Output goes to ~/RoyVa/runtime/diag/ and a summary prints at the end.
 # Run when the GPU is idle (tell the owner first):   ! bash ~/RoyVa/scripts/remote/wan-load-watch.sh
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; O="$R/runtime/diag/wanload-$(date +%Y%m%d-%H%M%S)"; mkdir -p "$O"
-ssh somdutta@somdutta-linux.local 'for i in $(seq 1 100); do echo "$(date +%s.%N) $(awk "\$3==\"md127\"{print \$6}" /proc/diskstats) $(awk "/^cpu /{print \$2+\$3+\$4+\$7+\$8, \$5+\$6}" /proc/stat) $(awk "/^Cached:/{c=\$2}/^MemFree:/{f=\$2}END{print c, f}" /proc/meminfo) $(nvidia-smi --query-gpu=utilization.gpu,memory.used,pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits | tr -d " ")"; sleep 1; done' > "$O/box.log" 2>"$O/box.err" &
+ssh ${BOX_SSH} 'for i in $(seq 1 100); do echo "$(date +%s.%N) $(awk "\$3==\"md127\"{print \$6}" /proc/diskstats) $(awk "/^cpu /{print \$2+\$3+\$4+\$7+\$8, \$5+\$6}" /proc/stat) $(awk "/^Cached:/{c=\$2}/^MemFree:/{f=\$2}END{print c, f}" /proc/meminfo) $(nvidia-smi --query-gpu=utilization.gpu,memory.used,pcie.link.gen.current,pcie.link.width.current --format=csv,noheader,nounits | tr -d " ")"; sleep 1; done' > "$O/box.log" 2>"$O/box.err" &
 SSH=$!; date +%s.%N > "$O/local_start"; sleep 3
 ( cd "$R/agents/img_video" && python3 bench/wan_probe.py > "$O/wan.log" 2>&1 ); wait $SSH
 python3 - "$O" <<'PY'

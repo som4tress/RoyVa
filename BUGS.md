@@ -20,7 +20,7 @@ Status key: OPEN · HYPOTHESIS · FIXING · FIXED (with numbers) · WONTFIX
 - Candidate generic fix: replace/override the default system prompt via an agent profile or config option; measure.
 
 ## B2 — Model explores the filesystem before answering   [OPEN]
-- Evidence: `…-0002`, `…-0003`: first two actions were `read` on the workspace dir then `/home/somdutta/RoyVa` for
+- Evidence: `…-0002`, `…-0003`: first two actions were `read` on the workspace dir then `~/RoyVa` for
   "What is the status of lights upstairs?". ~11 s of extra round-trips; 12 built-in tools (edit, write, shell, glob,
   grep, subagent, webfetch, websearch, skill, question, read, execute) are offered.
 - Hypothesis: coding prompt + coding tools invite repo exploration.

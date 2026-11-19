@@ -33,7 +33,7 @@ case "${1:-status}" in
     if docker ps -a --format '{{.Names}}' | grep -qx "$NAME"; then docker rm -f "$NAME" >/dev/null; fi
     docker run -d --name "$NAME" --gpus all ${RESTART_FLAG:-} ${ENV_FLAGS:-} \
       --memory "$MEM" --memory-swap "$MEM" --cpus "$CPUS" --cpu-shares 256 --pids-limit 512 \
-      ${PYLIBS:+--env PYTHONPATH=/data/pylibs} --env USER=somdutta --env LOGNAME=somdutta --env TORCHINDUCTOR_CACHE_DIR=/data/user/.cache/torchinductor \
+      ${PYLIBS:+--env PYTHONPATH=/data/pylibs} --env USER="$(id -un)" --env LOGNAME="$(id -un)" --env TORCHINDUCTOR_CACHE_DIR=/data/user/.cache/torchinductor \
       --user "$(id -u):$(id -g)" --security-opt no-new-privileges:true --cap-drop ALL --shm-size 1g \
       --log-opt max-size=10m --log-opt max-file=3 \
       -p 8188:8188 -v "$DATA:/data" ${MOUNT_FLAGS:-} "$IMAGE" \

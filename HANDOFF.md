@@ -11,7 +11,7 @@ Older, section-by-section history is in `docs/handoff-log-2026-11.md`. This file
 2. Arm the Telegram listener under Monitor: `~/RoyVa/scripts/claude-inbox-watch.sh` (30-minute cap; re-arm on every expiry). It replays anything missed.
 3. Check health: `scripts/royva-status.sh` (every line `ok`; the last line goes DOWN when the running process is older than the last commit, which means: run deploy).
 4. Replies to the owner go through `scripts/notify.sh "text"`. Keep them short (5-8 points). Owner replies land in `runtime/claude/inbox.jsonl`.
-5. Before restarting anything: `scripts/check.sh`. To load changes: the owner runs `scripts/deploy.sh` (checks, then restarts opencode -> gateway -> bridge, waits for health). Claude cannot run `systemctl`, `sudo`, `gh repo create` or `git push` (org policy / permission classifier). Claude's own ssh to `somdutta-linux.local` was also denied.
+5. Before restarting anything: `scripts/check.sh`. To load changes: the owner runs `scripts/deploy.sh` (checks, then restarts opencode -> gateway -> bridge, waits for health). Claude cannot run `systemctl`, `sudo`, `gh repo create` or `git push` (org policy / permission classifier). Claude's own ssh to `<box>` was also denied.
 
 ## 1. What RoyVa is
 A household assistant. The owner talks to it on Telegram; it controls Home Assistant devices, reads/tidies Gmail, searches the web, answers from home history, and (new) can attempt things no skill covers.
@@ -38,7 +38,7 @@ Built this session (all with tests):
 | Home control rules | More than one device -> list them and wait for the owner's OK; protected devices (`ROYVA_PROTECTED_DEVICES`, now `Shivi Linux Box`, it hosts Home Assistant) never bundled and always asked first; state re-read after bulk changes; floor requests use ONE unfiltered query. **These are prompt rules, not hard blocks.** |
 | General mode | `gateway/royva_gateway/general.py`. Replaces the old "I can't do that yet" refusal. Gap still logged (`missing` in `runtime/gateway/traces.jsonl`). |
 | HA API door | `mcp/ha/ha_api.py`: `ha_read` (reads only; filter with `contains`/`fields`/`limit`) and `ha_write` (always asks). Lets RoyVa assign areas, rename, write automations. No automation validator exists. |
-| Machine door | `mcp/machine/machine.py`. Reads run in a read-only bubblewrap sandbox (no network, clean env, secret files hidden by name pattern, own pid namespace); writes need approval via `*_run_approved`. Remote hosts: `ROYVA_REMOTE_HOSTS` (now `somdutta@somdutta-linux.local`, `bwrap` confirmed there). `crontab -l`, `systemctl [--user] list-timers --all` and one `ps` listing run unsandboxed by exact match. Log: `runtime/gateway/machine.log`. No sudo. |
+| Machine door | `mcp/machine/machine.py`. Reads run in a read-only bubblewrap sandbox (no network, clean env, secret files hidden by name pattern, own pid namespace); writes need approval via `*_run_approved`. Remote hosts: `ROYVA_REMOTE_HOSTS` (now `<user>@<box>`, `bwrap` confirmed there). `crontab -l`, `systemctl [--user] list-timers --all` and one `ps` listing run unsandboxed by exact match. Log: `runtime/gateway/machine.log`. No sudo. |
 | Approvals | Inline Approve/Deny buttons; `/approve` `/deny` in the menu; Deny now STOPS the run. Arbitrary-power tools show the whole call (never truncated, never batch-approved). Device/area/entity names come live from Home Assistant (`/v1/resolve-ids`); an unmatched id disables Approve (button and typed). |
 | Stop / steer | A ⏹ Stop button sits on the "Processing" status message (same effect as `/stop`); replying to any message of a running request steers it and gets an immediate 👀 reaction. Not live-verified. |
 | Loop guard | `bridge/guard.mjs`: stops only a stuck run (same call 3x, 4 failures in a row) or at 25 rounds / 80 calls. The old 6-round cap is gone. |
@@ -49,7 +49,7 @@ Scopes: `runtime/gateway/users.json`. Owner = `"*"`. The two doors are tool scop
 
 ## 3. Not live-verified (be honest about this)
 The owner said things look good after deploying, but Claude did not itself run these end to end. Confirm with `node tests/enqueue.mjs "label" "prompt"` (mirrors into the owner's chat, runs the real handler):
-* general mode + `machine_run` ("how much memory is free?"), `crontab -l` path, remote read on `somdutta-linux.local` (never run; quoting is unit-tested through a local shell).
+* general mode + `machine_run` ("how much memory is free?"), `crontab -l` path, remote read on `<box>` (never run; quoting is unit-tested through a local shell).
 * `ha_write` approval showing live names; Deny stopping the run; the Approve/Deny buttons on a permission request.
 * floor query (one call), loop guard on a long legitimate job, `/v1/resolve-ids` against the real Home Assistant.
 * Prompt-rule behaviour on the 35B model (models can ask in text instead of calling `ha_write`; this happened once and the prompt was changed).
@@ -84,7 +84,7 @@ The owner said things look good after deploying, but Claude did not itself run t
 * Optional: a dedicated, restricted ssh key for RoyVa on the remote host (the current key is the owner's own).
 
 ## 8. Known issues and tech debt
-* `mcp/ha/ha_history.py` hardcodes three family first names; absolute `/home/somdutta` paths in scripts, units and config.
+* `mcp/ha/ha_history.py` hardcodes three family first names; absolute `~` paths in scripts, units and config.
 * `config/opencode.baseline.json`, `config/opencode.fix1.json` look stale.
 * `ha.broadcast` is `external`-risk; unread-count answers once capped at a page (fixed for exact counts, recheck).
 * Env-allowlist ids in `TELEGRAM_ALLOWED_USER_IDS` cannot be revoked from chat (shrink it to the owner).

@@ -14,6 +14,7 @@ fi
 set -a; . "$R/runtime/server.env"; set +a
 export ROYVA_PORT_PROXY=8100 ROYVA_PORT_OPENCODE=49380
 mkdir -p "$R/runtime/config" "$R/runtime/workspace" "$R/runtime/state" "$R/captures"
+[ -f "$R/config/opencode.json" ] || bash "$R/scripts/render-config.sh"
 ln -sf "$R/config/opencode.json" "$R/runtime/config/opencode.json"
 
 # Household and deployment values (default person, protected devices, remote hosts, remote transcription) live in lares.toml, not here.

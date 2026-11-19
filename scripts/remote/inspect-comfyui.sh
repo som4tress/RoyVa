@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_box.sh"
 # READ-ONLY inspection of the old ComfyUI Docker setup on the 3090 box. Changes nothing, starts nothing.
-# Run from the Claude terminal:  ! ssh somdutta@somdutta-linux.local 'bash -s' < ~/RoyVa/scripts/remote/inspect-comfyui.sh
+# Run from the Claude terminal:  ! ssh ${BOX_SSH} 'bash -s' < ~/RoyVa/scripts/remote/inspect-comfyui.sh
 cd ~/comfyui || exit 1
 echo "=== Dockerfile ==="; cat Dockerfile
 echo "=== start.sh ==="; cat start.sh

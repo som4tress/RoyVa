@@ -29,7 +29,7 @@ lock = "~/RoyVa/runtime/gateway/image.lock"   # shared with RoyVa's own image to
 tmp_dir = "~/RoyVa/runtime/tmp"
 
 [comfy]
-url = "http://somdutta-linux.local:8188"   # ComfyUI on the 3090 box (shared machine: never /free, one job at a time)
+url = "http://your-box.local:8188"   # ComfyUI on the 3090 box (shared machine: never /free, one job at a time)
 unet = "flux-2-klein-4b-fp8.safetensors"
 clip = "qwen_3_4b.safetensors"             # FLUX.2 klein's text encoder
 vae = "flux2-vae.safetensors"

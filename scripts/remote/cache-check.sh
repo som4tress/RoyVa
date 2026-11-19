@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_box.sh"
 # Read-only: how much of each video-model file is in the box's page cache right now (fincore), plus free RAM and the container's memory.
 # Use it before and after a batch to tell whether the GPU idle time at the start of each job is disk reads:  files mostly cached + idle stretches still there = not the disk.
 # Run:  ! bash ~/RoyVa/scripts/remote/cache-check.sh [extra filename pattern, default none]
 P="${1:-}"
-ssh somdutta@somdutta-linux.local "P='$P' bash -s" <<'R'
+ssh ${BOX_SSH} "P='$P' bash -s" <<'R'
 M="$HOME/comfyui/data/models"
 command -v fincore >/dev/null || { echo "fincore not installed on the box (util-linux)"; exit 1; }
 echo "== page cache per model file (cached / size) =="

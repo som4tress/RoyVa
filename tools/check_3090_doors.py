@@ -17,8 +17,8 @@ DOORS = {
         "agents/img_video/img_video/comfy.py": "the agent's ComfyUI client (prompt ceiling in _call)", "agents/img_video/img_video/wan.py": "the agent's Wan client (same ceiling before it posts)",
         "agents/img_video/img_video/guard.py": "the ceiling itself",
         "bridge/opencode.mjs": "OpenCode's own session API, not ComfyUI", "bridge/bridge.mjs": "OpenCode's own session API, not ComfyUI", "gateway/royva_gateway/opencode_client.py": "OpenCode's own session API, not ComfyUI"}},
-    r"8188|somdutta-linux|192\.168\.4\.55": {"what": "the box's address", "allowed": {
-        "agents/img_video/config.toml": "the ONE place the 3090's address lives", "lares.toml": "voice transcription runs on the box (whisper_remote): an unguarded door, see the handoff",
+    r"8188|192\.168\.\d+\.\d+": {"what": "the box's address", "allowed": {
+        "agents/img_video/config.toml": "the ONE place the 3090's address lives (placeholder; the real value is in the gitignored config.local.toml)", "agents/img_video/config.local.toml": "the real address, gitignored", "lares.toml": "voice transcription runs on the box (whisper_remote): an unguarded door, see the handoff",
         "lares.example.toml": "example text"}},
     r"\bssh\b|\bscp\b": {"what": "ssh/scp from live code", "allowed": {
         "bridge/whisper.mjs": "voice transcription over ssh to the box (no GPU lock): reviewed, see the handoff", "mcp/machine/machine.py": "the owner-only machine tool; [machine] hosts is empty in lares.toml",

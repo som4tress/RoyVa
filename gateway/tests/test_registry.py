@@ -77,7 +77,7 @@ def test_agent_authored_write_intent_cannot_self_activate(tmp_path):
         registry.load(root)
     assert "approved_by" in str(e.value)
     # once a human approves, it loads
-    edit_intent(root, "home_control", lambda d: d["provenance"].update(approved_by="somdutta"))
+    edit_intent(root, "home_control", lambda d: d["provenance"].update(approved_by="owner"))
     assert "home_control" in registry.load(root).intents
 
 

@@ -2,7 +2,7 @@
 # Runs ON the 3090 box. GPU smoke test of comfyui-local:v0.42.1-sage2 the way the real container runs (non-root user, /data mounted for the Triton cache).
 # Shows which SageAttention kernel the auto-dispatch picks on this GPU, the error against PyTorch attention, and a timing of both. Takes under a minute; uses the GPU briefly.
 IMG="${1:-comfyui-local:v0.42.1-sage2}"
-docker run --rm --gpus all --user "$(id -u):$(id -g)" --env USER=somdutta --env LOGNAME=somdutta -v "$HOME/comfyui/data:/data" --entrypoint python "$IMG" -c "
+docker run --rm --gpus all --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env LOGNAME="$(id -un)" -v "$HOME/comfyui/data:/data" --entrypoint python "$IMG" -c "
 import time, torch, sageattention
 from sageattention import sageattn
 print('sageattention', sageattention.__file__)

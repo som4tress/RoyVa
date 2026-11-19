@@ -15,7 +15,7 @@ APPLY=0; [ "${1:-}" = "--apply" ] && APPLY=1
 A="${STRIPE_A:-/dev/sda3}"; B="${STRIPE_B:-/dev/sdb2}"; MD=/dev/md0; MNT=/mnt/models; CHUNK_K=64; RA_KB=4096
 UUID_A="${STRIPE_UUID_A:-37435b5b-9d56-4680-84e6-29fed0a41a17}"; UUID_B="${STRIPE_UUID_B:-9633129b-57c0-43a4-bbb5-120d67f63b3d}"   # from the audit; the partitions must still carry these UUIDs
 COPY_MBPS="${STRIPE_COPY_MBPS:-200}"   # rsync rate limit so the VMs on the source disk keep working (231 GB at 200 MB/s is about 20 minutes)
-USER_NAME="${SUDO_USER:-somdutta}"; HOME_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)"; SRC="$HOME_DIR/comfyui/data/models"
+USER_NAME="${SUDO_USER:-$(id -un)}"; HOME_DIR="$(getent passwd "$USER_NAME" | cut -d: -f6)"; SRC="$HOME_DIR/comfyui/data/models"
 STEP="preflight"
 
 fail() { echo "ABORT: $*" >&2; exit 1; }

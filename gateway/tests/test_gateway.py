@@ -315,9 +315,9 @@ def test_away_text_uses_city_only_and_skips_when_home():
 
 def test_person_place_never_reads_the_street_address_state():
     from royva_gateway import home_context
-    data = {"/api/states/person.somdutta": {"state": "not_home"},
-            "/api/states/sensor.somdutta_iphone_geocoded_location": {"state": "830 SECRET St\nCity", "attributes": {"Locality": "Boston", "Administrative Area": "MA"}}}
-    info = home_context.person_place("somdutta", fetch=lambda path: data.get(path))
+    data = {"/api/states/person.alex": {"state": "not_home"},
+            "/api/states/sensor.alex_iphone_geocoded_location": {"state": "830 SECRET St\nCity", "attributes": {"Locality": "Boston", "Administrative Area": "MA"}}}
+    info = home_context.person_place("alex", fetch=lambda path: data.get(path))
     assert info == {"at_home": False, "zone": "not_home", "city": "Boston", "region": "MA"}
     assert "SECRET" not in str(info)
 
@@ -362,7 +362,7 @@ def test_vehicle_distance_intent_has_history_tools_and_date(tmp_path):
 def test_code_contains_no_household_specific_terms():
     """Everything specific to this household/home must come from Home Assistant or deployment config, never from code."""
     import re
-    forbidden = re.compile(r"shobha|shivangsh|mustang|milpitas|santa clara|goodnight|kbay|printer|(?<!/home/)somdutta", re.I)
+    forbidden = re.compile(r"shobha|shivangsh|mustang|milpitas|santa clara|goodnight|kbay|printer", re.I)
     files = list((ROOT / "royva_gateway").glob("*.py")) + [ROOT.parent / "mcp" / "ha" / n for n in ("ha_entity_history.py", "ha_routines.py", "ha_speakers.py")] + [ROOT.parent / "mcp" / "mail" / "gmail_tidy.py"]
     hits = [(f.name, i + 1, line.strip()[:80]) for f in files for i, line in enumerate(f.read_text().splitlines()) if forbidden.search(line)]
     assert not hits, hits

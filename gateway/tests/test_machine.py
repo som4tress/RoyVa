@@ -95,12 +95,12 @@ def test_approved_run_is_real_but_honours_dry_run(monkeypatch):
 
 
 def test_remote_only_to_allowed_hosts_and_never_connects_here(monkeypatch):
-    monkeypatch.setenv("ROYVA_REMOTE_HOSTS", "somdutta@box.local")
+    monkeypatch.setenv("ROYVA_REMOTE_HOSTS", "user@box.local")
     f = Fake()
     assert "not allowed" in m.remote_run({"host": "evil@x", "command": "ls"}, runner=f)["error"] and not f.calls
-    m.remote_run({"host": "somdutta@box.local", "command": "free -m"}, runner=f)
+    m.remote_run({"host": "user@box.local", "command": "free -m"}, runner=f)
     argv = f.calls[0][0]
-    assert argv[0] == "ssh" and "BatchMode=yes" in argv and argv[-2] == "somdutta@box.local" and argv[-1] == m.remote_command("free -m", True)
+    assert argv[0] == "ssh" and "BatchMode=yes" in argv and argv[-2] == "user@box.local" and argv[-1] == m.remote_command("free -m", True)
 
 
 @needs_bwrap

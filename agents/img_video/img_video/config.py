@@ -16,6 +16,9 @@ def _coerce(old, new: str):
 
 def load():
     cfg = tomllib.loads((ROOT / "config.toml").read_text())
+    local = ROOT / "config.local.toml"          # machine-specific values (hostnames); gitignored, overrides config.toml key by key
+    if local.exists():
+        for sec, vals in tomllib.loads(local.read_text()).items(): cfg.setdefault(sec, {}).update(vals)
     for sec, vals in cfg.items():
         for k, v in vals.items():
             env = os.environ.get(f"IMG_VIDEO_{sec}_{k}".upper())

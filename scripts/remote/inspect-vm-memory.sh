@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # READ-ONLY: how much memory the Home Assistant VM (and pluto-vm) are configured with versus really using.
-# Changes nothing. Run:  ! ssh somdutta@somdutta-linux.local 'bash -s' < ~/RoyVa/scripts/remote/inspect-vm-memory.sh
+# Changes nothing. Run:  ! ssh <user>@<box> 'bash -s' < ~/RoyVa/scripts/remote/inspect-vm-memory.sh
 for vm in Haos pluto-vm; do
   echo "=================== $vm"
   virsh dominfo "$vm" 2>&1 | grep -E "State|CPU\(s\)|Max memory|Used memory|Autostart"

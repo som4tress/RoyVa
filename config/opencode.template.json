@@ -159,19 +159,19 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_mcp_transport.py"
+          "@HOME@/RoyVa/mcp/ha/ha_mcp_transport.py"
         ],
         "codemode": false
       },
       "gmail": {
         "type": "local",
         "command": [
-          "/home/somdutta/.nvm/versions/node/v24.22.1/bin/node",
-          "/home/somdutta/.local/share/gmail-mcp-server/dist/index.js"
+          "@HOME@/.nvm/versions/node/v24.22.1/bin/node",
+          "@HOME@/.local/share/gmail-mcp-server/dist/index.js"
         ],
         "environment": {
-          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/.gmail-mcp/gcp-oauth.keys.json",
-          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/.gmail-mcp/credentials.json"
+          "GMAIL_OAUTH_KEYS_PATH": "@HOME@/.gmail-mcp/gcp-oauth.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "@HOME@/.gmail-mcp/credentials.json"
         },
         "codemode": false,
         "enabled": true
@@ -180,7 +180,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_history.py"
+          "@HOME@/RoyVa/mcp/ha/ha_history.py"
         ],
         "codemode": false
       },
@@ -188,7 +188,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_entity_history.py"
+          "@HOME@/RoyVa/mcp/ha/ha_entity_history.py"
         ],
         "codemode": false
       },
@@ -196,7 +196,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/image/image_gen.py"
+          "@HOME@/RoyVa/mcp/image/image_gen.py"
         ],
         "codemode": false
       },
@@ -204,7 +204,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/img_video/server.py"
+          "@HOME@/RoyVa/mcp/img_video/server.py"
         ],
         "codemode": false
       },
@@ -212,7 +212,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_speakers.py"
+          "@HOME@/RoyVa/mcp/ha/ha_speakers.py"
         ],
         "codemode": false
       },
@@ -220,7 +220,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_api.py"
+          "@HOME@/RoyVa/mcp/ha/ha_api.py"
         ],
         "codemode": false
       },
@@ -228,7 +228,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/machine/machine.py"
+          "@HOME@/RoyVa/mcp/machine/machine.py"
         ],
         "codemode": false
       },
@@ -236,7 +236,7 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/ha/ha_routines.py"
+          "@HOME@/RoyVa/mcp/ha/ha_routines.py"
         ],
         "codemode": false
       },
@@ -244,23 +244,23 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/mail/gmail_tidy.py"
+          "@HOME@/RoyVa/mcp/mail/gmail_tidy.py"
         ],
         "environment": {
-          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/.gmail-mcp/gcp-oauth.keys.json",
-          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/.gmail-mcp/credentials.json"
+          "GMAIL_OAUTH_KEYS_PATH": "@HOME@/.gmail-mcp/gcp-oauth.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "@HOME@/.gmail-mcp/credentials.json"
         },
         "codemode": false
       },
       "gmail-u-dummy": {
         "type": "local",
         "command": [
-          "/home/somdutta/.nvm/versions/node/v24.22.1/bin/node",
-          "/home/somdutta/.local/share/gmail-mcp-server/dist/index.js"
+          "@HOME@/.nvm/versions/node/v24.22.1/bin/node",
+          "@HOME@/.local/share/gmail-mcp-server/dist/index.js"
         ],
         "environment": {
-          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/RoyVa/runtime/gateway/gmail/dummy.keys.json",
-          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/RoyVa/runtime/gateway/gmail/dummy.credentials.json"
+          "GMAIL_OAUTH_KEYS_PATH": "@HOME@/RoyVa/runtime/gateway/gmail/dummy.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "@HOME@/RoyVa/runtime/gateway/gmail/dummy.credentials.json"
         },
         "codemode": false,
         "enabled": true
@@ -269,11 +269,11 @@
         "type": "local",
         "command": [
           "/usr/bin/python3",
-          "/home/somdutta/RoyVa/mcp/mail/gmail_tidy.py"
+          "@HOME@/RoyVa/mcp/mail/gmail_tidy.py"
         ],
         "environment": {
-          "GMAIL_OAUTH_KEYS_PATH": "/home/somdutta/RoyVa/runtime/gateway/gmail/dummy.keys.json",
-          "GMAIL_CREDENTIALS_PATH": "/home/somdutta/RoyVa/runtime/gateway/gmail/dummy.credentials.json"
+          "GMAIL_OAUTH_KEYS_PATH": "@HOME@/RoyVa/runtime/gateway/gmail/dummy.keys.json",
+          "GMAIL_CREDENTIALS_PATH": "@HOME@/RoyVa/runtime/gateway/gmail/dummy.credentials.json"
         },
         "codemode": false
       }

@@ -26,7 +26,7 @@ Start `claude` in `~/RoyVa`, say "resume from HANDOFF.md". Then re-arm the Teleg
 ## Open items
 * Music/YouTube playback: no music source in HA (no media_extractor/Spotify/Plex/Music Assistant, no yt-dlp). Parked as the phase-2 learning-module showcase.
 * "All speakers" skips the AirPlay Office Den (cannot be grouped): plan is to play on it separately and say it is not in sync.
-* `mcp/ha/ha_history.py` still hardcodes three family first names; absolute `/home/somdutta` paths in scripts/units/config.
+* `mcp/ha/ha_history.py` still hardcodes three family first names; absolute `~` paths in scripts/units/config.
 * Fresh held-out routing eval set needed (current benchmark is tuned, optimistic). B5 (title-generation extra call) open.
 * Map Telegram IDs to Shobha and Shivangsh (email scope) later. Planned/off: calendar, trackers, HA automation writing, camera analysis, home_control.
 * Phase 2 (remote-model escalation + learning) is parked by the user.
@@ -63,7 +63,7 @@ Start `claude` in `~/RoyVa`, say "resume from HANDOFF.md". Then re-arm the Teleg
 ## Audit 2026-11-10 (owner asked; all fixes committed)
 * Bug I shipped: `bridge.mjs` used `loopVerdict` without importing it, so every request failed with ReferenceError until the bridge was restarted with the fix. `node --check` and unit tests do not catch missing names: run `scripts/check.sh` (undefined-name checks for py and js via `tools/`, plus all tests) before restarting anything.
 * Fixed: the remote DeepSeek takeover (👎 "Incorrect" button, runs with every permission pre-allowed) was handed the live config, which now includes the `machine` and `ha-api` servers; `withoutOwnerDoors()` strips them. Sandbox secret hiding is now by file-name pattern (it missed opencode.env, connection.env, runtime.env, the Google client_secret json).
-* Open, need the owner's decision: (1) the 👎 button still sends the conversation to OpenRouter/DeepSeek with all permissions allowed (incl. Gmail send); (2) general mode offers web fetch/search together with machine reads: prompt injection could read a file and send it out in a URL; (3) general-mode requests carry ~100k prompt tokens; (4) stale `config/opencode.baseline.json` / `opencode.fix1.json`; (5) `mcp/ha/ha_history.py` hardcodes household names; absolute `/home/somdutta` paths everywhere.
+* Open, need the owner's decision: (1) the 👎 button still sends the conversation to OpenRouter/DeepSeek with all permissions allowed (incl. Gmail send); (2) general mode offers web fetch/search together with machine reads: prompt injection could read a file and send it out in a URL; (3) general-mode requests carry ~100k prompt tokens; (4) stale `config/opencode.baseline.json` / `opencode.fix1.json`; (5) `mcp/ha/ha_history.py` hardcodes household names; absolute `~` paths everywhere.
 
 ## Local-flow hardening 2026-11-10
 * `scripts/deploy.sh` = check.sh, then restart opencode -> gateway -> bridge in order, then wait for `royva-status.sh` to be healthy. Use it instead of restarting by hand.

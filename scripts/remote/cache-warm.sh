@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
+. "$(dirname "${BASH_SOURCE[0]}")/_box.sh"
 # EXPERIMENT: reads model files once on the box HOST (outside the ComfyUI container's 24 GiB cgroup) so they sit in the shared page cache, then prints how much of each is cached.
 # Uses reclaimable host page cache only (about the file sizes: hi expert 13.5 GB); the kernel drops it if the box needs the RAM. Reads at SATA speed, so ~35 s per 13.5 GB.
 # Run:  ! bash ~/RoyVa/scripts/remote/cache-warm.sh [hi|lo|te|all]     (default hi; 'all' = both experts + text encoder = ~33 GB, too much for the free RAM: use one at a time)
 W="${1:-hi}"
-ssh somdutta@somdutta-linux.local "W='$W' bash -s" <<'R'
+ssh ${BOX_SSH} "W='$W' bash -s" <<'R'
 M="$HOME/comfyui/data/models"
 case "$W" in
   hi)  N="wan2.2_i2v_high_noise_14B_int8_convrot.safetensors" ;;

@@ -19,14 +19,14 @@ class DoorTests(unittest.TestCase):
         self.assertEqual(doors.scan(str(ROOT)), [])
 
     def test_every_kind_of_new_door_is_caught(self):
-        d = self.tree({"mcp/new/client.py": "import urllib.request\nurllib.request.urlopen(base + '/prompt')\n", "agent2/cfg.toml": 'url = "http://somdutta-linux.local:8188"\n', "bridge/new.mjs": "exec('ssh box ls')\n",
-                       "a/b.py": "post(base + \"/free\")\n", "x/y.sh": "scp file 192.168.4.55:\n"})
+        d = self.tree({"mcp/new/client.py": "import urllib.request\nurllib.request.urlopen(base + '/prompt')\n", "agent2/cfg.toml": 'url = "http://box.example:8188"\n', "bridge/new.mjs": "exec('ssh box ls')\n",
+                       "a/b.py": "post(base + \"/free\")\n", "x/y.sh": "scp file 192.168.0.10:\n"})
         found = " | ".join(doors.scan(str(d)))
         for expected in ("mcp/new/client.py:2", "agent2/cfg.toml:1", "bridge/new.mjs:1", "a/b.py:1", "x/y.sh:1"): self.assertIn(expected, found)
 
     def test_reviewed_files_tests_docs_runtime_and_manual_scripts_are_not_flagged(self):
         d = self.tree({"agents/img_video/img_video/comfy.py": "post('/prompt')\n", "bridge/whisper.mjs": "ssh host\n", "tests/test_x.py": "'/prompt' 8188 ssh\n", "bridge/x.test.mjs": "ssh\n", "docs/n.md": "8188\n",
-                       "runtime/data/a.py": "8188\n", "scripts/remote/run.sh": "ssh somdutta-linux.local\n", "node_modules/p/i.js": "ssh\n"})
+                       "runtime/data/a.py": "8188\n", "scripts/remote/run.sh": "ssh box.example\n", "node_modules/p/i.js": "ssh\n"})
         self.assertEqual(doors.scan(str(d)), [])
 
     def test_the_forbidden_free_call_is_never_allowed_anywhere(self):

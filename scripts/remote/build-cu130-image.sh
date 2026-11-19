@@ -42,7 +42,7 @@ COPY wheels /wheels
 RUN pip install --no-deps --force-reinstall /wheels/*.whl && rm -rf /wheels
 DF
 docker build -q -t "$NEW" -f "$W/Dockerfile.final" "$W"
-docker run --rm --gpus all --user "$(id -u):$(id -g)" --env USER=somdutta --env LOGNAME=somdutta -v "$HOME/comfyui/data:/data" --entrypoint python "$NEW" -c "
+docker run --rm --gpus all --user "$(id -u):$(id -g)" --env USER="$(id -un)" --env LOGNAME="$(id -un)" -v "$HOME/comfyui/data:/data" --entrypoint python "$NEW" -c "
 import torch, sageattention
 from sageattention import sageattn
 print('torch', torch.__version__, '| CUDA', torch.version.cuda, '|', torch.cuda.get_device_name(0))
