@@ -55,9 +55,14 @@ def cmd_run(a, cfg, caps):
     root = config.jobs_dir(cfg); root.mkdir(parents=True, exist_ok=True)
     if a.job: job = Job.load(root, a.job)
     else:
-        req = {"query": a.query, "count": a.count, "aspect": a.aspect, "video": bool(a.video)}
+        req = {"query": a.query, "count": a.count, "aspect": a.aspect, "video": bool(a.video), **({"seconds": a.seconds} if getattr(a, "seconds", None) else {})}
         if getattr(a, "research_file", None): req["research_text"] = Path(a.research_file).read_text()
         job = Job.create(root, req)
+        if a.reference:
+            try: job.add_references([tuple(r.rsplit("|", 1)) if "|" in r else r for r in a.reference])
+            except ValueError as e:
+                if a.json: print(_json.dumps({"ok": False, "job": job.id, "error": str(e)})); raise SystemExit(2)
+                raise
     if not a.json: print(f"job {job.id}")
     try:
         pipeline.run(job, cfg, caps, stop_after=a.stop_after, with_video=a.video)
@@ -87,6 +92,8 @@ def main(argv=None):
     rn = sub.add_parser("run", help="run a job: query -> plan -> research -> items -> images -> result")
     rn.add_argument("query", nargs="?"); rn.add_argument("--count", type=int); rn.add_argument("--aspect", default="9:16", choices=["9:16", "16:9", "1:1"])
     rn.add_argument("--video", action="store_true", help="after the pictures, narrate and animate them into a video"); rn.add_argument("--json", action="store_true", help="print only one JSON object on stdout (logs go to stderr)"); rn.add_argument("--job", help="resume an existing job id"); rn.add_argument("--stop-after", choices=pipeline.STAGES); rn.set_defaults(fn=cmd_run)
+    rn.add_argument("--seconds", type=int, help="video length the user stated (the planner uses it only when the query text states no length)")
+    rn.add_argument("--reference", action="append", default=[], help="a photo of a person in the story (jpg/png/webp, up to 6; repeat the option), optionally followed by '|' and what the user called them: 'photo.jpg|my wife'; the pictures that show them keep their likeness (Qwen-Image 2.1 reference images)")
     rn.add_argument("--research-file", help="use the text in this file as the web research instead of asking the gateway (no gateway call is made)")
     im = sub.add_parser("image", help="one picture from the user's own words (no director): shortened by the guard if long, drawn on the 3090 (this machine's GPU as the fallback)")
     im.add_argument("prompt", nargs="?"); im.add_argument("--stdin", action="store_true"); im.add_argument("--aspect", default="1:1", choices=["9:16", "16:9", "1:1"]); im.add_argument("--size", help="WxH, overrides --aspect")

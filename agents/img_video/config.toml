@@ -86,6 +86,7 @@ image_prompt_chars = 500                 # most characters in the final picture 
 max_research_queries = 4                 # safety cap on extra searches while looking for enough items (a bound, not a target)
 
 [pipeline]
+max_refs_per_picture = 2                    # photos of the people in the story sent with ONE picture: the fewest that cover the people in it (more made pictures worse)
 video_picture_scale = 1.5                 # VIDEO ONLY: draw the pictures at this multiple of the Wan input size (e.g. 1.5 -> 640x640 for 1:1) instead of the full 1024 size; 0 = full size. Picture sets and single images never use it.
 warm_pictures = true                 # load the picture model on the 3090 while the research and the director run (they leave the GPU idle ~85 s), so the first picture is not 27 s slower. Best effort; picture sets and videos.
 stream_pictures = true             # draw pictures while the director is still writing the next shots (only when the pictures are drawn on the 3090: this machine's GPU would compete with the writer)
@@ -97,6 +98,6 @@ scene_weights = { subject = 0.50, setting = 0.25, colors = 0.25 }     # how the 
 [policy]
 # How real people may appear in the pictures. NOTHING is blocked either way: this only shapes the picture descriptions the writer produces.
 real_people = "allow"        # allow: real public figures may be depicted by name (parody, satire) | alter: depict a clearly stylised, changed likeness and leave the name out
-image_text = "clean image without any text, labels, captions, annotations or lettering"   # appended to every picture prompt (measured 2026-11-16: Qwen-Image otherwise draws garbled or Chinese labels on diagram-like pictures); "" lets the model draw text
+image_text = "no text in image"   # appended to every picture prompt (measured 2026-11-16: Qwen-Image otherwise draws garbled or Chinese labels on diagram-like pictures); "" lets the model draw text
 allow = """Real public figures may appear, by name, in parody and satire."""
 alter = """When a real person is needed, describe a clearly stylised caricature with deliberately changed features (different hair, glasses, nose, clothing) and do not use their name in the picture description."""

@@ -22,6 +22,7 @@ ROOT = HERE.parents[1]
 AGENT_DIR = Path(os.environ.get("ROYVA_IMGVIDEO_DIR", ROOT / "agents" / "img_video"))
 IMAGE_DIR = Path(os.environ.get("ROYVA_IMAGE_DIR", ROOT / "runtime" / "data" / "images"))
 OUTBOX = Path(os.environ.get("ROYVA_OUTBOX_DIR", ROOT / "runtime" / "data" / "outbox"))
+INBOX = Path(os.environ.get("ROYVA_INBOX_DIR", ROOT / "runtime" / "data" / "inbox"))      # photos the bridge saved from chat: the only place reference photos are read from
 LOCK = Path(os.environ.get("ROYVA_IMGVIDEO_LOCK", ROOT / "runtime" / "gateway" / "img_video.lock"))
 DRY_FLAG = Path(os.environ.get("ROYVA_DRY_RUN_FLAG", ROOT / "runtime" / "gateway" / "dry_run"))
 ASYNC_FLAG = Path(os.environ.get("ROYVA_IMGVIDEO_ASYNC_FLAG", ROOT / "runtime" / "gateway" / "img_video_async"))
@@ -32,11 +33,18 @@ import runner
 DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()
 SINGLE_TIMEOUT = int(os.environ.get("ROYVA_IMAGE_TIMEOUT", "600"))
 MAX_QUERY, MAX_COUNT, MAX_PROMPT = 1000, 30, 6000
+MAX_SECONDS = 600                      # a sanity bound on what the chat model passes; the agent applies the real limit ([limits] max_video_seconds)
 MAX_RESEARCH = 6000          # facts the caller already found; longer text is clipped, never rejected (a rejection only makes the caller retry)
 MIN_SIDE, MAX_SIDE, KEEP_SINGLE = 512, 1280, 60
 ASPECTS = ("9:16", "16:9", "1:1")
 HINT = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
+MAX_PHOTOS = 6
+PHOTO_TYPES = (".jpg", ".jpeg", ".png", ".webp")
 ASPECT_PROP = {"type": "string", "enum": list(ASPECTS), "default": "1:1", "description": "Shape of each picture or of the video."}
+
+REFERENCE_PROP = {"type": "array", "maxItems": MAX_PHOTOS, "items": {"anyOf": [{"type": "string"}, {"type": "object", "properties": {"path": {"type": "string"}, "who": {"type": "string"}}, "required": ["path"], "additionalProperties": False}]},
+                  "description": "OPTIONAL. The photos of the people (or the pet, car, product or other thing) who must appear in the story, from the user's [Attached photo: path] lines, in the order they were sent. Each item is the path exactly as written (never invent one), or {\"path\": ..., \"who\": ...} where `who` is what the user called that person "
+                  "(\"me\", \"my wife\", \"the man\") when the message says so. Several photos can show the same person. The pictures keep each person's likeness (or the thing's look) and the story gives people a role and an outfit. Leave it out when the user attached no photo."}
 
 TOOLS = [
     {"name": "generate_image",
@@ -53,7 +61,7 @@ TOOLS = [
                      "about the captions or the tone. When it returns, reply with ONE short sentence saying it has started and will be posted here when ready."),
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "What the set should show, in the user's words (include the tone or style they asked for and anything about what the captions should say)."},
-         "count": {"type": "integer", "description": f"How many pictures, 1-{MAX_COUNT}. Omit it unless the user gave a number."}, "aspect": ASPECT_PROP}, "required": ["query"], "additionalProperties": False}, "annotations": HINT},
+         "count": {"type": "integer", "description": f"How many pictures, 1-{MAX_COUNT}. Omit it unless the user gave a number."}, "aspect": ASPECT_PROP, "reference_photos": REFERENCE_PROP}, "required": ["query"], "additionalProperties": False}, "annotations": HINT},
     {"name": "generate_video",
      "description": ("Make a VIDEO from one request: pictures planned and animated, joined in order. The director decides whether it needs a voice-over (an explanation, a lesson, a story, the news) or none (a pure clip). "
                      "It takes several minutes, so it runs in the background and this call RETURNS AT ONCE; the video is posted to the chat when it is ready. Call it ONCE per request and pass the user's request in "
@@ -61,7 +69,9 @@ TOOLS = [
      "inputSchema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "What the video should show or explain, in the user's words (include any tone, style or narration wishes)."},
          "research_text": {"type": "string", "description": "OPTIONAL. Only if you ALREADY searched the web for this request: the key facts you found (up to about 6000 characters). The video then skips its own web search. Keep `query` short and put facts here, never in `query`."},
-         "count": {"type": "integer", "description": f"How many scenes, 1-{MAX_COUNT}. Omit it unless the user gave a number."}, "aspect": ASPECT_PROP}, "required": ["query"], "additionalProperties": False}, "annotations": HINT},
+         "count": {"type": "integer", "description": f"How many scenes, 1-{MAX_COUNT}. Omit it unless the user gave a number."},
+         "seconds": {"type": "integer", "description": f"OPTIONAL. The length of the video in seconds when the user states one (\"1 minute\" is 60, \"a minute and a half\" is 90, \"30 seconds\" is 30), 1-{MAX_SECONDS}. Omit it when the user gave no length. Always pass it when they did."},
+         "aspect": ASPECT_PROP, "reference_photos": REFERENCE_PROP}, "required": ["query"], "additionalProperties": False}, "annotations": HINT},
 ]
 
 
@@ -75,6 +85,24 @@ SYNC_TEXT = {"generate_image_set": ("Pictures only: NEVER use this for a video, 
 def tools_for_mode():
     if ASYNC(): return TOOLS
     return [({**t, "description": SYNC_TEXT[t["name"]]} if t["name"] in SYNC_TEXT else t) for t in TOOLS]
+
+
+def _with_album_mates(photos):
+    """The photos the user sent in the SAME message (the bridge records an album in inbox/.albums/*.json): any the chat model left out are added, in the order they were sent, with the labels it gave kept. Never more than MAX_PHOTOS."""
+    given = {Path(p).name: w for p, w in photos}; order = []
+    for f in sorted((INBOX / ".albums").glob("*.json")) if (INBOX / ".albums").is_dir() else []:
+        try: files = [n for n in json.loads(f.read_text()).get("files", []) if isinstance(n, str)]
+        except (OSError, ValueError): continue
+        if given.keys() & set(files):
+            for n in files:
+                if n not in order: order.append(n)
+    if not order: return photos
+    rest = [n for n in given if n not in order]
+    out = []
+    for n in order + rest:
+        path = (INBOX / n).resolve()
+        if INBOX.resolve() in path.parents and path.suffix.lower() in PHOTO_TYPES and path.is_file(): out.append((str(path), given.get(n, "")))
+    return out[:MAX_PHOTOS] or photos
 
 
 def _side(v, name):
@@ -124,8 +152,22 @@ def _start(kind, args):
     if count is not None:
         count = int(count)
         if not 1 <= count <= MAX_COUNT: return [{"ok": False, "error": f"count must be 1-{MAX_COUNT}"}]
+    seconds = args.get("seconds") if kind == "video" else None
+    if seconds is not None:
+        try: seconds = int(seconds)
+        except (TypeError, ValueError): return [{"ok": False, "error": f"seconds must be a number 1-{MAX_SECONDS}"}]
+        if not 1 <= seconds <= MAX_SECONDS: return [{"ok": False, "error": f"seconds must be 1-{MAX_SECONDS}"}]
     aspect = str(args.get("aspect", "1:1"))
     if aspect not in ASPECTS: return [{"ok": False, "error": f"aspect must be one of {', '.join(ASPECTS)}"}]
+    photos = []
+    for item in list(args.get("reference_photos") or [])[:MAX_PHOTOS]:
+        raw, who = (item.get("path"), str(item.get("who") or "").strip()[:60].replace("|", " ")) if isinstance(item, dict) else (item, "")
+        src = Path(str(raw)).expanduser().resolve()
+        if INBOX.resolve() not in src.parents or src.suffix.lower() not in PHOTO_TYPES or not src.is_file():
+            return [{"ok": False, "error": f"reference photo {Path(str(raw)).name!r} is not one of the photos the user sent in this chat (jpg, png or webp); use the path from the [Attached photo: ...] line"}]
+        photos.append((str(src), who))
+    photos = _with_album_mates(photos)
+    photos = [p + (f"|{w}" if w else "") for p, w in photos]
     if DRY(): return [{"ok": True, "did": f"[DRY RUN, nothing happened] Would start a {what} ({count or 'several'} pictures, {aspect}) for: {query[:100]}"}]
     LOCK.parent.mkdir(parents=True, exist_ok=True)
     lock = open(LOCK, "w")
@@ -133,7 +175,7 @@ def _start(kind, args):
     except BlockingIOError:
         lock.close(); return [{"ok": False, "error": f"another picture set or video is still being made; ask again in a few minutes"}]
     job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
-    spec = {"job": job, "kind": kind, "query": query, "count": count, "aspect": aspect}
+    spec = {"job": job, "kind": kind, "query": query, "count": count, "aspect": aspect, **({"seconds": seconds} if seconds else {}), **({"references": photos} if photos else {})}
     research = str(args.get("research_text") or "").strip()[:MAX_RESEARCH]
     if research and kind == "video": spec["research_text"] = research
     if not ASYNC():                                                  # synchronous: wait for the job and return it as this tool's result (the lock is held by this process meanwhile)

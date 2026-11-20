@@ -26,6 +26,8 @@ def agent_cmd(spec):
     extra = []
     if spec.get("research_text"):                      # facts the caller already found: the agent skips its own web research
         f = OUTBOX / "logs" / f"{spec['job']}.research.txt"; f.parent.mkdir(parents=True, exist_ok=True); f.write_text(spec["research_text"]); extra = ["--research-file", str(f)]
+    if spec.get("seconds"): extra += ["--seconds", str(spec["seconds"])]                    # the length the user stated, passed by the chat model (the agent prefers a length written in the query)
+    for photo in spec.get("references") or []: extra += ["--reference", photo]               # photos of the main character (already checked to be the user's own, from the inbox)
     if os.environ.get("ROYVA_IMGVIDEO_CMD"):
         return json.loads(os.environ["ROYVA_IMGVIDEO_CMD"]) + [spec["query"]] + (["--video"] if spec["kind"] == "video" else []) + extra
     return (["/usr/bin/python3", "-m", "img_video", "run", spec["query"], "--aspect", spec.get("aspect", "1:1"), "--json"] + (["--count", str(spec["count"])] if spec.get("count") else [])

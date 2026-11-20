@@ -39,7 +39,7 @@ class Server:
     def __init__(self, tmp, mode="ok", dry=False, sleep="0", bg="async"):        # bg: "async" | "sync" | "flag" (decided per call by the flag file, like production)
         (tmp / "stub.py").write_text(STUB); (tmp / "image_stub.py").write_text(IMAGE_STUB)
         env = dict(os.environ, ROYVA_IMAGE_DIR=str(tmp / "images"), ROYVA_OUTBOX_DIR=str(tmp / "outbox"), ROYVA_VIDEO_DIR=str(tmp / "videos"), ROYVA_IMGVIDEO_LOCK=str(tmp / "lock"),
-                   ROYVA_DRY_RUN_FLAG=str(tmp / "no_such_flag"), ROYVA_IMGVIDEO_ASYNC_FLAG=str(tmp / "async_flag"), ROYVA_IMGVIDEO_CMD=json.dumps([sys.executable, str(tmp / "stub.py")]),
+                   ROYVA_INBOX_DIR=str(tmp / "inbox"), ROYVA_DRY_RUN_FLAG=str(tmp / "no_such_flag"), ROYVA_IMGVIDEO_ASYNC_FLAG=str(tmp / "async_flag"), ROYVA_IMGVIDEO_CMD=json.dumps([sys.executable, str(tmp / "stub.py")]),
                    ROYVA_IMGVIDEO_IMAGE_CMD=json.dumps([sys.executable, str(tmp / "image_stub.py")]), STUB_MODE=mode, STUB_DIR=str(tmp), STUB_SLEEP=sleep, ROYVA_DRY_RUN="1" if dry else "0")
         env.pop("ROYVA_IMGVIDEO_ASYNC", None)
         if bg in ("async", "sync"): env["ROYVA_IMGVIDEO_ASYNC"] = "1" if bg == "async" else "0"
@@ -110,11 +110,57 @@ class T(unittest.TestCase):
         f = self.tmp / "outbox" / "logs" / f"{job}.research.txt"; self.assertEqual(f.read_text(), facts.strip())
         parts, _ = s.call({"query": "x" * 1001, "research_text": facts}, "generate_video"); self.assertFalse(parts[0]["ok"]); self.assertIn("too long", parts[0]["error"]); s.close()
 
+    def agent_args(self, job):
+        out = (self.tmp / "outbox" / "logs" / f"{job}.agent.out").read_text().strip().splitlines()[-1]; return json.loads(out)["args_seen"]
+
+    def test_reference_photos_from_the_inbox_reach_the_agent_and_nothing_else_does(self):
+        inbox = self.tmp / "inbox"; inbox.mkdir(); a, b = inbox / "a.jpg", inbox / "b.PNG"; a.write_bytes(b"x"); b.write_bytes(b"x"); (self.tmp / "outside.jpg").write_bytes(b"x"); (inbox / "note.txt").write_text("x")
+        s = Server(self.tmp)
+        parts, _ = s.call({"query": "me in Paris", "reference_photos": [str(a), str(b)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job)
+        args = self.agent_args(job); self.assertEqual([args[i + 1] for i, x in enumerate(args) if x == "--reference"], [str(a.resolve()), str(b.resolve())])
+        parts, _ = s.call({"query": "me in Paris", "reference_photos": [str(a)]}, "generate_image_set"); s.done(parts[0]["async_job"]); self.assertIn("--reference", self.agent_args(parts[0]["async_job"]))         # sets too
+        for bad in (self.tmp / "outside.jpg", inbox / "note.txt", inbox / "missing.jpg", inbox / ".." / "outside.jpg", "/etc/passwd"):
+            parts, err = s.call({"query": "me in Paris", "reference_photos": [str(bad)]}, "generate_video"); self.assertFalse(parts[0]["ok"], bad); self.assertIn("not one of the photos", parts[0]["error"])
+        parts, _ = s.call({"query": "no photo"}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertNotIn("--reference", self.agent_args(job))      # without photos nothing changes
+        many = []
+        for k in range(8): f = inbox / f"p{k}.jpg"; f.write_bytes(b"x"); many.append(str(f))
+        parts, _ = s.call({"query": "me", "reference_photos": many}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertEqual(self.agent_args(job).count("--reference"), 6)          # six at most
+        parts, _ = s.call({"query": "the couple", "reference_photos": [{"path": str(a), "who": "my husband"}, {"path": str(b), "who": "me | wife"}, str(inbox / "p0.jpg")]}, "generate_video"); job = parts[0]["async_job"]; s.done(job)
+        args = self.agent_args(job); self.assertEqual([args[i + 1] for i, x in enumerate(args) if x == "--reference"], [f"{a.resolve()}|my husband", f"{b.resolve()}|me   wife", str((inbox / 'p0.jpg').resolve())])      # the label rides along, a '|' in it cannot break the format
+        parts, err = s.call({"query": "x", "reference_photos": [{"path": str(self.tmp / "outside.jpg"), "who": "me"}]}, "generate_video"); self.assertFalse(parts[0]["ok"]); s.close()                         # labels do not bypass the inbox rule
+
+    def test_photos_of_the_same_album_the_chat_model_left_out_are_added_in_the_order_they_were_sent(self):
+        inbox = self.tmp / "inbox"; (inbox / ".albums").mkdir(parents=True)
+        a, b, c, d = (inbox / f"{n}.jpg" for n in "abcd")
+        for f in (a, b, c, d): f.write_bytes(b"x")
+        (inbox / ".albums" / "one.json").write_text(json.dumps({"files": ["a.jpg", "b.jpg", "c.jpg"]})); (inbox / ".albums" / "bad.json").write_text("not json")
+        s = Server(self.tmp)
+        parts, _ = s.call({"query": "us in Paris", "reference_photos": [{"path": str(b), "who": "my wife"}, str(a)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job)       # the model passed 2 of the 3 photos, in another order
+        args = self.agent_args(job); got = [args[i + 1] for i, x in enumerate(args) if x == "--reference"]
+        self.assertEqual(got, [str(a.resolve()), f"{b.resolve()}|my wife", str(c.resolve())])                                   # all three, in the order sent, the label kept
+        parts, _ = s.call({"query": "just this", "reference_photos": [str(d)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job)
+        args = self.agent_args(job); self.assertEqual([args[i + 1] for i, x in enumerate(args) if x == "--reference"], [str(d.resolve())]); s.close()           # a photo from another message stays alone
+
+    def test_the_tools_offer_reference_photos_as_an_optional_list(self):
+        s = Server(self.tmp); tools = {t["name"]: t for t in s.rpc("tools/list")["result"]["tools"]}
+        for name in ("generate_video", "generate_image_set"):
+            prop = tools[name]["inputSchema"]["properties"]["reference_photos"]; self.assertEqual((prop["type"], prop["maxItems"]), ("array", 6)); self.assertNotIn("reference_photos", tools[name]["inputSchema"]["required"])
+        self.assertNotIn("reference_photos", tools["generate_image"]["inputSchema"]["properties"]); s.close()
+
     def test_research_text_is_clipped_not_rejected_and_is_optional(self):
         s = Server(self.tmp); parts, _ = s.call({"query": "news video", "research_text": "a" * 9000}, "generate_video"); job = parts[0]["async_job"]; self.assertTrue(parts[0]["ok"]); s.done(job)
         self.assertEqual(len((self.tmp / "outbox" / "logs" / f"{job}.research.txt").read_text()), 6000)
         parts, _ = s.call({"query": "a dog clip"}, "generate_video"); job = parts[0]["async_job"]; s.done(job)
         self.assertFalse((self.tmp / "outbox" / "logs" / f"{job}.research.txt").exists()); s.close()
+
+    def test_the_stated_length_is_passed_to_the_agent_for_videos_only_and_checked(self):
+        s = Server(self.tmp); tools = {t["name"]: t for t in s.rpc("tools/list")["result"]["tools"]}
+        self.assertIn("seconds", tools["generate_video"]["inputSchema"]["properties"]); self.assertNotIn("seconds", tools["generate_image_set"]["inputSchema"]["properties"]); self.assertEqual(tools["generate_video"]["inputSchema"]["required"], ["query"])
+        parts, _ = s.call({"query": "a couple in Paris", "seconds": 60}, "generate_video"); job = parts[0]["async_job"]; s.done(job); args = self.agent_args(job); self.assertEqual(args[args.index("--seconds") + 1], "60")
+        parts, _ = s.call({"query": "no length"}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertNotIn("--seconds", self.agent_args(job))                 # nothing stated: nothing passed
+        parts, _ = s.call({"query": "a set", "seconds": 60}, "generate_image_set"); job = parts[0]["async_job"]; s.done(job); self.assertNotIn("--seconds", self.agent_args(job))   # pictures ignore it
+        for bad in (0, -5, 100000, "soon"): self.assertFalse(s.call({"query": "v", "seconds": bad}, "generate_video")[0][0]["ok"])
+        s.close()
 
     def test_research_text_is_offered_on_the_video_tool_only(self):
         s = Server(self.tmp); tools = {t["name"]: t for t in s.rpc("tools/list")["result"]["tools"]}

@@ -1,4 +1,4 @@
-import {telegramMedia, withVideoFrames, saveInboxImages} from './media.mjs';
+import {telegramMedia, telegramAlbumMedia, createAlbumCollector, withVideoFrames, saveInboxImages} from './media.mjs';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -402,7 +402,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       } finally { await rm(directory, { recursive: true, force: true }); }
     }
     // test-only: a local file stands in for an uploaded photo/video (same bytes-to-data-URI path as telegramMedia)
-    const files = message._test_file ? await testFile(message._test_file) : await telegramMedia(message, tg, token);
+    const files = message._test_file ? await testFile(message._test_file) : await telegramAlbumMedia(message, tg, token);
     if (message._test_file && files.length && !prompt.trim()) prompt = /^data:video/.test(files[0].uri) ? 'Describe this video.' : 'Describe this image.';
     else if (files.length && !prompt.trim()) prompt = message.video || message.video_note || /^video\//.test(message.document?.mime_type || '') ? 'Describe this video.' : 'Describe this image.';
     const expanded = await withVideoFrames(files, saveInboxImages(files, prompt));
@@ -772,6 +772,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
       }
     })();
   }
+  const albums = createAlbumCollector(album => void handle(album).catch(error => console.error('Update failed:', error.name)));      // photos sent together are ONE request
   while (true) {
     try {
       const updates = await tg('getUpdates', { offset: state.offset + 1, timeout: 30, allowed_updates: ['message', 'callback_query'] });
@@ -779,7 +780,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         // Record admission before execution; never automatically replay household actions after restart.
         state.offset = update.update_id; save();
         if (update.callback_query) void (String(update.callback_query.data || '').startsWith('perm:') ? permissionButton(update.callback_query) : String(update.callback_query.data || '').startsWith('job:stop:') ? jobStopButton(update.callback_query) : update.callback_query.data === 'run:stop' ? stopButton(update.callback_query) : update.callback_query.data === 'forget:session' ? forgetButton(update.callback_query) : feedback(update.callback_query)).catch(error => console.error('Feedback failed:', error.name));
-        if (update.message) void handle(update.message).catch(error => console.error('Update failed:', error.name));
+        if (update.message) { if (update.message.media_group_id) albums.add(update.message); else void handle(update.message).catch(error => console.error('Update failed:', error.name)); }
       }
     } catch (error) { console.error('Polling failed:', error.name); await setTimeout(5000); }
   }

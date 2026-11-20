@@ -7,6 +7,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 
 from . import config, guard
 
@@ -43,6 +44,21 @@ def _call(base, path, body=None, timeout=30, limit=MAX_PNG):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.read(limit + 1)
     return retrying(go)
+
+
+def upload(base, data: bytes, name: str):
+    """Put a file into the server's input folder (a picture, a saved latent, a reference photo). Returns the name the server stored it under."""
+    bd = uuid.uuid4().hex
+    body = (f'--{bd}\r\nContent-Disposition: form-data; name="image"; filename="{name}"\r\nContent-Type: application/octet-stream\r\n\r\n').encode() + data + \
+           (f'\r\n--{bd}\r\nContent-Disposition: form-data; name="overwrite"\r\n\r\ntrue\r\n--{bd}--\r\n').encode()
+    req = urllib.request.Request(base.rstrip("/") + "/upload/image", data=body, headers={"Content-Type": f"multipart/form-data; boundary={bd}"})
+    try:
+        def go():
+            with urllib.request.urlopen(req, timeout=120) as r:
+                return json.loads(r.read()).get("name", name)
+        return retrying(go)
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        raise ComfyError(f"upload of {name} failed: {e}")
 
 
 def _combo(base, node, field):
@@ -132,21 +148,27 @@ def zimage_workflow(prompt, width, height, seed, c):
     }
 
 
-def qwen21_workflow(prompt, width, height, seed, c):
+def qwen21_workflow(prompt, width, height, seed, c, refs=None):
     """Qwen-Image 2.1 text-to-image graph (the structure of ComfyUI's own 'Text to Image (Qwen Image 2.1)' template): 7B INT8 ConvRot diffusion model, Qwen3-VL-8B text encoder.
-    The base template samples 25 steps, cfg 1, euler/simple; qwen_lora (e.g. the Lightning 4-step LoRA, cfg 1) is optional. The text node's negative prompt only matters when cfg > 1."""
+    The base template samples 25 steps, cfg 1, euler/simple; qwen_lora (e.g. the Lightning 4-step LoRA, cfg 1) is optional. The text node's negative prompt only matters when cfg > 1.
+    `refs` = names of reference photos already uploaded to the server's input folder (a person to keep in the picture): the text node takes up to 16 reference images ("seen by the text encoder and spliced into the sequence as VAE latents")
+    and needs the VAE to encode them; `qwen_ref_resolution` sets the size they are resized to (about N x N pixels)."""
     model = ["1", 0]; g = {"1": {"class_type": "UNETLoader", "inputs": {"unet_name": c["qwen_unet"], "weight_dtype": "default"}}}
     if c.get("qwen_lora"):
         g["9"] = {"class_type": "LoraLoaderModelOnly", "inputs": {"model": ["1", 0], "lora_name": c["qwen_lora"], "strength_model": c.get("qwen_lora_weight", 1.0)}}; model = ["9", 0]
     g.update({
         "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": c["qwen_clip"], "type": "qwen_image", "device": "default"}},
         "3": {"class_type": "VAELoader", "inputs": {"vae_name": c["qwen_vae"]}},
-        "4": {"class_type": "TextEncodeQwenImage21", "inputs": {"clip": ["2", 0], "prompt": prompt, "negative_prompt": c.get("qwen_negative", ""), "resolution": 1024}},
+        "4": {"class_type": "TextEncodeQwenImage21", "inputs": {"clip": ["2", 0], "prompt": prompt, "negative_prompt": c.get("qwen_negative", ""), "resolution": int(c.get("qwen_ref_resolution", 1024)) if refs else 1024}},
         "5": {"class_type": "EmptyLatentImage", "inputs": {"width": width, "height": height, "batch_size": 1}},
         "6": {"class_type": "KSampler", "inputs": {"model": model, "positive": ["4", 0], "negative": ["4", 1], "latent_image": ["5", 0], "seed": seed, "steps": c["qwen_steps"], "cfg": c["qwen_cfg"],
                                                     "sampler_name": "euler", "scheduler": "simple", "denoise": 1.0}},
         "7": {"class_type": "VAEDecode", "inputs": {"samples": ["6", 0], "vae": ["3", 0]}},
         "8": {"class_type": "SaveImage", "inputs": {"images": ["7", 0], "filename_prefix": "img_video"}}})
+    for k, name in enumerate((refs or [])[:16], 1):
+        g[f"3{k:02d}"] = {"class_type": "LoadImage", "inputs": {"image": name}}
+        g["4"]["inputs"][f"images.image_{k}"] = [f"3{k:02d}", 0]
+    if refs: g["4"]["inputs"]["vae"] = ["3", 0]
     return g
 
 
@@ -198,8 +220,9 @@ def interrupt(base):
     return True
 
 
-def generate_image(base, c, prompt, width, height, seed):
-    """One text-to-image call; returns (png_bytes, seconds)."""
+def generate_image(base, c, prompt, width, height, seed, refs=None):
+    """One text-to-image call; returns (png_bytes, seconds). `refs` (names of uploaded reference photos) is only supported by the qwen-image-21 backend."""
     t = time.time()
-    png = run(base, WORKFLOWS[backend(c)](prompt, width, height, seed, c), timeout=c.get("timeout", 600))
+    if refs and backend(c) != "qwen-image-21": raise ComfyError("reference photos need the qwen-image-21 backend")
+    png = run(base, WORKFLOWS[backend(c)](prompt, width, height, seed, c, **({"refs": refs} if refs else {})), timeout=c.get("timeout", 600))
     return png, time.time() - t

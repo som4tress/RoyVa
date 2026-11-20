@@ -781,5 +781,12 @@
   "id": "photo-describe-not-image",
   "q": "What is in this photo?",
   "intents_exclude": "image_generate"
+ },
+ {
+  "id": "image-photo-video",
+  "q": "Make a 30 second video of me walking around the streets of Paris\n\n[Attached photo: ~/RoyVa/runtime/data/inbox/x.jpg]",
+  "intents": [
+   "image_generate"
+  ]
  }
 ]

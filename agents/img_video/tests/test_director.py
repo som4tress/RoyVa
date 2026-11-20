@@ -11,7 +11,7 @@ CFG, CAPS = config.load()
 SCENE = {"subject": "A person stands with their back to the sun, facing the rain", "setting": "a wet field, wide shot from behind", "colors": "yellow sun, grey rain, low light"}
 
 
-def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
     if "plans a set" in system or "before anything is drawn. First" in system:
         o = {"intent": "i", "audience": "a", "rules": ["sun behind observer"], "open_details": ["sun color"], "title": "T", "shot_list": [{"topic": f"t{i}", "purpose": "p"} for i in range(1, 4)]}
     elif "fixing every open detail" in system:
@@ -39,7 +39,7 @@ class DirectorTests(unittest.TestCase):
 
     def test_analyze_accepts_object_for_list_fields_without_a_retry(self):
         calls = []
-        def one_shot(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+        def one_shot(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             calls.append(1)
             o = {"intent": "i", "audience": "a", "rules": {"light": "from the left"}, "open_details": {"lighting": "varies", "pose": "facing left"}, "title": "T", "shot_list": [{"topic": f"t{i}", "purpose": "p"} for i in range(1, 4)]}
             assert check(o) is None, check(o)
@@ -82,7 +82,7 @@ class DirectorTests(unittest.TestCase):
 
     def test_director_saves_each_step_and_records_how_each_scene_was_fitted(self):
         calls = {"n": 0}
-        def fake2(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+        def fake2(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             o = fake(c, system, user, temperature, max_tokens, None)
             if "ONE shot" in system:
                 calls["n"] += 1

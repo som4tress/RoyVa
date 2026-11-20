@@ -82,6 +82,13 @@ class DurationTests(unittest.TestCase):
                 pipeline.plan(job, CFG, CAPS)
             return job.read("plan.json")["count"]
 
+    def test_a_length_passed_with_the_request_fills_in_when_the_query_states_none(self):
+        req = {"query": "q", "aspect": "1:1", "video": True, "seconds": 60}
+        self.assertEqual(self._count(req, seconds=None), min(video.shots_for_seconds(CAPS, 60), video.max_shots(CFG, CAPS, True)))        # the chat model dropped it from the query: the passed length is used
+        self.assertEqual(self._count(req, seconds=30), video.shots_for_seconds(CAPS, 30))                                                   # a length written in the query wins
+        self.assertEqual(self._count({"query": "q", "aspect": "1:1", "seconds": 60}, seconds=None), 6)                                      # a picture set ignores it
+        self.assertEqual(self._count(dict(req, seconds=None), seconds=None), 6)                                                              # nothing anywhere: the default
+
     def test_shots_follow_the_length_the_request_states(self):
         n = video.shots_for_seconds(CAPS, 120)
         self.assertGreaterEqual(n * video.clip_seconds(CAPS) - (n - 1) * CAPS["padding"]["crossfade_seconds"], 120)

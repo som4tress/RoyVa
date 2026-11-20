@@ -17,7 +17,7 @@ SCENE = {"subject": "Harry walks down a torch-lit corridor, facing the camera", 
 def make_fake(characters, shot_chars, seen=None, appearance=None):
     short = len(characters) > 1
     cast = [{"id": c["id"], "appearance": (appearance or {}).get(c["id"], (HARRY2 if short else HARRY) if c["id"] == "harry" else (GINNY2 if short else GINNY))} for c in characters]
-    def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+    def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
         if seen is not None: seen.append((system, user))
         if "before anything is drawn. First" in system:
             o = {"kind": "story", "intent": "i", "audience": "a", "characters": characters, "rules": ["r"], "open_details": ["d"], "title": "T", "narration_voice": "Harry, in the first person",
@@ -28,7 +28,10 @@ def make_fake(characters, shot_chars, seen=None, appearance=None):
             o = {k: "short phrase" for k in director.SCENE}
         else:
             o = {"rules_applied": "r", "scene": dict(SCENE), "caption": "cap", "motion": "slow pan", "narration": "short line"}
-        if check: assert check(o) is None, check(o)
+        if check:
+            err = check(o)
+            if err and "every shot must show" in err: err = check(o)                      # the model keeps its answer; the check asks only once
+            assert err is None, err
         return o
     return fake
 
@@ -55,8 +58,8 @@ class CastTests(unittest.TestCase):
         none = director._norm_cast({"shot_list": [{"characters": ["x"]}]}, 1); self.assertEqual((none["characters"], none["shot_list"][0]["characters"]), ([], []))
 
     def test_the_appearance_budget_shrinks_with_the_characters_that_share_a_shot(self):
-        one = director.char_cap(CFG, {"shot_list": [{"characters": ["a"]}]}); two = director.char_cap(CFG, {"shot_list": [{"characters": ["a", "b"]}]}); three = director.char_cap(CFG, {"shot_list": [{"characters": list("abc")}]})
-        self.assertEqual(one, director.CHAR_CAP); self.assertLess(two, one); self.assertLessEqual(three, two); self.assertGreaterEqual(three, 40)
+        one = director.char_cap(CFG, {"shot_list": [{"characters": ["a"]}]}); two = director.char_cap(CFG, {"shot_list": [{"characters": ["a", "b"]}]}); three = director.char_cap(CFG, {"shot_list": [{"characters": list("abc")}]}); four = director.char_cap(CFG, {"shot_list": [{"characters": list("abcd")}]})
+        self.assertEqual(one, director.CHAR_CAP); self.assertLessEqual(two, one); self.assertLessEqual(three, two); self.assertLess(four, one); self.assertGreaterEqual(four, 40)      # with the short no-text clause two characters still get the full cap
 
     def test_cast_line_uses_the_cast_sheet_words_and_shortens_evenly_to_fit(self):
         cast = [{"id": "harry", "name": "Harry", "appearance": HARRY}, {"id": "ginny", "name": "Ginny", "appearance": GINNY}]
@@ -94,7 +97,7 @@ class CastTests(unittest.TestCase):
     def test_decide_asks_again_when_a_character_is_missing_or_far_too_long_and_trims_the_rest(self):
         an = {"characters": director._norm_cast({"characters": TWO, "shot_list": [{"characters": ["harry", "ginny"]}]}, 1)["characters"], "shot_list": [{"characters": ["harry", "ginny"]}], "kind": "story", "intent": "i", "rules": [], "open_details": []}
         calls = []
-        def ask(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+        def ask(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             good = {"decisions": [{"detail": "d", "value": "v"}], "style": {"look": "anime", "palette": "warm", "lighting": "torch", "camera": "wide"}, "recurring": []}
             tries = [dict(good, cast=[{"id": "harry", "appearance": HARRY2}]),                                                                             # ginny is missing
                      dict(good, cast=[{"id": "harry", "appearance": "x " * 200}, {"id": "ginny", "appearance": GINNY2}]),                                     # far too long

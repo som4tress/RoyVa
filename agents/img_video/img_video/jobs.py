@@ -32,6 +32,26 @@ class Job:
     @classmethod
     def load(cls, root, jid): return cls(root, jid)
 
+    PHOTO_TYPES = (".jpg", ".jpeg", ".png", ".webp")
+    MAX_PHOTOS, MAX_PHOTO_BYTES = 6, 20_000_000
+
+    def add_references(self, photos):
+        """Copies the photos of the people in the story into the job folder (a resume keeps them) and records them in the request as names relative to the job, with the label the user gave each photo ("me", "my wife"; "" when none).
+        A photo is a path or a (path, label) pair. Raises ValueError for a missing or unsuitable file."""
+        pairs = [(p, "") if isinstance(p, (str, Path)) else (p[0], str(p[1] or "").strip()[:60]) for p in photos][:self.MAX_PHOTOS]; paths = [Path(p).expanduser() for p, _ in pairs]
+        d = self.dir / "reference"; d.mkdir(exist_ok=True, mode=0o700); names = []
+        for k, p in enumerate(paths, 1):
+            if p.suffix.lower() not in self.PHOTO_TYPES or not p.is_file(): raise ValueError(f"reference photo {p.name!r} must be a jpg, png or webp file")
+            if p.stat().st_size > self.MAX_PHOTO_BYTES: raise ValueError(f"reference photo {p.name!r} is larger than {self.MAX_PHOTO_BYTES // 1_000_000} MB")
+            dest = d / f"ref{k}{p.suffix.lower()}"; dest.write_bytes(p.read_bytes()); dest.chmod(0o600); names.append(f"reference/{dest.name}")
+        self.state["request"]["references"] = names
+        if any(w for _, w in pairs): self.state["request"]["reference_who"] = [w for _, w in pairs]
+        self.save(); return names
+
+    def reference_paths(self): return [self.dir / n for n in self.state["request"].get("references", [])]
+
+    def reference_hashes(self): return [hashlib.sha256(p.read_bytes()).hexdigest()[:16] for p in self.reference_paths() if p.exists()]
+
     _save_lock = threading.Lock()
 
     def save(self):

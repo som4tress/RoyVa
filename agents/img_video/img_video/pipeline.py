@@ -44,6 +44,8 @@ def plan(job, cfg, caps):
         "\"research_questions\": [complete instructions to a web researcher, including today's date when current news is involved. Each must ask ONLY for facts to look up (never for creative work such as choosing visuals or writing captions); usually one is enough; empty if needs_web is false], "
         "\"tone\": \"the tone asked for, in a few words\", \"visual_style\": \"one phrase describing a single consistent look for ALL the pictures that fits the request and tone (photographic realism, a rendering technique, an illustration style: whatever the request calls for)\"" + (NARRATED_FIELD + SECONDS_FIELD) * bool(req.get("video")) + "}", check=check)
     o["narrated"] = bool(req.get("video")) and (o["narrated"] if isinstance(o.get("narrated"), bool) else False)      # only a video can be narrated; the planner decides, a missing answer means silent
+    if req.get("video") and req.get("seconds") and not isinstance(o.get("seconds"), (int, float)):      # the query text states no length but the caller passed one (the chat model often drops it from its rewrite of the query)
+        o["seconds"] = req["seconds"]; job.log(f"  length {req['seconds']} s passed with the request")
     if req.get("video") and isinstance(o.get("seconds"), (int, float)):                          # the request states a length: the number of shots follows from it. A count passed by the chat model does not override it (the model fills one in even when the user gave none)
         n = min(video.shots_for_seconds(caps, o["seconds"]), lim["max_images"])
         job.log(f"  the request asks for {o['seconds']:g} s: {n} shots" + (f" (ignoring a count of {req['count']} passed with the request)" if req.get("count") and req["count"] != n else "")); o["count"] = n
@@ -127,12 +129,16 @@ def _images(job, cfg, caps, source):
     if local: local_sd.preflight(cfg["local"])
     else: comfy.preflight(base, cfg["comfy"]); comfy.wait_until_free(base, log=job.log)
     (job.dir / "images").mkdir(exist_ok=True); ver = cfg["verify"]; report = {}; render = 0.0
+    ref_names = None
     for i, x in source.items():
+        if x.get("refs") and ref_names is None:                         # the first picture that shows the person: put their photo(s) on the server once for the whole job
+            if local or comfy.backend(cfg["comfy"]) != "qwen-image-21": raise comfy.ComfyError("reference photos need the qwen-image-21 picture backend on the 3090")
+            ref_names = [comfy.upload(base, p.read_bytes(), f"ref_{job.id[:24]}_{k}{p.suffix}") for k, p in enumerate(job.reference_paths(), 1)]; job.log(f"  reference photo(s) uploaded for the main character: {len(ref_names)}")
         cur, tries = x["image_prompt"], []
         for attempt in range(1 + (ver["retries"] if ver["enabled"] else 0)):
-            prompt = f"{cur.rstrip('. ')}, {style}" + (f", {cfg['policy']['image_text']}" if cfg["policy"].get("image_text") else "")
+            prompt = ", ".join(part for part in (cur.rstrip(". "), x.get("style", style), cfg["policy"].get("image_text")) if part)       # a picture may carry its own (shortened) style
             seed = int(fingerprint([job.id, i] if attempt == 0 else [job.id, i, attempt]), 16) % 2**31
-            png, secs = local_sd.generate_image(cfg["local"], prompt, w, h, seed, job.log) if local else comfy.generate_image(base, cfg["comfy"], prompt, w, h, seed)
+            png, secs = local_sd.generate_image(cfg["local"], prompt, w, h, seed, job.log) if local else comfy.generate_image(base, cfg["comfy"], prompt, w, h, seed, **({"refs": [ref_names[k - 1] for k in x["refs"] if 1 <= k <= len(ref_names)]} if x.get("refs") else {}))
             render += secs
             (job.dir / "images" / f"{i:02d}.png").write_bytes(png); job.log(f"  image {i}/{n} in {secs:.1f}s: {x['topic'][:70]}" + (f" (attempt {attempt + 1})" if attempt else "")); progress.update(pictures_done=i, pictures_total=n)
             if not ver["enabled"]: break
@@ -175,8 +181,8 @@ def _direct_inputs(base, job, cfg, caps, req, pl):
                 cap=cfg["limits"]["image_prompt_chars"], image_text=cfg["policy"].get("image_text", ""), director=cfg.get("director", {}))
 
 
-def _images_inputs(base, cfg, req, items, style, caps=None):
-    return dict(base, v=V["images"], items=items, aspect=req["aspect"], style=style, comfy=cfg["comfy"], image=cfg["image"], local=cfg["local"], verify=cfg["verify"], image_text=cfg["policy"].get("image_text", ""),
+def _images_inputs(base, cfg, req, items, style, caps=None, job=None):
+    return dict(base, v=V["images"], items=items, **({"references": job.reference_hashes()} if job is not None and req.get("references") else {}), aspect=req["aspect"], style=style, comfy=cfg["comfy"], image=cfg["image"], local=cfg["local"], verify=cfg["verify"], image_text=cfg["policy"].get("image_text", ""),
                 **({"video_size": picture_size(cfg, caps, req)} if (req.get("video") and caps) else {}))
 
 
@@ -205,7 +211,7 @@ def _direct_and_images_streaming(job, cfg, caps, req, base, dir_in):
             job.state["stages"]["images"] = {"status": "failed", "fp": "streaming", "error": "the director failed"}; job.save(); raise
     if err:
         job.state["stages"]["images"] = {"status": "failed", "fp": "streaming", "error": str(err)[:300]}; job.state["status"] = "failed"; job.save(); raise err
-    it = job.read("items.json"); fp = fingerprint(_images_inputs(base, cfg, req, it, job.read("direction.json")["style_line"], caps))       # the same fingerprint the sequential path computes, so a resume reuses the pictures
+    it = job.read("items.json"); fp = fingerprint(_images_inputs(base, cfg, req, it, job.read("direction.json")["style_line"], caps, job))       # the same fingerprint the sequential path computes, so a resume reuses the pictures
     wall = time.time() - t0; d = job.state["stages"]["direct"].get("secs", 0)
     job.state["stages"]["images"] = {"status": "done", "fp": fp, "secs": round(wall, 1), "render_secs": round(render, 1), "streamed": True}; job.save(); progress.stage("images", "done")
     job.log(f"stage images: done in {wall:.1f}s (streamed with the director: director {d}s + pictures {render:.1f}s = {d + render:.1f}s if run one after the other)")
@@ -246,7 +252,7 @@ def _stages(job, cfg, caps, req, llm_id, stop_after):
         job.run_stage("direct", dir_in, lambda: director.direct(job, cfg, caps), ["items.json", "direction.json"])
         if stop_after == "direct": return
         it = job.read("items.json")
-        job.run_stage("images", _images_inputs(base, cfg, req, it, job.read("direction.json")["style_line"], caps), lambda: images(job, cfg, caps), [f"images/{i:02d}.png" for i in range(1, len(it["items"]) + 1)])
+        job.run_stage("images", _images_inputs(base, cfg, req, it, job.read("direction.json")["style_line"], caps, job), lambda: images(job, cfg, caps), [f"images/{i:02d}.png" for i in range(1, len(it["items"]) + 1)])
     if stop_after == "images": return
     job.run_stage("result", dict(base, v=1, items=it), lambda: result(job, cfg, caps), ["result.json"])
 
