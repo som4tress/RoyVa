@@ -6,7 +6,7 @@ from unittest import mock
 from img_video import config, director, llm
 from img_video.jobs import Job
 
-CFG, CAPS = config.load()
+CFG, CAPS = config.load(); CFG["limits"] = dict(CFG["limits"], image_prompt_chars=500, hard_prompt_chars=500)      # these tests are about the budget logic at a 500 cap; the live value is in config.toml
 HARRY = "lanky teen, round glasses, messy black hair, scarlet-and-gold scarf, black school robes"
 GINNY = "freckled teen girl, long red hair, green jacket, silver wand"
 HARRY2 = "lanky teen, round glasses, black hair, scarlet scarf"      # what fits when two characters share a shot (about 60 characters)

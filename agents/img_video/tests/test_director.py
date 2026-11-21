@@ -7,7 +7,7 @@ from unittest import mock
 from img_video import config, director, llm
 from img_video.jobs import Job
 
-CFG, CAPS = config.load()
+CFG, CAPS = config.load(); CFG["limits"] = dict(CFG["limits"], image_prompt_chars=500, hard_prompt_chars=500)      # these tests are about the budget logic at a 500 cap; the live value is in config.toml
 SCENE = {"subject": "A person stands with their back to the sun, facing the rain", "setting": "a wet field, wide shot from behind", "colors": "yellow sun, grey rain, low light"}
 
 

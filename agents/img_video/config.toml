@@ -81,8 +81,8 @@ jobs = "jobs"                            # relative to the agent folder
 max_images = 30
 max_video_mb = 48                        # Telegram's bot upload limit is 50 MiB: a longer video is re-encoded to fit (video.fit_size)
 max_video_seconds = 150                  # worst-case ceiling on a video's length: shots are cut to fit (a narrated shot may be slowed up to max_slow, so 150 s allows 25 narrated shots, which run about 2 minutes in practice; 32 silent, further capped by max_images)
-hard_prompt_chars = 500                  # never-exceed ceiling on any text sent to the 3090 (img_video/guard.py, applied where graphs are posted; it can never be above image_prompt_chars); every text input sent is recorded in runtime/gateway/prompts_sent.jsonl
-image_prompt_chars = 500                 # most characters in the final picture prompt (scene + style + no-text clause). Prompts of ~1200+ chars reset the 3090 box on 2026-11-17 (6 of 6 at <=695 chars fine). The director is told this; a scene may exceed its share by 10%, otherwise it is rewritten by the model, and if it still does not fit the job fails (nothing is cut blindly)
+hard_prompt_chars = 1000                 # never-exceed ceiling on any text sent to the 3090 (img_video/guard.py, applied where graphs are posted; it can never be above image_prompt_chars); every text input sent is recorded in runtime/gateway/prompts_sent.jsonl
+image_prompt_chars = 1000                # most characters in the final picture prompt (scene + style + no-text clause). Prompts of ~1200+ chars reset the 3090 box on 2026-11-17; measured 2026-11-21 with the box guard NOT cutting (to be confirmed by prompt-guard-verify.sh): 60 of 60 pictures fine at 498-1000 chars. The box's own guard (scripts/remote/comfy-prompt-guard, COMFY_MAX_PROMPT_CHARS) must be raised to match or it cuts at 500 on the box. The director is told this; a scene may exceed its share by 10%, otherwise it is rewritten by the model, and if it still does not fit the job fails (nothing is cut blindly)
 max_research_queries = 4                 # safety cap on extra searches while looking for enough items (a bound, not a target)
 
 [pipeline]
