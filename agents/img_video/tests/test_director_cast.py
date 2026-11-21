@@ -54,7 +54,8 @@ class CastTests(unittest.TestCase):
         an = director._norm_cast({"characters": [{"name": "Harry Potter"}, "Ron", {"id": "harry_potter", "name": "dup"}, 7], "kind": "weird",
                                   "shot_list": [{"characters": ["harry_potter", "ghost", "ron"]}, {"characters": "x"}, {}]}, 3)
         self.assertEqual([c["id"] for c in an["characters"]], ["harry_potter", "ron"]); self.assertTrue(an["characters"][0]["main"]); self.assertEqual(an["kind"], "explainer")
-        self.assertEqual([s["characters"] for s in an["shot_list"]], [["harry_potter", "ron"], [], []]); self.assertEqual(an["narration_voice"], "a neutral narrator")
+        self.assertEqual([s["characters"] for s in an["shot_list"]], [["harry_potter", "ron"], ["harry_potter"], ["harry_potter"]])      # an empty shot gets the lead
+        self.assertEqual(an["narration_voice"], "a neutral narrator")
         none = director._norm_cast({"shot_list": [{"characters": ["x"]}]}, 1); self.assertEqual((none["characters"], none["shot_list"][0]["characters"]), ([], []))
 
     def test_the_appearance_budget_shrinks_with_the_characters_that_share_a_shot(self):
@@ -70,7 +71,7 @@ class CastTests(unittest.TestCase):
     def test_every_picture_that_shows_a_character_carries_the_same_words_and_the_prompt_fits(self):
         dr, it, _ = run_direct(TWO, [["harry"], ["harry", "ginny"], [], ["harry"], ["harry", "ginny"]])
         self.assertEqual([c["name"] for c in dr["cast"]], ["Harry", "Ginny"]); self.assertEqual(it["cast"][0]["appearance"], HARRY2)
-        for x, ids in zip(it["items"], [["harry"], ["harry", "ginny"], [], ["harry"], ["harry", "ginny"]]):
+        for x, ids in zip(it["items"], [["harry"], ["harry", "ginny"], ["harry"], ["harry"], ["harry", "ginny"]]):                          # the empty third shot got the lead
             self.assertEqual(x.get("characters"), ids)
             self.assertEqual("Harry: " in x["image_prompt"], "harry" in ids); self.assertEqual("Ginny: " in x["image_prompt"], "ginny" in ids)
             if ids: self.assertTrue(x["image_prompt"].startswith(("Harry: ", "Ginny: ")))
@@ -90,7 +91,7 @@ class CastTests(unittest.TestCase):
     def test_the_shot_writer_is_told_who_is_in_the_shot_the_voice_and_the_smaller_budget(self):
         _, _, seen = run_direct(TWO, [["harry", "ginny"], [], ["harry"]])
         shot_prompts = [u for s, u in seen if "ONE shot" in s]
-        self.assertIn("Characters in this shot: Harry, Ginny", shot_prompts[0]); self.assertIn("No character is visible in this shot", shot_prompts[1]); self.assertIn("spoken by Harry, in the first person", shot_prompts[0])
+        self.assertIn("Characters in this shot: Harry, Ginny", shot_prompts[0]); self.assertIn("Characters in this shot: Harry.", shot_prompts[1]); self.assertIn("spoken by Harry, in the first person", shot_prompts[0])
         self.assertIn("continues the story", shot_prompts[0]); self.assertIn("[Harry, Ginny]", shot_prompts[1])                          # the earlier shots are listed with who was in them
         limit = lambda p: int(p.split("subject ")[1].split(",")[0]); self.assertLess(limit(shot_prompts[0]), limit(shot_prompts[1]))      # two characters leave less room for the subject than none
 

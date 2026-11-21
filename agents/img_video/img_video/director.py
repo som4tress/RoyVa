@@ -109,6 +109,7 @@ def _norm_cast(an, n, subjects=None):
         ids = sh.get("characters") if isinstance(sh.get("characters"), list) else []
         sh["characters"] = [re.sub(r"[^a-z0-9_]+", "_", str(i).lower()).strip("_") for i in ids]
         sh["characters"] = [i for i in dict.fromkeys(sh["characters"]) if i in seen] if chars else []
+        if chars and not sh["characters"]: sh["characters"] = [c["id"] for c in chars if c["main"]]                    # every shot shows the lead: a shot the model left empty gets them (no model call)
     an["characters"] = chars
     an["stated"] = [" ".join(x.split())[:90] for x in (an.get("stated") if isinstance(an.get("stated"), list) else []) if isinstance(x, str) and x.strip()][:24]        # the concrete details the user's own request states
     an["place"] = " ".join(str(an.get("place") or "").split())[:40] if not isinstance(an.get("place"), (list, dict)) else ""

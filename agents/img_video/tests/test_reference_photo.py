@@ -154,7 +154,7 @@ class ThingPhotoTests(unittest.TestCase):
         dr, it, logs = run_direct([CAR], chars, [["car"], ["car"], []])
         c = dr["cast"][0]; self.assertEqual((c["kind"], c["what"], c["photo"]), ("object", "red sports car", True)); self.assertIn("red two-door coupe", c["appearance"])      # words come from the photo
         p = it["items"][0]["image_prompt"]; self.assertIn("Red car (reference image 1)", p); self.assertIn("Only the red sports car comes from the references.", p); self.assertNotIn("people", p)
-        self.assertEqual(it["items"][0]["refs"], [1]); self.assertNotIn("refs", it["items"][2]); self.assertTrue(all(len(x["image_prompt"]) <= 500 for x in it["items"]))
+        self.assertEqual(it["items"][0]["refs"], [1]); self.assertEqual(it["items"][2]["refs"], [1]); self.assertTrue(all(len(x["image_prompt"]) <= 500 for x in it["items"]))
 
     def test_the_clause_names_what_the_photos_give(self):
         person = {"id": "a", "name": "A", "photo": True, "photos": [1]}; car = {"id": "c", "name": "car", "photo": True, "photos": [2], "kind": "object", "what": "Blue Van"}; dog = {"id": "d", "name": "d", "photo": True, "photos": [3], "kind": "animal", "what": "dog"}
@@ -270,11 +270,11 @@ class DirectorFlowTests(unittest.TestCase):
     def test_a_couple_in_three_photos_gets_one_photo_per_picture_and_only_the_people_present(self):
         chars = [{"id": "a", "name": "Ann", "role": "r", "in": ["1.1", "2.1", "3.1"]}, {"id": "b", "name": "Bo", "role": "r", "in": ["1.2", "2.2", "3.2"]}]
         dr, it, _ = run_direct([COUPLE] * 3, chars, [["a", "b"], ["b"], ["a", "b"], []])
-        self.assertEqual([x.get("refs") for x in it["items"]], [[1], [2], [3], None])                                             # one reference each, rotating; none when no one is in the picture
+        self.assertEqual([x.get("refs") for x in it["items"]], [[1], [2], [3], [1]])                                             # one reference each, rotating; the shot the model left empty got the lead (Ann, photo 1)
         p1, p2, p4 = (x["image_prompt"] for x in (it["items"][0], it["items"][1], it["items"][3]))
         self.assertTrue(p1.startswith("Ann (left in reference image 1): outfit of a. Bo (right in reference image 1): outfit of b. Only the people come from the references."))
         self.assertTrue(p2.startswith("Bo (right in reference image 1): outfit of b. Only the people") and "Ann" not in p2)       # Bo alone: photo 2 is the only reference of THIS picture (numbered per picture); Ann is not named
-        self.assertNotIn("reference image", p4); self.check_prompts(dr, it)
+        self.assertTrue(p4.startswith("Ann (left in reference image 1)")); self.check_prompts(dr, it)
 
     def test_three_people_one_group_photo_and_one_solo_photo(self):
         chars = [{"id": "a", "name": "Ann", "in": ["1.1"]}, {"id": "b", "name": "Bo", "in": ["1.2"]}, {"id": "c", "name": "Cy", "in": ["2.1"]}]

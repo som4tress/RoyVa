@@ -126,7 +126,7 @@ class DirectorComposeTests(unittest.TestCase):
         p1 = it["items"][0]["image_prompt"]; self.assertIn("Paris streets", p1); self.assertIn("Setting: Paris streets, cobblestone street", p1)                       # the place was not in the shot's setting: it is added in front
         for item in ("red dress", "black boots", "white shirt", "khaki pants"): self.assertIn(item, p1)
         self.assertEqual(len(p1.rstrip(". ")) + 2 + len(it["items"][0].get("style", dr["style_line"])) + 2 + len(CFG["policy"].get("image_text", "")) <= CFG["limits"]["image_prompt_chars"], True)
-        self.assertNotIn("style", it["items"][1]); self.assertNotIn("Paris streets", it["items"][1]["image_prompt"])                                                 # a picture without people keeps the old way
+        self.assertEqual(it["items"][1]["characters"], ["a"]); self.assertIn("style", it["items"][1])                                                                   # a shot the model left empty shows the lead too
 
     def test_the_photo_whose_clothes_match_the_planned_outfit_is_preferred(self):
         cast = [{"id": "a", "name": "Ann", "photo": True, "photos": [1, 2], "pointers": {}, "appearance": "white shirt, khaki pants", "looks": {1: "grey hoodie, jeans", 2: "white shirt, tan pants"}}]
