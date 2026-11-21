@@ -1,17 +1,18 @@
 """Steps the picture prompt from 500 to 650 characters, ONE picture per length (10 lengths), real prompt text from a finished job, same settings as a real job.
 Each step is logged and fsynced BEFORE it is sent, so after a trip the log shows the length that was in flight; it stops at the first failure.
 Runs only here (the in-process ceiling of img_video.guard is raised for this script; the live agent keeps 500).
-usage: python3 prompt_len_step.py [job folder name, default newest job with items.json]"""
+usage: python3 prompt_len_step.py [job folder name or -, default newest job with items.json] [low high, default 500 650]"""
 import glob, json, os, sys, time
 
 sys.path.insert(0, os.path.expanduser("~/RoyVa/agents/img_video"))
 from img_video import comfy, config
 
 cfg, caps = config.load(); c = dict(cfg["comfy"], timeout=300); base = c["url"]
-comfy._HARD[:] = [700]
-jobs = os.path.expanduser("~/RoyVa/agents/img_video/jobs"); job = os.path.join(jobs, sys.argv[1]) if len(sys.argv) > 1 else os.path.dirname(sorted(glob.glob(jobs + "/*/items.json"))[-1])
+LO, HI = (int(sys.argv[2]), int(sys.argv[3])) if len(sys.argv) > 3 else (500, 650)
+comfy._HARD[:] = [HI + 100]
+jobs = os.path.expanduser("~/RoyVa/agents/img_video/jobs"); job = os.path.join(jobs, sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] != "-" else os.path.dirname(sorted(glob.glob(jobs + "/*/items.json"))[-1])
 text = " ".join(x["image_prompt"] for x in json.load(open(job + "/items.json"))["items"])
-lengths = [round(500 + i * 150 / 9) for i in range(10)]
+lengths = [round(LO + i * (HI - LO) / 9) for i in range(10)]
 out = os.path.expanduser("~/RoyVa/runtime/bench/prompt_step"); os.makedirs(out, exist_ok=True); logf = open(out + "/log.txt", "a")
 
 
