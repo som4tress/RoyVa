@@ -12,7 +12,8 @@ jobs = sorted(glob.glob(os.path.expanduser("~/RoyVa/agents/img_video/jobs/*/item
 text = " ".join(x["image_prompt"] for j in jobs for x in json.load(open(j))["items"])
 step = (len(text) - L) // (N - 1); assert step > 0, f"not enough text ({len(text)} chars) for {N} windows of {L}"
 out = os.path.expanduser(f"~/RoyVa/runtime/bench/prompt_fixed{L}"); os.makedirs(out, exist_ok=True); logf = open(out + "/log.txt", "a")
-env = dict(os.environ); [env.setdefault(k, v) for k, v in (l.strip().split("=", 1) for l in open(os.path.expanduser("~/.config/opencode/telegram/bot.env")) if "=" in l and not l.startswith("#"))]
+env = dict(os.environ); env["PATH"] = os.path.expanduser("~/.nvm/versions/node/v24.22.1/bin") + ":" + env.get("PATH", "")      # node is not on the PATH of this shell
+env_keys = None; [env.setdefault(k, v) for k, v in (l.strip().split("=", 1) for l in open(os.path.expanduser("~/.config/opencode/telegram/bot.env")) if "=" in l and not l.startswith("#"))]
 
 
 def log(s):
