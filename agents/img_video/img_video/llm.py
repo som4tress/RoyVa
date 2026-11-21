@@ -34,10 +34,10 @@ def _parse(text):
         return json.loads(m.group(0))
 
 
-def ask_json(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
-    """One request that must come back as a JSON object. `check(obj)` returns an error string (or ''/None if fine); on failure the model gets `attempts - 1` more chances to fix it (two by default)."""
+def ask_json(c, system, user, temperature=0.6, max_tokens=4000, check=None):
+    """One request that must come back as a JSON object. `check(obj)` returns an error string (or ''/None if fine); on failure the model gets two chances to fix it."""
     msgs = [{"role": "system", "content": system + " Reply with ONLY one JSON object."}, {"role": "user", "content": user}]
-    for attempt in range(attempts):
+    for attempt in range(3):
         text = _chat(c, msgs, temperature, max_tokens)
         try:
             obj = _parse(text)

@@ -40,12 +40,21 @@ def cut(text, n):
     return t2 if len(t2) >= min(8, len(t)) else t
 
 
-def _render(people, clause, subject, setting, colors, style):
+def merge_look(stated, photo):
+    """One look for a subject: the details the request itself states about it, then what its photo shows. A photo item names the same thing as a stated item (same last word: "red dress" and "dress") is dropped, so the user's words win and nothing is invented.
+    "red tights, boots" + "long dark hair, red dress, black jacket, boots" -> "red tights, boots, long dark hair, red dress, black jacket"."""
+    def last(item):
+        w = [x for x in WORD.findall(item.lower()) if x not in STOP]; return w[-1] if w else ""
+    s_items = items_of(stated); taken = {last(x) for x in s_items}; said = words(stated)
+    return ", ".join(s_items + [x for x in items_of(photo) if last(x) not in taken and not words(x) <= said])             # a photo item the request already says (as part of a longer item) is not repeated
+
+
+def _render(subjects, clause, subject, setting, colors, style):
     blocks = []
-    for pe in people:
+    for pe in subjects:
         its = [t for t, _p, _r in pe["items"]]
         blocks.append(pe["label"] + (": " + ", ".join(its) if its else "") + ".")
-    if clause and people: blocks.append(clause)
+    if clause and subjects: blocks.append(clause)
     if subject: blocks.append(subject.strip().rstrip(".") + ".")
     if setting: blocks.append("Setting: " + ", ".join(t for t, _p, _r in setting) + ".")
     if colors: blocks.append("Colors: " + colors[0].strip(" .") + ".")
@@ -57,15 +66,15 @@ def total_len(prompt, style, clause_len):
     return len(prompt.rstrip(". ")) + (2 + len(style) if style else 0) + (2 + clause_len if clause_len else 0)
 
 
-def compose(people, subject, setting, colors, style, cap, clause_len=0, ref_clause="", stated=(), fix=None):
-    """people: [{"label": "Ann (left in reference image 1)", "outfit": "red dress, black boots"}]; subject: the shot's action; setting: [where, framing...] (the first is the place and must stay); colors: text or "";
+def compose(subjects, subject, setting, colors, style, cap, clause_len=0, ref_clause="", stated=(), fix=None):
+    """subjects (what the picture shows: people, animals, objects): [{"label": "Ann (left in reference image 1)", "outfit": "red dress, black boots", "fixed": True}]. A subject with "fixed" has its words decided once for the whole video: they are MUSTs and never dropped per shot. subject (the shot's action): the shot's action; setting: [where, framing...] (the first is the place and must stay); colors: text or "";
     style: [(name, text)] in the order they are written (the first is the look); stated: phrases the user's own request states. `fix(text, room)` rewrites the musts shorter when they alone do not fit.
     Returns {"prompt", "style", "dropped": [what was left out], "fixed": bool, "length"}."""
     sw = set()
     for ph in stated: sw |= words(ph)
     def prio(text, base):                                     # a detail the user stated is a MUST; the director's own stays at `base`
         return 0 if words(text) & sw else base
-    P = [{"label": pe["label"], "items": [(t, prio(t, 1), 40 - k) for k, t in enumerate(items_of(pe.get("outfit")))]} for pe in people]      # later items are dropped first
+    P = [{"label": pe["label"], "items": [(t, 0 if pe.get("fixed") else prio(t, 1), 40 - k) for k, t in enumerate(items_of(pe.get("outfit")))]} for pe in subjects]      # later items are dropped first (unless the subject's words are fixed)
     S = [(t, 0 if k == 0 else prio(t, 2), 20 - k) for k, t in enumerate(setting or []) if t]                                                    # the place first and always
     C = (colors, prio(colors, 2), 5) if colors else None
     ST = [(n, it, prio(it, 1 if k == 0 else 2), 10 - k - j / 10) for k, (n, t) in enumerate(style or []) if t for j, it in enumerate(items_of(t))]       # the look is worth more than palette, lighting, camera; a style item the user stated is a MUST

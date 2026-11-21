@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from img_video import comfy, config, director, guard, llm, pipeline
+from img_video import comfy, compose, config, director, guard, llm, pipeline
 from img_video.jobs import Job
 
 CFG, CAPS = config.load()
@@ -103,10 +103,10 @@ def make_llm(characters, shot_chars, seen=None, appearances=None):
     return fake
 
 
-def run_direct(photo_answers, characters, shot_chars, seen=None, who=None):
+def run_direct(photo_answers, characters, shot_chars, seen=None, who=None, appearances=None):
     """Runs the director on a job with one photo per answer; returns (direction, items, job log lines)."""
     logs = []
-    with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", make_llm(characters, shot_chars, seen)), mock.patch.object(llm, "ask_about_image", side_effect=list(photo_answers)):
+    with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", make_llm(characters, shot_chars, seen, appearances)), mock.patch.object(llm, "ask_about_image", side_effect=list(photo_answers)):
         (Path(d) / "jobs").mkdir(); job = Job.create(Path(d) / "jobs", {"query": "q", "count": len(shot_chars), "aspect": "16:9", "video": True}); job.log = logs.append
         job.add_references([(photo(d, f"p{k}.jpg"), (who or [""] * 9)[k - 1]) for k in range(1, len(photo_answers) + 1)])
         job.write("plan.json", {"count": len(shot_chars), "needs_web": False, "research_questions": [], "tone": "t", "narrated": True}); job.write("research.json", [])
@@ -165,13 +165,8 @@ class ThingPhotoTests(unittest.TestCase):
 class EverySubjectShotTests(unittest.TestCase):
     CAR_CHARS = [{"id": "car", "name": "the red car", "origin": "named", "role": "hero", "main": True, "in": ["1.1"]}]
 
-    def test_a_shot_without_the_subject_is_asked_about_once_and_then_stands(self):
-        seen_ask.clear(); run_direct([CAR], self.CAR_CHARS, [[], ["car"], ["car"]])
-        self.assertEqual(len(seen_ask), 1); self.assertIn("shot(s) 1 list nobody", seen_ask[0]); self.assertIn("unless the request itself asks for scenery", seen_ask[0])
-
-    def test_nothing_is_asked_when_every_shot_has_the_subject_or_there_is_no_cast(self):
-        seen_ask.clear(); run_direct([CAR], self.CAR_CHARS, [["car"], ["car"]]); self.assertEqual(seen_ask, [])
-        seen_ask.clear(); run_direct([NOBODY], [], [[], []]); self.assertEqual(seen_ask, [])                          # no subject in the request: empty shots are fine
+    def test_no_cast_means_no_subject_is_added(self):
+        dr, it, _ = run_direct([NOBODY], [], [[], []]); self.assertEqual(dr["cast"], []); self.assertTrue(all("reference image" not in x["image_prompt"] for x in it["items"]))                          # no subject in the request: nothing is added
 
     def test_the_analyze_prompt_names_every_kind_of_subject_and_the_rule(self):
         seen = []; run_direct([CAR], self.CAR_CHARS, [["car"], ["car"]], seen)
@@ -194,7 +189,7 @@ class IdReadingTests(unittest.TestCase):
         def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             if "before anything is drawn. First" in system:
                 first = {"kind": "story", "intent": "i", "audience": "a", "characters": [{"id": "a", "name": "Ann", "in": [1, 2]}], "rules": ["r"], "open_details": ["d"], "title": "T", "shot_list": [{"topic": "t", "purpose": "p", "characters": ["a"]}]}
-                msg = check(first); asked.append(msg); self.assertGreater(attempts, 3)
+                msg = check(first); asked.append(msg)
                 fixed = dict(first, characters=[{"id": "a", "name": "Ann", "in": ["1.1"]}, {"id": "b", "name": "Bo", "in": ["1.2"]}]); self.assertIsNone(check(fixed)); return fixed
             return make_llm([], [[]])(c, system, user, temperature, max_tokens, check)
         with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", fake), mock.patch.object(llm, "ask_about_image", return_value=COUPLE):
@@ -205,6 +200,48 @@ class IdReadingTests(unittest.TestCase):
 
     def test_the_brief_says_that_different_clothes_are_not_new_people(self):
         text = director.photo_brief({"references": ["a", "b"]}, [json_subs(COUPLE), json_subs(COUPLE)]); self.assertIn("do NOT make a new character because the clothes differ", text)
+
+
+class MergeLookTests(unittest.TestCase):
+    def test_the_requests_words_come_first_and_win_over_the_photo_for_the_same_item(self):
+        self.assertEqual(compose.merge_look("red tights, boots", "long dark hair, red dress, black jacket, black boots"), "red tights, boots, long dark hair, red dress, black jacket")     # "boots" is stated: the photo's boots are dropped
+        self.assertEqual(compose.merge_look("white shirt and khaki pants", "dark hair, beard, white shirt, khaki pants"), "white shirt and khaki pants, dark hair, beard")    # said inside one longer item: not repeated
+        self.assertEqual(compose.merge_look("red dress with black tights and boots", "long dark hair, red dress, black jacket, boots"), "red dress with black tights and boots, long dark hair, black jacket")
+        self.assertEqual(compose.merge_look("", "dark hair, beard, white shirt"), "dark hair, beard, white shirt"); self.assertEqual(compose.merge_look("blue scarf", ""), "blue scarf")
+        self.assertEqual(compose.merge_look("", ""), "")
+
+    def test_stated_look_loses_notes_in_parentheses_and_stray_punctuation(self):
+        an = director._norm_cast({"characters": [{"id": "a", "name": "Ann", "stated_look": "red tights (from reference), boots. ; (note)"}], "shot_list": []}, 1)
+        self.assertEqual(an["characters"][0]["stated_look"], "red tights, boots")
+
+    def test_a_photo_subjects_look_is_the_request_plus_the_photo_and_the_model_does_not_write_it(self):
+        chars = [{"id": "a", "name": "Ann", "role": "partner", "stated_look": "red tights", "in": ["1.2"]}, {"id": "b", "name": "Bo", "role": "partner", "in": ["1.1"]}]
+        dr, it, _ = run_direct([COUPLE], chars, [["a", "b"]] * 3, appearances={"a": "leather jacket, gold crown", "b": "tuxedo"})                # whatever the model would have written for them is not used
+        look = {c["id"]: c["appearance"] for c in dr["cast"]}
+        self.assertEqual(look["a"], "red tights, long dark hair, red dress"); self.assertEqual(look["b"], "bearded man, white shirt")
+        self.assertTrue(all("Ann (right in reference image 1): red tights, long dark hair, red dress." in x["image_prompt"] for x in it["items"]))   # the same words in every shot
+
+    def test_a_subjects_words_are_identical_in_every_shot_even_when_the_prompt_is_tight(self):
+        chars = [{"id": "a", "name": "Ann", "role": "partner", "in": ["1.1"]}, {"id": "b", "name": "Bo", "role": "partner", "in": ["1.2"]}]
+        dr, it, _ = run_direct([COUPLE], chars, [["a", "b"]] * 5)
+        blocks = {x["image_prompt"].split(" Only the people")[0] for x in it["items"]}
+        self.assertEqual(len(blocks), 1, blocks)
+
+    def test_a_car_goes_through_the_same_path_with_its_photo_words(self):
+        chars = [{"id": "car", "name": "the red car", "origin": "named", "role": "hero", "main": True, "in": ["1.1"]}]
+        dr, it, _ = run_direct([CAR], chars, [["car"], ["car"]]); self.assertTrue(all("red two-door coupe, black roof, chrome wheels" in x["image_prompt"] for x in it["items"]))
+
+
+class AutoLinkTests(unittest.TestCase):
+    def test_when_the_model_links_nothing_the_clear_cases_are_linked_in_code(self):
+        car = director._norm_cast({"characters": [{"id": "red_coupe", "name": "Red Coupe", "origin": "invented"}], "shot_list": []}, 1, [json_subs(CAR)])
+        self.assertEqual((car["characters"][0]["origin"], car["characters"][0]["in"]), ("photo", ["1.1"]))                                           # one character, one subject
+        two = director._norm_cast({"characters": [{"id": "m", "name": "Man"}, {"id": "w", "name": "Wife"}], "shot_list": []}, 1, [json_subs(COUPLE)])
+        self.assertEqual({c["id"]: c["in"] for c in two["characters"]}, {"m": ["1.1"], "w": ["1.2"]})                                                # "man" matches the man; the wife is the one left
+        three = director._norm_cast({"characters": [{"id": "x", "name": "Xan"}, {"id": "y", "name": "Yo"}], "shot_list": []}, 1, [json_subs(COUPLE)])
+        self.assertEqual([c["in"] for c in three["characters"]], [[], []])                                                                            # nothing in common and two to choose from: not guessed
+        some = director._norm_cast({"characters": [{"id": "m", "name": "Man", "in": ["1.1"]}, {"id": "waiter", "name": "Waiter"}], "shot_list": []}, 1, [json_subs(COUPLE)])
+        self.assertEqual([c["in"] for c in some["characters"]], [["1.1"], []])                                                                        # when the model linked something its choice stands
 
 
 class NormCastTests(unittest.TestCase):
@@ -272,8 +309,8 @@ class DirectorFlowTests(unittest.TestCase):
         dr, it, _ = run_direct([COUPLE] * 3, chars, [["a", "b"], ["b"], ["a", "b"], []])
         self.assertEqual([x.get("refs") for x in it["items"]], [[1], [2], [3], [1]])                                             # one reference each, rotating; the shot the model left empty got the lead (Ann, photo 1)
         p1, p2, p4 = (x["image_prompt"] for x in (it["items"][0], it["items"][1], it["items"][3]))
-        self.assertTrue(p1.startswith("Ann (left in reference image 1): outfit of a. Bo (right in reference image 1): outfit of b. Only the people come from the references."))
-        self.assertTrue(p2.startswith("Bo (right in reference image 1): outfit of b. Only the people") and "Ann" not in p2)       # Bo alone: photo 2 is the only reference of THIS picture (numbered per picture); Ann is not named
+        self.assertTrue(p1.startswith("Ann (left in reference image 1): bearded man, white shirt. Bo (right in reference image 1): long dark hair, red dress. Only the people come from the references."))     # the fake model's outfits are not in the photos: the photos' own descriptions are used
+        self.assertTrue(p2.startswith("Bo (right in reference image 1): long dark hair, red dress. Only the people") and "Ann" not in p2)       # Bo alone: photo 2 is the only reference of THIS picture (numbered per picture); Ann is not named
         self.assertTrue(p4.startswith("Ann (left in reference image 1)")); self.check_prompts(dr, it)
 
     def test_three_people_one_group_photo_and_one_solo_photo(self):
@@ -284,14 +321,14 @@ class DirectorFlowTests(unittest.TestCase):
 
     def test_one_person_one_photo(self):
         dr, it, _ = run_direct([SOLO], [{"id": "me", "name": "the person", "in": ["1.1"]}], [["me"], ["me"]])
-        self.assertEqual([x.get("refs") for x in it["items"]], [[1], [1]]); self.assertTrue(it["items"][0]["image_prompt"].startswith("Person (reference image 1): outfit of me. Only the people"))
+        self.assertEqual([x.get("refs") for x in it["items"]], [[1], [1]]); self.assertTrue(it["items"][0]["image_prompt"].startswith("Person (reference image 1): short grey hair, glasses. Only the people"))
 
     def test_photos_without_people_do_not_make_anyone_up(self):
         seen = []; dr, it, logs = run_direct([NOBODY, NOBODY], [], [[], []], seen)
         self.assertEqual(dr["cast"], []); self.assertTrue(all("refs" not in x for x in it["items"])); self.assertTrue(all("reference image" not in x["image_prompt"] for x in it["items"]))
         self.assertTrue(any("no one" in l for l in logs)); analyze = next(u for s_, u in seen if "before anything is drawn. First" in s_); self.assertIn("Photo 1: no one", analyze)
 
-    def test_when_the_model_ignores_the_photos_it_is_asked_three_times_then_the_answer_stands_and_the_log_says_so(self):
+    def test_when_the_model_ignores_the_photos_it_is_asked_once_then_the_answer_stands_and_the_log_says_so(self):
         asked = []
         def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             if "before anything is drawn. First" in system:
@@ -305,22 +342,22 @@ class DirectorFlowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", fake), mock.patch.object(llm, "ask_about_image", return_value=COUPLE):
             (Path(d) / "jobs").mkdir(); job = Job.create(Path(d) / "jobs", {"query": "q", "count": 1, "aspect": "16:9", "video": True}); job.add_references([photo(d)])
             job.write("plan.json", {"count": 1, "needs_web": False, "research_questions": [], "tone": "t", "narrated": True}); job.write("research.json", [])
-            logs = []; job.log = logs.append; director.direct(job, CFG, CAPS); self.assertEqual(len(asked), 3); self.assertIn("1.1", asked[0]); self.assertEqual(job.read("direction.json")["cast"], [])           # no one is forced in
+            logs = []; job.log = logs.append; director.direct(job, CFG, CAPS); self.assertEqual(len(asked), 1); self.assertIn("1.1", asked[0]); self.assertEqual(job.read("direction.json")["cast"], [])           # no one is forced in
             self.assertTrue(any("photos NOT USED" in l for l in logs))                                                                        # and the failure is visible
 
-    def test_a_photo_person_is_asked_for_an_outfit_only_and_the_outfit_is_accepted_as_the_text(self):
+    def test_the_model_writes_the_look_of_characters_without_a_photo_only(self):
         seen = []
         def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):
             seen.append(user); o = make_llm([{"id": "a", "name": "Ann", "in": ["1.1"]}, {"id": "n", "name": "Nik", "origin": "invented"}], [["a", "n"]])(c, system, user, temperature, max_tokens, None)
-            if "fixing every open detail" in system: o = dict(o, cast=[{"id": "a", "outfit": "navy coat, red scarf"}, {"id": "n", "appearance": "tall, grey beard, green apron"}])
+            if "fixing every open detail" in system: o = dict(o, cast=[{"id": "a", "outfit": "short grey hair, glasses, navy coat"}, {"id": "n", "appearance": "tall, grey beard, green apron"}])
             if check: assert check(o) is None, check(o)
             return o
         with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", fake), mock.patch.object(llm, "ask_about_image", return_value=SOLO):
             (Path(d) / "jobs").mkdir(); job = Job.create(Path(d) / "jobs", {"query": "q", "count": 1, "aspect": "16:9", "video": True}); job.add_references([photo(d)])
             job.write("plan.json", {"count": 1, "needs_web": False, "research_questions": [], "tone": "t", "narrated": True}); job.write("research.json", []); director.direct(job, CFG, CAPS)
             cast = job.read("direction.json")["cast"]
-        self.assertEqual([c["appearance"] for c in cast], ["navy coat, red scarf", "tall, grey beard, green apron"])              # a made-up character still gets a full appearance
-        self.assertTrue(any('{"id", "outfit"}' in u and "never face, hair, age or build" in u for u in seen))                 # and the person from the photos is told to give clothes only
+        self.assertEqual([c["appearance"] for c in cast], ["short grey hair, glasses", "tall, grey beard, green apron"])              # "navy coat" is in neither the photo nor the request: left out; a made-up character still gets a full appearance
+        decide = next(u for u in seen if "Return JSON: {\"decisions\"" in u); self.assertIn('whose origin is not "photo"', decide); self.assertIn("follow the request closely", decide)        # the model writes only the looks of characters without a photo, and sticks to the request
 
     def test_without_photos_nothing_changes(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(llm, "ask_json", make_llm([{"id": "h", "name": "Harry", "origin": "named", "role": "r"}], [["h"]])), mock.patch.object(llm, "ask_about_image") as look:

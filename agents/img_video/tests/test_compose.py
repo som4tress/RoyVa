@@ -101,6 +101,16 @@ class ComposeTests(unittest.TestCase):
                 for m in musts: self.assertIn(m, r["prompt"])                                                          # a stated item is never dropped unless the musts alone cannot fit
 
 
+class FixedSubjectTests(unittest.TestCase):
+    def test_a_fixed_subject_keeps_every_item_and_the_scene_gives_way_instead(self):
+        fixed = dict(ANN, fixed=True)
+        r = run(240, people=(fixed,), setting=("Paris street", "wide shot, low angle, golden hour backlight"), colors="amber sky, grey stones")
+        self.assertTrue(all(it in r["prompt"] for it in compose.items_of(ANN["outfit"])), r["prompt"])                         # nothing of the subject is dropped
+        self.assertFalse(any(d in compose.items_of(ANN["outfit"]) for d in r["dropped"]))
+        loose = run(240, people=(ANN,), setting=("Paris street", "wide shot, low angle, golden hour backlight"), colors="amber sky, grey stones")
+        self.assertNotEqual(r["dropped"], loose["dropped"])                                                                     # without "fixed" the old order applies
+
+
 class DirectorComposeTests(unittest.TestCase):
     def test_stated_and_place_are_read_from_the_analysis_and_every_picture_says_where_it_is(self):
         def fake(c, system, user, temperature=0.6, max_tokens=4000, check=None, attempts=3):

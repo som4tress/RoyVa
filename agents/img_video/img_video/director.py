@@ -77,6 +77,20 @@ def subject_ids(raw, subjects):
     return list(dict.fromkeys(good)), bad
 
 
+def _auto_link(chars, subjects):
+    """When the model tied no character to any photo subject (it often ignores the ask), tie them in code, only the clear cases: a character and a photo subject that share words (name, role or id against the photo's name and look), or the one character left for the one subject left."""
+    free = [f"{k}.{j}" for k, subs in enumerate(subjects, 1) for j in range(1, len(subs) + 1)]
+    if not free or not chars or any(c["in"] for c in chars): return
+    def mine(c): return compose.words(f"{c['name']} {c['role']} {c['id'].replace('_', ' ')}")
+    def shown(i): k, j = map(int, i.split(".")); s = subjects[k - 1][j - 1]; return compose.words(f"{s.get('what', '')} {s.get('look', '')}")
+    loose = list(chars)
+    for c in list(loose):
+        score = {i: len(mine(c) & shown(i)) for i in free}; best = max(score.values())
+        tops = [i for i, v in score.items() if v == best]
+        if best > 0 and len(tops) == 1: c["in"] = [tops[0]]; free.remove(tops[0]); loose.remove(c)
+    if len(loose) == 1 and len(free) == 1: loose[0]["in"] = [free[0]]
+
+
 def _norm_cast(an, n, subjects=None):
     """Makes the analyze answer's cast usable whatever the model returned: a list of {id, name, origin, role, main} with unique ids, shot_list entries with a list of known ids. No characters is a valid answer.
     `subjects` = what the photos show: one list per photo of {at, look} (people or pets). A character is "from the photos" only when it names subject ids in `in` (like "1.2" = subject 2 of photo 1); an id belongs to one character.
@@ -88,7 +102,8 @@ def _norm_cast(an, n, subjects=None):
         cid = re.sub(r"[^a-z0-9_]+", "_", str(c.get("id") or c["name"]).lower()).strip("_") or f"c{len(chars) + 1}"
         if cid in seen: continue
         seen.add(cid); chars.append({"id": cid, "name": str(c.get("name") or c["id"]).strip(), "origin": c.get("origin") if c.get("origin") in ("named", "implied", "invented") else "invented",
-                                     "role": str(c.get("role") or "").strip(), "main": bool(c.get("main")), "in": subject_ids(c.get("in"), subjects)[0] if isinstance(c.get("in"), list) else []})
+                                     "role": str(c.get("role") or "").strip(), "stated_look": ", ".join(re.sub(r"\([^)]*\)", "", x).strip(" .") for x in re.split(r"[,;]", str(c.get("stated_look") or "")) if re.sub(r"\([^)]*\)", "", x).strip(" ."))[:160], "main": bool(c.get("main")), "in": subject_ids(c.get("in"), subjects)[0] if isinstance(c.get("in"), list) else []})
+    _auto_link(chars, subjects)
     taken = set()
     for c in chars:
         c["in"] = [x for x in dict.fromkeys(c["in"]) if x not in taken]; taken.update(c["in"])
@@ -224,23 +239,19 @@ def photo_brief(req, subjects):
 
 
 def analyze(job, cfg, caps, p, req, res, n, sat):
-    lim = cfg["limits"]; subjects = describe_photos(job, cfg, req.get("query", "")) if req.get("references") else []; known = {f"{k}.{j}" for k, subs in enumerate(subjects, 1) for j in range(1, len(subs) + 1)}; asked = []; empty_asked = []
+    lim = cfg["limits"]; subjects = describe_photos(job, cfg, req.get("query", "")) if req.get("references") else []; known = {f"{k}.{j}" for k, subs in enumerate(subjects, 1) for j in range(1, len(subs) + 1)}; asked = []
     for attempt in range(lim["max_research_queries"] + 1):
         def check(o):
             _as_list(o, "rules", "open_details")
             if o.get("characters") is not None and not isinstance(o.get("characters"), list): return "characters must be a list (empty when nobody recurs)"
             chars_in = [c for c in (o.get("characters") or []) if isinstance(c, dict)]
-            if known and len(asked) < 3 and not any(subject_ids(c.get("in"), subjects)[0] for c in chars_in):                        # up to three asks, each saying what was wrong; after that the answer stands (and the log says the photos were not used)
+            if known and not asked and not any(subject_ids(c.get("in"), subjects)[0] for c in chars_in):                        # asked once; after that the answer stands (the code links what it can, and the log says when photos were not used)
                 asked.append(1); bad = [t for c in chars_in for t in subject_ids(c.get("in"), subjects)[1]]
                 return ("the attached photos show " + ("people and things" if any(x.get("kind") for subs in subjects for x in subs) else "people") + " (" + ", ".join(sorted(known)) + "): add the characters who appear in them, each with \"in\": [their ids exactly as listed, like \"1.2\"]"
                         + (f" (you wrote {', '.join(bad[:4])}, which is not a listed id)" if bad else ""))
             sl = o.get("shot_list", [])
             if len(sl) < n: return f"shot_list has {len(sl)} entries, need {n}"
             if not all(_s(x, "topic") and _s(x, "purpose") for x in sl[:n]): return "every shot_list entry needs topic and purpose"
-            cast_ids = [c for c in (o.get("characters") or []) if isinstance(c, dict) and (_s(c, "id") or _s(c, "name"))]
-            bare = [k for k, x in enumerate(sl[:n], 1) if not (isinstance(x.get("characters"), list) and x["characters"])]
-            if cast_ids and bare and not empty_asked:
-                empty_asked.append(1); return "the request is about a subject (" + ", ".join(str(c.get("name") or c.get("id")) for c in cast_ids[:4]) + "): every shot must show the lead subject, shot(s) " + ", ".join(map(str, bare)) + " list nobody; give each a \"characters\" list, unless the request itself asks for scenery"       # asked once; after that the answer stands
             if not _s(o, "intent") or not _s(o, "title") or not isinstance(o.get("rules"), list) or not isinstance(o.get("open_details"), list): return "need intent, title, rules (list) and open_details (list)"
             return None
         try:
@@ -249,14 +260,14 @@ def analyze(job, cfg, caps, p, req, res, n, sat):
                 + photo_brief(req, subjects) +
                 f"Return JSON with these fields in this order: \"kind\" (\"explainer\" if the request explains something or shows facts, \"story\" if it tells a story or follows someone through events, \"mood\" for a single scene or atmosphere), "
                 "\"intent\" (one sentence: what the viewer should understand or feel; for a story, its premise), \"audience\", "
-                "\"characters\" (every person, animal, creature, vehicle or product the pictures follow: [{\"id\": a short lowercase handle, \"name\": how they are called, \"origin\": \"named\" if the request names them or they are a well-known character, \"implied\" if it only refers to them (for example \"his girlfriend\": you choose who they are), \"invented\" if the story needs them, \"role\": a few words, \"main\": true for the lead}]; an empty list when nobody recurs, for example when the request explains a natural process or shows objects or places), "
+                "\"characters\" (every person, animal, creature, vehicle or product the pictures follow as a recurring subject of a story, never the parts, concepts or things an explanation merely illustrates: [{\"id\": a short lowercase handle, \"name\": how they are called, \"origin\": \"named\" if the request names them or they are a well-known character, \"implied\" if it only refers to them (for example \"his girlfriend\": you choose who they are), \"invented\" if the story needs them, \"role\": a few words, \"stated_look\": only the words of the request itself about this character's clothes, colors and features, copied from it; never anything from the photo descriptions above (empty when the request says nothing about them), \"main\": true for the lead}]; an empty list when nobody recurs, for example when the request explains a natural process or shows objects or places), "
                 "\"stated\" (every concrete detail the request itself states: clothes, objects, places, actions, each a short phrase copied from it), \"place\" (the overall location in at most 4 words, empty when there is none), "
                 "\"rules\" (the facts and physical or spatial rules every picture must obey, each one short and checkable, taken from the material or from common knowledge; e.g. which way light travels, what is in front of or behind what), "
                 "\"open_details\" (what a generic request leaves open that a picture needs: colors of key objects, positions, which way figures face, setting, time of day, lighting), "
                 f"\"title\" (short title for the set), \"shot_list\" (exactly {n} different shots that together cover the request in a sensible order, each {{\"topic\": short subject, \"purpose\": the one idea this picture must convey, "
                 "\"characters\": [the ids of the characters visible in this shot, empty when none]}}. For a story the shot_list is an arc (setup, rising tension, a turn, an ending). When there are characters, EVERY shot shows the lead and the others when the shot needs them; a shot without any of them only when the request itself asks for scenery or an establishing shot; "
                 "for an explainer without characters every list is empty)" + (", \"narration_voice\" (who speaks the voice-over. When the request has someone talking to themselves, thinking aloud, addressing the viewer or telling their own story, write \"<character name>, in the first person\" and the lines are that character speaking; for every other request write \"a neutral narrator\")" if p.get("narrated") else "") + ".",
-                temperature=0.5, max_tokens=4000, check=check, attempts=5)          # up to 3 photo asks + 1 empty-shot ask + the answer that stands
+                temperature=0.5, max_tokens=4000, check=check)
             an = _norm_cast(o, n, subjects)
             if known and not any(c["origin"] == "photo" for c in an["characters"]): job.log("  photos NOT USED: the director could not tie any character to the people in them")
             return an
@@ -270,32 +281,37 @@ def analyze(job, cfg, caps, p, req, res, n, sat):
 def decide(cfg, req, p, an, res, log=None):
     style_cap = int(cfg["limits"]["image_prompt_chars"] * (cfg.get("director") or {}).get("style_share", 0.25)); style_words = style_cap // 10
     chars = an.get("characters") or []; cc = char_cap(cfg, an)
-    things = {c["id"] for c in chars if c["origin"] == "photo" and c.get("kind", "person") != "person"}        # an animal or object from a photo is described by what the photo shows
-    asked = [c for c in chars if c["id"] not in things]
+    asked = [c for c in chars if c["origin"] != "photo"]                  # a subject with a photo is not written by the model: its look is what the request states plus what its photo shows
     def check(o):
         if not isinstance(o.get("decisions"), list) or not o["decisions"]: return "decisions must be a non-empty list"
         if asked:
             cast = o.get("cast")
             if not isinstance(cast, list) or {str(c.get("id")) for c in cast if isinstance(c, dict)} < {c["id"] for c in asked}: return "cast needs one entry for EVERY character id: " + ", ".join(c["id"] for c in asked)
-            for c in cast:
-                ap = c.get("appearance") or c.get("outfit") if isinstance(c, dict) else None
-                if not isinstance(ap, str) or not ap.strip(): return "every cast entry needs an appearance (an outfit for a character from the photos)"
+            for c in [c for c in cast if isinstance(c, dict) and str(c.get("id")) in {a["id"] for a in asked}]:                     # the others are not written by the model
+                ap = c.get("appearance") if isinstance(c, dict) else None
+                if not isinstance(ap, str) or not ap.strip(): return "every cast entry needs an appearance"
                 if len(ap) > cc * 1.3: return f"the text of {c.get('id')} is {len(ap)} characters; at most {cc}, keep only what makes them recognizable"
         st = o.get("style")
         if not isinstance(st, dict) or not all(_s(st, k) for k in ("look", "palette", "lighting", "camera")): return "style needs look, palette, lighting and camera"
         return None
     o = llm.ask_json(cfg["llm"], "You are the director fixing every open detail before the pictures are drawn, so nothing is left for the picture model to guess.",
         f"Request: {req['query']}\nTone: {p['tone']}\nKind: {an.get('kind', 'explainer')}\nIntent: {an['intent']}\nRules every picture must obey: {json.dumps(an['rules'], ensure_ascii=False)}\nOpen details: {json.dumps(an['open_details'], ensure_ascii=False)}\n"
-        + (f"Characters: {json.dumps([{k: c[k] for k in ('id', 'name', 'origin', 'role', 'main')} for c in chars] if things else chars, ensure_ascii=False)}\n" if chars else "") + "\n"
+        + (f"Characters: {json.dumps([{k: c[k] for k in ('id', 'name', 'origin', 'role', 'main')} for c in chars], ensure_ascii=False)}\n" if chars else "") + "\n"
         "Return JSON: {\"decisions\": [{\"detail\": ..., \"value\": a concrete choice (exact colors, positions, directions)}] for EVERY open detail, "
         "\"style\": (the four fields together at most " + str(style_words) + " words, no color codes) {\"look\": one phrase for a single consistent look for ALL pictures that fits the request and tone (photographic realism, a rendering technique, an illustration style: whatever fits), \"palette\": ..., \"lighting\": ..., \"camera\": ...}, "
-        + ("\"cast\": [one entry per character" + (" (for a character with origin photo write {\"id\", \"outfit\"} instead: ONLY clothes and accessories with their colors, at most " + str(cc) + " characters; never face, hair, age or build: they come from the photo)" if any(c["origin"] == "photo" for c in asked) else "") + ": {\"id\": the character's id, \"appearance\": what they look like in EVERY picture, as one fixed phrase of at most " + str(cc) + " characters: age and build, face and hair, clothes with their colors, one distinctive detail; concrete and visual, in the look of the style; for a well-known character use their well-known features; characters who appear together must differ clearly in at least two visible traits such as hair color, clothing color, build or headwear}]" + (" (not for " + ", ".join(sorted(things)) + ": they come from their photos)" if things else "") + ", " if asked else "")
+        + ("\"cast\": [one entry for each character whose origin is not \"photo\" (the others get their look from their photos): {\"id\": the character's id, \"appearance\": what they look like in EVERY picture, as one fixed phrase of at most " + str(cc) + " characters: age and build, face and hair, clothes with their colors, one distinctive detail (never what they do, hold or where they are: that changes from picture to picture); follow the request closely and add nothing it does not call for; concrete and visual, in the look of the style; for a well-known character use their well-known features; characters who appear together must differ clearly in at least two visible traits such as hair color, clothing color, build or headwear}], " if asked else "")
         + "\"recurring\": [fixed appearance of every object that appears in more than one shot; empty if none]}", temperature=0.4, max_tokens=3000, check=check)
     o["style"] = fit_style(cfg, o["style"], style_cap, log)
     by_id = {str(c.get("id")): c for c in (o.get("cast") or []) if isinstance(c, dict)}
+    def look_of(c):                                                   # one look per subject, decided once and copied into every picture
+        if c["origin"] == "photo":
+            photo = (c.get("looks") or {}).get(c["photos"][0], "") if c.get("photos") else ""
+            return compose.merge_look(c.get("stated_look", ""), photo) or c["role"] or c["name"]
+        m = by_id.get(c["id"]) or {}; text = m.get("appearance") or m.get("outfit") or c["role"] or c["name"]
+        return ", ".join(str(x) for x in text) if isinstance(text, list) else text
     o["cast"] = [{"id": c["id"], "name": c["name"], "origin": c["origin"], "role": c["role"], "main": c["main"], "photo": c["origin"] == "photo", "photos": c.get("photos", []), "pointers": c.get("pointers", {}), "label": c["name"],
                   "kind": c.get("kind", "person"), "what": c.get("what", ""),
-                  "appearance": compose.cut_items(((c.get("looks") or {}).get(c["photos"][0]) if c["id"] in things else None) or (by_id.get(c["id"]) or {}).get("appearance") or (by_id.get(c["id"]) or {}).get("outfit") or c["role"] or c["name"], cc)} for c in chars]
+                  "appearance": compose.cut_items(look_of(c), cc)} for c in chars]
     return o
 
 
@@ -449,7 +465,7 @@ def shots(cfg, caps, req, p, an, dec, res, n, sat, log=None, feed=None):
         ids = [i for i in sh.get("characters", []) if i in names]
         order, labels = select_refs(cast, ids, k, int((cfg.get("pipeline") or {}).get("max_refs_per_picture", 2)))       # the photos of the people in THIS picture: as few as cover them
         cap_chars = cfg["limits"]["image_prompt_chars"]; clause_len = len(cfg["policy"].get("image_text", "")); clause_ref = ref_clause(cast, ids) if labels else ""
-        people = [{"label": labels.get(i) or by_id[i]["name"], "outfit": by_id[i]["appearance"]} for i in ids]
+        people = [{"label": labels.get(i) or by_id[i]["name"], "outfit": by_id[i]["appearance"], "fixed": True} for i in ids]       # a subject's words are decided once for the video: every shot says the same
         line = " ".join(f"{pe['label']}: {pe['outfit']}." for pe in people)
         if ids:                                                        # the people's words take what they need first, then the scene; the style (all but its look) gives way before either
             need = len(line) + (len(clause_ref) + 1 if clause_ref else 0)
