@@ -39,7 +39,7 @@ class Server:
     def __init__(self, tmp, mode="ok", dry=False, sleep="0", bg="async"):        # bg: "async" | "sync" | "flag" (decided per call by the flag file, like production)
         (tmp / "stub.py").write_text(STUB); (tmp / "image_stub.py").write_text(IMAGE_STUB)
         env = dict(os.environ, ROYVA_IMAGE_DIR=str(tmp / "images"), ROYVA_OUTBOX_DIR=str(tmp / "outbox"), ROYVA_VIDEO_DIR=str(tmp / "videos"), ROYVA_IMGVIDEO_LOCK=str(tmp / "lock"),
-                   ROYVA_INBOX_DIR=str(tmp / "inbox"), ROYVA_DRY_RUN_FLAG=str(tmp / "no_such_flag"), ROYVA_IMGVIDEO_ASYNC_FLAG=str(tmp / "async_flag"), ROYVA_IMGVIDEO_CMD=json.dumps([sys.executable, str(tmp / "stub.py")]),
+                   ROYVA_INBOX_DIR=str(tmp / "inbox"), ROYVA_OPENCODE_DB=str(tmp / "opencode.db"), ROYVA_DRY_RUN_FLAG=str(tmp / "no_such_flag"), ROYVA_IMGVIDEO_ASYNC_FLAG=str(tmp / "async_flag"), ROYVA_IMGVIDEO_CMD=json.dumps([sys.executable, str(tmp / "stub.py")]),
                    ROYVA_IMGVIDEO_IMAGE_CMD=json.dumps([sys.executable, str(tmp / "image_stub.py")]), STUB_MODE=mode, STUB_DIR=str(tmp), STUB_SLEEP=sleep, ROYVA_DRY_RUN="1" if dry else "0")
         env.pop("ROYVA_IMGVIDEO_ASYNC", None)
         if bg in ("async", "sync"): env["ROYVA_IMGVIDEO_ASYNC"] = "1" if bg == "async" else "0"
@@ -152,6 +152,37 @@ class T(unittest.TestCase):
         self.assertEqual(len((self.tmp / "outbox" / "logs" / f"{job}.research.txt").read_text()), 6000)
         parts, _ = s.call({"query": "a dog clip"}, "generate_video"); job = parts[0]["async_job"]; s.done(job)
         self.assertFalse((self.tmp / "outbox" / "logs" / f"{job}.research.txt").exists()); s.close()
+
+    def _message(self, text, photo, with_assistant=True):
+        import sqlite3 as _sq
+        con = _sq.connect(self.tmp / "opencode.db"); con.execute("create table if not exists session_message (id text, session_id text, type text, seq int, time_created int, time_updated int, data text)")
+        ctx = "<context>\nRight now it is Thursday. Tool hints.\n</context>\n\n"
+        con.execute("insert into session_message (data) values (?)", (json.dumps({"time": {"created": 1}, "text": ctx + text + f"\n\n[Attached photo: {photo}]", "files": []}),))
+        if with_assistant: con.execute("insert into session_message (data) values (?)", (json.dumps({"content": [{"toolInput": {"query": "REWRITE", "reference_photos": [str(photo)]}}]}),))
+        con.commit(); con.close()
+
+    def test_the_users_own_words_replace_the_chat_models_rewrite_when_photos_are_attached(self):
+        inbox = self.tmp / "inbox"; inbox.mkdir(); a = inbox / "2026-11-20-aa.jpg"; a.write_bytes(b"x"); mine = "Make a 1 minute video, the red tights and boots stay consistent."
+        self._message(mine, a); s = Server(self.tmp)
+        parts, _ = s.call({"query": "REWRITE with black tights", "reference_photos": [str(a)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job); args = self.agent_args(job)
+        self.assertIn(mine, args); self.assertNotIn("REWRITE with black tights", args); self.assertNotIn("Attached photo", " ".join(args)); self.assertNotIn("<context>", " ".join(args))      # context block and photo lines are gone
+        s.close()
+
+    def test_without_the_message_or_a_photo_or_a_database_the_chat_models_query_is_used(self):
+        inbox = self.tmp / "inbox"; inbox.mkdir(); a = inbox / "bb.jpg"; a.write_bytes(b"x"); s = Server(self.tmp)
+        parts, _ = s.call({"query": "REWRITE", "reference_photos": [str(a)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertIn("REWRITE", self.agent_args(job))            # no database file at all
+        self._message("another message", inbox / "other.jpg")
+        parts, _ = s.call({"query": "REWRITE2", "reference_photos": [str(a)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertIn("REWRITE2", self.agent_args(job))         # no message with this photo
+        c = inbox / "cc.jpg"; c.write_bytes(b"x"); self._message("my words", c)
+        parts, _ = s.call({"query": "REWRITE3"}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertIn("REWRITE3", self.agent_args(job))                                   # no photo: nothing to look up
+        (self.tmp / "opencode.db").write_bytes(b"not a database")
+        parts, _ = s.call({"query": "REWRITE4", "reference_photos": [str(c)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job); self.assertIn("REWRITE4", self.agent_args(job))         # a broken database is ignored
+        s.close()
+
+    def test_a_long_message_is_clipped_and_the_newest_message_with_the_photo_wins(self):
+        inbox = self.tmp / "inbox"; inbox.mkdir(); a = inbox / "dd.jpg"; a.write_bytes(b"x"); self._message("old words", a, with_assistant=False); self._message("w" * 1500, a); s = Server(self.tmp)
+        parts, _ = s.call({"query": "REWRITE", "reference_photos": [str(a)]}, "generate_video"); job = parts[0]["async_job"]; s.done(job); args = self.agent_args(job)
+        self.assertIn("w" * 1000, args); self.assertNotIn("old words", args); self.assertNotIn("REWRITE", args); s.close()
 
     def test_the_stated_length_is_passed_to_the_agent_for_videos_only_and_checked(self):
         s = Server(self.tmp); tools = {t["name"]: t for t in s.rpc("tools/list")["result"]["tools"]}

@@ -8,8 +8,10 @@ while it runs), honors the dry-run flag. Overrides: ROYVA_IMAGE_DIR, ROYVA_OUTBO
 import fcntl
 import json
 import os
+import re
 import secrets
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
@@ -32,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import runner
 DRY = lambda: os.environ.get("ROYVA_DRY_RUN") == "1" or DRY_FLAG.exists()
 SINGLE_TIMEOUT = int(os.environ.get("ROYVA_IMAGE_TIMEOUT", "600"))
+OC_DB = Path(os.environ.get("ROYVA_OPENCODE_DB", ROOT / "runtime" / "data" / "opencode" / "opencode.db"))      # OpenCode's own record of every message, read-only here
 MAX_QUERY, MAX_COUNT, MAX_PROMPT = 1000, 30, 6000
 MAX_SECONDS = 600                      # a sanity bound on what the chat model passes; the agent applies the real limit ([limits] max_video_seconds)
 MAX_RESEARCH = 6000          # facts the caller already found; longer text is clipped, never rejected (a rejection only makes the caller retry)
@@ -143,6 +146,26 @@ def generate_image(args):
             "image_path": str(dst), "seed": res["seed"], "secs": res["secs"], "backend": "comfyui" if res.get("backend") == "3090" else "local"}
 
 
+def raw_message(photo_paths):
+    """The user's own words for a request that has photos. The chat model rewrites the request before it calls the tool (and has changed colors, lengths and aspects in the rewrite), but OpenCode keeps the message as the user sent it,
+    ending with the "[Attached photo: <path>]" lines: find the newest message that contains one of these photos and return its text without the gateway's <context> block and without those lines. None when it cannot be found (the caller then keeps the chat model's query)."""
+    try:
+        con = sqlite3.connect(f"file:{OC_DB}?mode=ro", uri=True, timeout=2)
+        try:
+            for name in [Path(p).name for p in photo_paths]:
+                for (data,) in con.execute("select data from session_message where instr(cast(data as text), ?) > 0 order by rowid desc limit 10", (name,)):
+                    text = json.loads(data).get("text")
+                    if not isinstance(text, str): continue                                     # the assistant's rows have no "text"
+                    text = re.sub(r"^\s*<context>.*?</context>\s*", "", text, flags=re.S)
+                    text = re.sub(r"^\[Attached photo: .*\]\s*$", "", text, flags=re.M).strip()
+                    if text: return text[:MAX_QUERY]
+        finally:
+            con.close()
+    except Exception:                                                                          # noqa: BLE001  no database, a different layout, bad JSON: fall back to what the chat model passed
+        pass
+    return None
+
+
 def _start(kind, args):
     query = str(args.get("query", "")).strip()
     what = "picture set" if kind == "set" else "video"
@@ -167,6 +190,8 @@ def _start(kind, args):
             return [{"ok": False, "error": f"reference photo {Path(str(raw)).name!r} is not one of the photos the user sent in this chat (jpg, png or webp); use the path from the [Attached photo: ...] line"}]
         photos.append((str(src), who))
     photos = _with_album_mates(photos)
+    chat_query = query
+    if photos: query = raw_message([p for p, _w in photos]) or query                    # the user's own words, not the chat model's rewrite
     photos = [p + (f"|{w}" if w else "") for p, w in photos]
     if DRY(): return [{"ok": True, "did": f"[DRY RUN, nothing happened] Would start a {what} ({count or 'several'} pictures, {aspect}) for: {query[:100]}"}]
     LOCK.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +200,7 @@ def _start(kind, args):
     except BlockingIOError:
         lock.close(); return [{"ok": False, "error": f"another picture set or video is still being made; ask again in a few minutes"}]
     job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(3)}"
-    spec = {"job": job, "kind": kind, "query": query, "count": count, "aspect": aspect, **({"seconds": seconds} if seconds else {}), **({"references": photos} if photos else {})}
+    spec = {"job": job, "kind": kind, "query": query, **({"chat_query": chat_query} if chat_query != query else {}), "count": count, "aspect": aspect, **({"seconds": seconds} if seconds else {}), **({"references": photos} if photos else {})}
     research = str(args.get("research_text") or "").strip()[:MAX_RESEARCH]
     if research and kind == "video": spec["research_text"] = research
     if not ASYNC():                                                  # synchronous: wait for the job and return it as this tool's result (the lock is held by this process meanwhile)
