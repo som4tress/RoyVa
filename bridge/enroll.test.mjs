@@ -103,3 +103,45 @@ test('after a Gmail sign-in the owner is told, OpenCode restart is scheduled, an
   await e.handleMember(msg('/disconnect-gmail'));
   assert.equal(restarts, 2); assert.match(said.at(-1), /disconnected/);
 });
+
+test('/connect-drive and /disconnect-drive are enrollment commands', () => {
+  assert.deepEqual(parseCommand('/connect-drive'), {cmd: 'connect-drive', args: []});
+  assert.deepEqual(parseCommand('/connect_drive'), {cmd: 'connect-drive', args: []});
+  assert.deepEqual(parseCommand('/disconnect-drive'), {cmd: 'disconnect-drive', args: []});
+  assert.equal(parseCommand('/connect-drives'), null);
+});
+
+test('/connect-drive asks the gateway for a Drive link for that sender and explains the sign-in', async () => {
+  const r = rig({'/v1/enroll/drive/start': {ok: true, url: 'https://accounts.google.com/x'}});
+  assert.equal(await r.e.handleMember(msg('/connect-drive')), true);
+  assert.deepEqual(r.calls, [['/v1/enroll/drive/start', {user: 'telegram:7'}]]);
+  assert.match(r.said[0], /https:\/\/accounts\.google\.com\/x/); assert.match(r.said[0], /Drive/); assert.match(r.said[0], /read/i);
+  const bad = rig({'/v1/enroll/drive/start': {ok: false, error: 'You are not enrolled.'}});
+  await bad.e.handleMember(msg('/connect-drive')); assert.equal(bad.said[0], 'You are not enrolled.');
+});
+
+test('a pasted sign-in for Drive says Drive, tells the owner, and schedules the OpenCode reload; Gmail still says Gmail', async () => {
+  let restarts = 0;
+  const calls = [], said = [], told = [];
+  const responses = {'/v1/enroll/gmail/finish': {ok: true, service: 'drive', name: 'alice', mode: 'readonly', owners: ['1'], needs_restart: true}};
+  const e = makeEnrollment({call: async (p, b) => { calls.push(p); return responses[p]; }, reply: async (m, t) => said.push(t), tell: async (id, t) => told.push(t), allowlist: {refresh: async () => {}}, restartWhenIdle: async () => { restarts++; }});
+  await e.handleMember(msg('0123456789abcdef0123456789abcdef.4/0Aabc'));
+  assert.match(said[0], /Google Drive connected/); assert.doesNotMatch(said[0], /Gmail/); assert.match(told[0], /alice connected their Google Drive/);
+  await new Promise(r => setTimeout(r, 5)); assert.equal(restarts, 1);
+  responses['/v1/enroll/gmail/finish'] = {ok: true, name: 'alice', mode: 'readonly', owners: [], needs_restart: true};
+  await e.handleMember(msg('0123456789abcdef0123456789abcdef.4/0Aabc')); assert.match(said[1], /Gmail connected/);
+});
+
+test('/disconnect-drive removes only Drive and schedules the reload', async () => {
+  let restarts = 0; const said = [];
+  const e = makeEnrollment({call: async () => ({ok: true, had_connection: true, needs_restart: true}), reply: async (m, t) => said.push(t), tell: async () => {}, allowlist: {refresh: async () => {}}, restartWhenIdle: async () => { restarts++; }});
+  await e.handleMember(msg('/disconnect-drive'));
+  assert.match(said[0], /Google Drive was disconnected/); assert.doesNotMatch(said[0], /Gmail/); await new Promise(r => setTimeout(r, 5)); assert.equal(restarts, 1);
+  const none = rig({'/v1/enroll/drive/stop': {ok: true, had_connection: false}}); await none.e.handleMember(msg('/disconnect-drive')); assert.match(none.said[0], /No Google Drive was connected/);
+});
+
+test('an approved member is told about both connections, and revoke mentions Drive when it was removed', async () => {
+  const r = rig({'/v1/enroll/decide': {ok: true, approved: true, name: 'alice', user: 'telegram:7'}, '/v1/enroll/revoke': {ok: true, name: 'alice', drive_removed: true}});
+  await r.e.handleMember(msg('/accept alice')); assert.match(r.told[0][1], /\/connect-gmail/); assert.match(r.told[0][1], /\/connect-drive/);
+  await r.e.handleMember(msg('/revoke alice')); assert.match(r.said.at(-1), /Drive/);
+});

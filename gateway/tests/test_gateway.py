@@ -737,3 +737,17 @@ def test_video_turn_grants_exclude_web_search(tmp_path):
     m = ask_as(gw, "make a meme about cats", "telegram:2")
     assert "web.search" not in v.routing.profile_tools and "image.video" in v.routing.profile_tools
     assert "web.search" in m.routing.profile_tools
+
+
+def test_user_without_a_connected_drive_is_told_how_to_connect_it(tmp_path):
+    users = {"telegram:1": {"person": "", "scopes": ["*"], "mail": "default"}, "telegram:5": {"person": "alice", "scopes": []}}
+    gw, oc, _ = make(tmp_path, {"find the lease in my drive": ["drive_search"]}, users=users)
+    r = ask_as(gw, "find the lease in my drive", "telegram:5")
+    assert "/connect-drive" in r.answer and not oc.calls                    # no session, no tools, no improvised reply
+    # a user whose Drive is connected gets a session with only THEIR server's tools
+    (tmp_path / "drive").mkdir(); (tmp_path / "drive" / "accounts.json").write_text(json.dumps({"alice": {}}))
+    users["telegram:5"]["drive"] = "alice"
+    gw2, oc2, _ = make(tmp_path, {"find the lease in my drive": ["drive_search"]}, users=users)
+    assert ask_as(gw2, "find the lease in my drive", "telegram:5").answer == "all good"
+    create = next(c for c in oc2.calls if c[0] == "create")
+    assert granted(create) == {"drive-u-alice_search_files", "drive-u-alice_list_folder", "drive-u-alice_read_file", "drive-u-alice_find_in_file"}
