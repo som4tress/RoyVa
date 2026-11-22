@@ -77,3 +77,14 @@ test('an old result nobody claimed is parked, and a garbage file is set aside', 
   const old = new Date(Date.now() - 7 * 3600 * 1000); utimesSync(join(s.dir, 'done', 'job-old-0001.json'), old, old);
   await deliverOnce(s.ctx); assert.deepEqual([s.ls('orphaned'), s.ls('failed')], [['job-old-0001.json'], ['garbage.json']]);
 });
+
+test('the messages a finished video posts are reported with the conversation they belong to, so Forget can remove them', async () => {
+  const s = setup(); registerJob(s.dir, 'job-vid-0099', { chatId: 42, replyTo: 7, kind: 'video', sessionID: 'ses_Z' });
+  const f = join(s.videoDir, 'v.mp4'); writeFileSync(f, Buffer.alloc(2000)); s.done('job-vid-0099', { ok: true, kind: 'video', video: { path: f }, title: 'T' });
+  let id = 500; const sent = [];
+  s.ctx.fetchImpl = async () => ({ json: async () => ({ ok: true, result: { message_id: ++id } }) });
+  s.ctx.sendText = async () => ({ message_id: ++id });
+  s.ctx.onSent = (chatId, ids, sessionID) => sent.push({ chatId, ids, sessionID });
+  await deliverOnce(s.ctx);
+  assert.deepEqual(sent.flatMap(x => x.ids).sort(), [501, 502]); assert.ok(sent.every(x => x.chatId === 42 && x.sessionID === 'ses_Z'));
+});

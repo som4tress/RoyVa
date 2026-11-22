@@ -131,3 +131,12 @@ test('sendPhotos gives up after a few stalls, says so, and still tries the other
   await assert.rejects(() => sendPhotos('T', 42, [good, good], 7, fetchImpl, { gapMs: 0, retryDelayMs: 0 }), /network: TimeoutError.*2 of 2 pictures not sent/s);
   assert.equal(calls, 8);                                                  // 4 attempts for each of the two pictures
 });
+
+test('sendPhotos and sendVideos return the ids of the messages they sent', async () => {
+  const { mkdtempSync: mk, writeFileSync: wf } = await import('node:fs'); const { tmpdir: td } = await import('node:os'); const { join: j } = await import('node:path');
+  const d = mk(j(td(), 'ids-')); const files = ['a.png', 'b.png'].map(n => { const f = j(d, n); wf(f, Buffer.alloc(100)); return f; }); const mp4 = j(d, 'v.mp4'); wf(mp4, Buffer.alloc(100));
+  let n = 100; const fetchImpl = async () => ({ json: async () => ({ ok: true, result: { message_id: ++n } }) });
+  const { sendVideos: sv } = await import('./images.mjs');
+  assert.deepEqual(await sendPhotos('T', 1, files, 0, fetchImpl, { gapMs: 0 }), [101, 102]);
+  assert.deepEqual(await sv('T', 1, [mp4], 0, fetchImpl), [103]);
+});
