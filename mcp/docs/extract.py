@@ -17,6 +17,9 @@ UNSUPPORTED = {".doc": "Old .doc files cannot be read here. Please send it again
                ".ppt": "Old .ppt files cannot be read here. Please send it again as .pptx, .odp or PDF."}
 
 
+SUPPORTED = TEXT | {".csv", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"}
+
+
 def _fail(msg): return {"ok": False, "error": msg}
 
 
@@ -147,7 +150,7 @@ def extract(path):
     p = Path(path); ext = p.suffix.lower()
     try:
         if ext in UNSUPPORTED: return _fail(UNSUPPORTED[ext])
-        if ext not in TEXT | {".csv", ".html", ".htm", ".pdf", ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp"}:
+        if ext not in SUPPORTED:
             return _fail(f"Files of type {ext or '(no extension)'} cannot be read here. Supported: PDF, .docx, .odt, .xlsx, .ods, .pptx, .odp, HTML, TXT, MD, CSV.")
         if p.stat().st_size > MAX_BYTES: return _fail("This file is too large to read (the limit is 50 MB).")
         if ext == ".pdf": return _pdf(str(p))
@@ -161,3 +164,26 @@ def extract(path):
         return _ok([text], "document", ext)
     except Exception as e:                                       # a damaged file is a message for the user, not a crash
         return _fail(f"This {ext.lstrip('.').upper() or 'file'} could not be opened ({type(e).__name__}); it may be damaged or protected.")
+
+
+def assemble(r):
+    """One text for a successful extraction, with a "--- Page 2 ---" line before each page or slide, and where each section starts in that text."""
+    text, starts = "", []
+    for i, s in enumerate(r["sections"]):
+        mark = "--- %s %d ---\n" % (r["unit"].capitalize(), i + 1) if r["unit"] in ("page", "slide") and len(r["sections"]) > 1 else ""
+        starts.append(len(text)); text += mark + s + "\n\n"
+    return text.rstrip("\n"), starts
+
+
+def find_hits(text, starts, unit, query, context=200, max_hits=10):
+    """(hits, total, more): every place the query appears (case-insensitive), with the text around it and the page, slide or sheet number."""
+    low, q, found, i = text.lower(), query.lower(), [], 0
+    while True:
+        i = low.find(q, i)
+        if i < 0: break
+        found.append(i); i += max(1, len(q))
+    hits = []
+    for h in found[:max_hits]:
+        number = max([k for k, s in enumerate(starts) if s <= h] or [0]) + 1 if unit != "document" else None
+        hits.append({"start": h, "unit": number, "context": text[max(0, h - context):h + len(q) + context]})
+    return hits, len(found), len(found) > max_hits

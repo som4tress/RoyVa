@@ -10,8 +10,8 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "docs"))
+sys.path.insert(0, str(HERE))                       # this folder's server.py, not the document reader's
 import server  # noqa: E402
 
 GDOC, GSHEET, GSLIDES, GFOLDER = ("application/vnd.google-apps.document", "application/vnd.google-apps.spreadsheet",
@@ -183,7 +183,7 @@ class SafetyTests(Base):
         self.d.search_files(query="a"); self.d.list_folder(); self.d.read_file("d1"); self.d.find_in_file("d1", "x")
         for method, url, token in self.g.calls:
             self.assertEqual(method, "POST" if url.endswith("/token") else "GET", url)
-            self.assertNotRegex(url, r"permissions|trash|copy|/watch|delete")
+            self.assertNotRegex(urlparse(url).path, r"permissions|trash|copy|watch|delete|emptyTrash")      # the path, not the query (which says trashed = false)
 
     def test_json_rpc_lists_and_calls_the_tools_and_marks_errors(self):
         server.CLIENT = self.d

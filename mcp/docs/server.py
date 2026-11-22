@@ -46,11 +46,8 @@ def _load(path):
     if key not in _cache:
         r = extract.extract(str(real)); _cache.clear()
         if r["ok"]:
-            text, starts = "", []
-            for i, s in enumerate(r["sections"]):
-                mark = "--- %s %d ---\n" % (r["unit"].capitalize(), i + 1) if r["unit"] in ("page", "slide") and len(r["sections"]) > 1 else ""
-                starts.append(len(text)); text += mark + s + "\n\n"
-            r = dict(r, text=text.rstrip("\n"), starts=starts)
+            text, starts = extract.assemble(r)
+            r = dict(r, text=text, starts=starts)
         _cache[key] = r
     r = _cache[key]
     return ((real, r), None) if r["ok"] else (None, {"ok": False, "error": r["error"]})
@@ -75,16 +72,8 @@ def find_in_document(path, query, context=200, max_hits=10):
     if not q: return {"ok": False, "error": "Say what to look for."}
     try: context = min(1000, max(0, int(context))); max_hits = min(50, max(1, int(max_hits)))
     except (TypeError, ValueError): context, max_hits = 200, 10
-    text, low, hits, i = r["text"], r["text"].lower(), [], 0
-    while True:
-        i = low.find(q.lower(), i)
-        if i < 0: break
-        hits.append(i); i += max(1, len(q))
-    out = []
-    for h in hits[:max_hits]:
-        unit = max([k for k, s in enumerate(r["starts"]) if s <= h] or [0]) + 1 if r["unit"] != "document" else None
-        out.append({"start": h, "unit": unit, "context": text[max(0, h - context):h + len(q) + context]})
-    return {"ok": True, "name": real.name, "query": q, "hits": out, "total_hits": len(hits), "more": len(hits) > max_hits, "notice": NOTICE}
+    hits, total, more = extract.find_hits(r["text"], r["starts"], r["unit"], q, context, max_hits)
+    return {"ok": True, "name": real.name, "query": q, "hits": hits, "total_hits": total, "more": more, "notice": NOTICE}
 
 
 TOOLS = [
