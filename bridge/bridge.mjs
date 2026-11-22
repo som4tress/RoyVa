@@ -1,4 +1,5 @@
 import {telegramMedia, telegramAlbumMedia, createAlbumCollector, withVideoFrames, saveInboxImages} from './media.mjs';
+import {documentOf, telegramDocument} from './documents.mjs';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -401,6 +402,10 @@ export async function main({transcriber = createTranscriber()} = {}) {
         if (transcript) replyTo = {...message, message_id: transcript.message_id};
       } finally { await rm(directory, { recursive: true, force: true }); }
     }
+    // documents (PDF, Word, OpenDocument, Excel, PowerPoint, text): saved to the inbox and named in the prompt, like photos
+    const documentPrompt = await telegramDocument({...message, caption: prompt}, tg, token);
+    if (documentPrompt) return {prompt: documentPrompt, replyTo, files: []};
+    if (message.document && !/^(image|video)\//.test(message.document.mime_type || '') && !documentOf(message)) throw new Error('I cannot read that kind of file. Send a PDF, Word (.docx), OpenDocument, Excel, PowerPoint, text or CSV file.');
     // test-only: a local file stands in for an uploaded photo/video (same bytes-to-data-URI path as telegramMedia)
     const files = message._test_file ? await testFile(message._test_file) : await telegramAlbumMedia(message, tg, token);
     if (message._test_file && files.length && !prompt.trim()) prompt = /^data:video/.test(files[0].uri) ? 'Describe this video.' : 'Describe this image.';
