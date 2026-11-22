@@ -7,6 +7,7 @@ import { INBOX_DIR } from './media.mjs';
 
 export const MAX_DOC_BYTES = 20 * 1024 * 1024;               // Telegram's own download limit for bots
 const KEEP_DOCS = 30;
+export const MAX_TOTAL_BYTES = 30 * 1024 * 1024;       // all documents of one message together
 const EXT = /\.(pdf|docx?|odt|ods|odp|xlsx?|pptx?|txt|md|markdown|csv|html?|rtf)$/i;
 const MIME = /^(application\/pdf|application\/msword|application\/rtf|application\/vnd\.(openxmlformats-officedocument\.(wordprocessingml|spreadsheetml|presentationml)\.[a-z]+|oasis\.opendocument\.(text|spreadsheet|presentation)|ms-(excel|powerpoint))|text\/(plain|markdown|csv|html|rtf))$/i;
 
@@ -23,24 +24,38 @@ const safeName = name => {
   return clean && clean !== '.' ? clean : 'document';
 };
 
-export function saveInboxDocument({ bytes, name }, text, dir = INBOX_DIR) {
+const note = (text, lines) => `${String(text || '').trim() || 'Read this document and tell me what it is about.'}\n\n${lines.join('\n')}`;
+
+function saveFile({ bytes, name }, dir) {
   const docs = join(dir, 'docs'); mkdirSync(docs, { recursive: true, mode: 0o700 });
   const path = join(docs, `${new Date().toISOString().replace(/[:.]/g, '-')}-${randomBytes(2).toString('hex')}-${safeName(name)}`);
   writeFileSync(path, bytes, { mode: 0o600 });
   const old = readdirSync(docs).map(n => join(docs, n)).sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs || (a < b ? -1 : 1));
   for (const p of old.slice(0, Math.max(0, old.length - KEEP_DOCS))) try { unlinkSync(p); } catch {}
-  return `${String(text || '').trim() || 'Read this document and tell me what it is about.'}\n\n[Attached document: ${path}]`;
+  return path;
 }
 
-// Returns the prompt (caption + the attached-document line), or null when the message has no readable document. Throws a message the user can read.
+export function saveInboxDocument(file, text, dir = INBOX_DIR) {
+  return note(text, [`[Attached document: ${saveFile(file, dir)}]`]);
+}
+
+// Returns the prompt (caption + one attached-document line per file), or null when the message has no readable document. Throws a message the user can read.
+// Several files sent together arrive as an album (message._album): every file is saved, in the order sent; one that cannot be read is named as not read.
 export async function telegramDocument(message, tg, token, dir = INBOX_DIR, fetchFn = fetch) {
-  const doc = documentOf(message);
-  if (!doc) return null;
-  if (doc.file_size > MAX_DOC_BYTES) throw new Error('Document limit: 20 MB.');
-  const file = await tg('getFile', { file_id: doc.file_id });
-  const response = await fetchFn(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(60000) });
-  if (!response.ok) throw new Error('Document download failed.');
-  const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > MAX_DOC_BYTES) throw new Error('Document limit: 20 MB.');
-  return saveInboxDocument({ bytes, name: doc.name }, message.caption || message.text, dir);
+  const parts = message._album || [message];
+  const docs = parts.map(documentOf).filter(Boolean);
+  if (!docs.length) return null;
+  if (docs.some(d => d.file_size > MAX_DOC_BYTES)) throw new Error('Document limit: 20 MB per file.');
+  if (docs.reduce((n, d) => n + (d.file_size || 0), 0) > MAX_TOTAL_BYTES) throw new Error('Document limit: 30 MB in total per message.');
+  const lines = [];
+  for (const doc of docs) {
+    const file = await tg('getFile', { file_id: doc.file_id });
+    const response = await fetchFn(`https://api.telegram.org/file/bot${token}/${file.file_path}`, { signal: AbortSignal.timeout(60000) });
+    if (!response.ok) throw new Error('Document download failed.');
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_DOC_BYTES) throw new Error('Document limit: 20 MB per file.');
+    lines.push(`[Attached document: ${saveFile({ bytes, name: doc.name }, dir)}]`);
+  }
+  for (const p of parts) if (p.document && !/^(image|video)\//.test(p.document.mime_type || '') && !documentOf(p)) lines.push(`[Not read: ${safeName(p.document.file_name)} (this kind of file cannot be read)]`);
+  return note(message.caption || message.text, lines);
 }

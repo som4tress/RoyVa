@@ -405,7 +405,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
     // documents (PDF, Word, OpenDocument, Excel, PowerPoint, text): saved to the inbox and named in the prompt, like photos
     const documentPrompt = await telegramDocument({...message, caption: prompt}, tg, token);
     if (documentPrompt) return {prompt: documentPrompt, replyTo, files: []};
-    if (message.document && !/^(image|video)\//.test(message.document.mime_type || '') && !documentOf(message)) throw new Error('I cannot read that kind of file. Send a PDF, Word (.docx), OpenDocument, Excel, PowerPoint, text or CSV file.');
+    if ((message._album || [message]).some(p => p.document && !/^(image|video)\//.test(p.document.mime_type || '') && !documentOf(p))) throw new Error('I cannot read that kind of file. Send a PDF, Word (.docx), OpenDocument, Excel, PowerPoint, text or CSV file.');
     // test-only: a local file stands in for an uploaded photo/video (same bytes-to-data-URI path as telegramMedia)
     const files = message._test_file ? await testFile(message._test_file) : await telegramAlbumMedia(message, tg, token);
     if (message._test_file && files.length && !prompt.trim()) prompt = /^data:video/.test(files[0].uri) ? 'Describe this video.' : 'Describe this image.';
