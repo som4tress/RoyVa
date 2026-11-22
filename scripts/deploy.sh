@@ -5,6 +5,7 @@ set -e
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$R/scripts/check.sh"
 echo "== rendering config/opencode.json from the template (a new MCP server only exists after this)"; bash "$R/scripts/render-config.sh" || exit 1
+echo "== putting every connected person's Gmail and Drive servers back into the rendered config"; "$R/scripts/royva-gmail" sync || exit 1
 echo "== restarting (opencode -> gateway -> bridge)"
 systemctl --user restart royva-opencode
 sleep 3

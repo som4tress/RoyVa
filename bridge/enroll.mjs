@@ -8,7 +8,7 @@ export const looksLikeSignin = text => { const t = String(text || '').replace(/&
 
 export function parseCommand(text) {
   const t = String(text || '').trim();
-  const m = /^\/(invite|join|start|people|accept|decline|revoke|connect-gmail|connect_gmail|connect-email|disconnect-gmail)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(t);
+  const m = /^\/(invite|join|start|people|accept|decline|revoke|connect-gmail|connect_gmail|connect-email|disconnect-gmail|connect-drive|connect_drive|disconnect-drive)(?:@\w+)?(?:\s+([\s\S]*))?$/i.exec(t);
   if (!m) return null;
   return {cmd: m[1].toLowerCase().replace('_', '-').replace('connect-email', 'connect-gmail'), args: (m[2] || '').trim().split(/\s+/).filter(Boolean)};
 }
@@ -57,11 +57,12 @@ export function makeEnrollment({call, reply, tell, allowlist, restartWhenIdle = 
     const text = message.text || '';
     if (looksLikeSignin(text)) {                                   // a pasted sign-in address/code: straight to the gateway, never to the model
       const r = await must('/v1/enroll/gmail/finish', {user: user(message), text: text.replace(/&amp;/g, '&')});
+      const what = r.service === 'drive' ? 'Google Drive' : 'Gmail', how = r.mode === 'manage' ? 'read and organise' : 'read only';
       await reply(message, r.ok
-        ? `Gmail connected (${r.mode === 'manage' ? 'read and organise' : 'read only'}). It becomes available in about a minute.`
+        ? `${what} connected (${how}). It becomes available in about a minute.`
         : r.error);
       if (r.ok) {
-        for (const owner of r.owners || []) await tell(owner, `${r.name} connected their Gmail (${r.mode === 'manage' ? 'read and organise' : 'read only'}).`);
+        for (const owner of r.owners || []) await tell(owner, `${r.name} connected their ${what} (${how}).`);
         if (r.needs_restart) void restartWhenIdle();               // OpenCode must reload to see the new Gmail servers; done when no run is active
       }
       return true;
@@ -87,13 +88,13 @@ export function makeEnrollment({call, reply, tell, allowlist, restartWhenIdle = 
         await allowlist.refresh(true);
         await reply(message, r.approved ? `${r.name} is in. They can use the home and general skills; no email unless they connect their own.` : `${r.name} was declined.`);
         await tell(r.user.split(':')[1], r.approved
-          ? 'You are in! Ask me anything. To connect your own Gmail, send /connect-gmail.' : 'Sorry, the owner did not approve this request.');
+          ? 'You are in! Ask me anything. To connect your own Gmail, send /connect-gmail; for your Google Drive (read-only), send /connect-drive.' : 'Sorry, the owner did not approve this request.');
         return true;
       }
       case 'revoke': {
         const r = await must('/v1/enroll/revoke', {user: u, name: c.args[0] || ''});
         if (r.ok) await allowlist.refresh(true);
-        await reply(message, r.ok ? `${r.name} removed${r.mailbox_removed ? ' (their Gmail connection was deleted too)' : ''}.` : r.error);
+        await reply(message, r.ok ? `${r.name} removed${r.mailbox_removed ? ' (their Gmail connection was deleted too)' : ''}${r.drive_removed ? ' (their Google Drive connection was deleted too)' : ''}.` : r.error);
         return true;
       }
       case 'connect-gmail': {
@@ -101,6 +102,19 @@ export function makeEnrollment({call, reply, tell, allowlist, restartWhenIdle = 
         await reply(message, r.ok
           ? `Open this link, sign in with your Gmail account and tick every box:\n${r.url}\n\nAt the end you will see either a page with a code (tap Copy) or a page that cannot be reached whose address starts with localhost. Paste the code, or that full address, here as a message by itself. The link works for 10 minutes.`
           : r.error);
+        return true;
+      }
+      case 'connect-drive': {
+        const r = await must('/v1/enroll/drive/start', {user: u});
+        await reply(message, r.ok
+          ? `Open this link, sign in with the Google account whose Drive you want to use and tick the Drive box (RoyVa can only READ your files; it cannot change, share or delete anything):\n${r.url}\n\nAt the end you will see either a page with a code (tap Copy) or a page that cannot be reached whose address starts with localhost. Paste the code, or that full address, here as a message by itself. The link works for 10 minutes.`
+          : r.error);
+        return true;
+      }
+      case 'disconnect-drive': {
+        const r = await must('/v1/enroll/drive/stop', {user: u});
+        await reply(message, r.ok ? (r.had_connection ? 'Your Google Drive was disconnected and its access token deleted.' : 'No Google Drive was connected.') : r.error);
+        if (r.ok && r.needs_restart) void restartWhenIdle();
         return true;
       }
       case 'disconnect-gmail': {

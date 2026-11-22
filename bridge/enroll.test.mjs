@@ -62,7 +62,7 @@ test('invite, people, accept, decline, revoke and connect-gmail call the right g
     ['/v1/enroll/decide', 'telegram:1'], ['/v1/enroll/revoke', 'telegram:1'], ['/v1/enroll/gmail/start', 'telegram:7']]);
   assert.equal(r.calls[0][1].gmail, 'alice@gmail.com');
   assert.match(r.said[0], /test user/); assert.match(r.said[0], /start=K7QX-4WZ9/);
-  assert.deepEqual(r.told[0], ['7', 'You are in! Ask me anything. To connect your own Gmail, send /connect-gmail.']);
+  assert.deepEqual(r.told[0], ['7', 'You are in! Ask me anything. To connect your own Gmail, send /connect-gmail; for your Google Drive (read-only), send /connect-drive.']);
 });
 
 test('the live allowlist keeps env owners, adds enrolled ids, caches, and survives a gateway outage', async () => {
