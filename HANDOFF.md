@@ -1230,3 +1230,10 @@ First episode whose narration, still prompts and motion prompts were written by 
 * **Libraries:** pypdf, python-docx, openpyxl, python-pptx in `gateway/.venv` (`mcp/docs/requirements.txt`); the docs MCP runs with that python (config template entry `docs`).
 * **Tests (written and committed first, 658625f):** `mcp/docs/test_docs.py` (20), `bridge/documents.test.mjs` (7), `gateway/tests/test_documents.py` (9), 11 new eval items. Router 9B on the 11 new items: 11/11; mail items 17/19 before and after (e091, e140 were already misses).
 * **Not tested live yet:** a real Telegram upload (needs deploy). The two unproven points: the chat model uses the path from the attached line, and large PDFs read in pieces.
+
+##### 2026-11-22 - "Forget this chat" also removes the messages from Telegram
+
+* **What:** the button still deletes the OpenCode session and the gateway/bridge records, and now also deletes every Telegram message of that conversation: the user's question (and steering replies, every file of an album), the answers, the live status bar, pictures and videos (also the ones posted later by the background outbox), permission requests, and the answer that holds the button.
+* **How:** `bridge/forget.mjs` (`trackMessages`, `messagesOfSession`, `deleteMessages`); `sendPhotos`/`sendVideos` now return the message ids; the outbox record carries `sessionID` and reports each post through `onSent`.
+* **Limit (Telegram's rule):** a bot can delete messages in a private chat only within 48 hours of sending. Older ones stay; the button's reply says how many. Messages sent before this change (pictures, videos) were not recorded, so only their text replies and questions are removed.
+* **Tests (first):** `bridge/forget.test.mjs`, plus id-return tests in `images.test.mjs` and a background-delivery test in `outbox.test.mjs`.

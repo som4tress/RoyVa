@@ -1,5 +1,6 @@
 import {telegramMedia, telegramAlbumMedia, createAlbumCollector, withVideoFrames, saveInboxImages} from './media.mjs';
 import {documentOf, telegramDocument} from './documents.mjs';
+import {trackMessages, messagesOfSession, deleteMessages} from './forget.mjs';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, readdirSync, rmSync, renameSync } from 'node:fs';
 import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -493,7 +494,7 @@ export async function main({transcriber = createTranscriber()} = {}) {
         return send(message, process.env.ROYVA_GATEWAY_URL ? gatewayDownText(error) : 'The assistant backend is not reachable right now. Please try again in a moment.');
       }
     }
-    state.messages[`${message.chat.id}:${message.message_id}`] = sessionID; save();
+    trackMessages(state, message.chat.id, [message.message_id, ...(message._album || []).map(m => m.message_id)], sessionID); save();       // every message of the conversation is remembered, so Forget this chat can remove them from Telegram
     const running = linked && active.get(sessionID);
     if (running?.accepting) {
       void ackSteer(message);                       // the owner sees at once that the reply was taken as a steer, before the run has even admitted it
@@ -621,15 +622,15 @@ export async function main({transcriber = createTranscriber()} = {}) {
         });
         console.log(`Run finished: ${String(answer).length} chars, ${rows.length} rows; sending reply`);
         const bgJobs = asyncJobs(rows);
-        if (bgJobs.length) for (const j of bgJobs) registerJob(OUTBOX_DIR, j.job, { chatId: run.replyTo.chat.id, replyTo: run.replyTo.message_id, statusMessageId: status?.message_id, startedAt: started, kind: j.kind });      // a set or video is being made in the background: remember who asked, and the live bar now follows the job
+        if (bgJobs.length) for (const j of bgJobs) registerJob(OUTBOX_DIR, j.job, { chatId: run.replyTo.chat.id, replyTo: run.replyTo.message_id, statusMessageId: status?.message_id, sessionID, startedAt: started, kind: j.kind });      // a set or video is being made in the background: remember who asked, and the live bar now follows the job
         else await updateStatus(true);
         const runUsage = usageTotals.record(sessionID, rows);
         usageTotals.recordImages(imageRuns(rows));
         // The picture goes first and on its own, so a failed or rate-limited text reply can never lose it.
         const pictures = generatedImages(rows);
-        if (pictures.length) try { await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id, undefined, { captions: imageCaptions(rows) }); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
+        if (pictures.length) try { trackMessages(state, run.replyTo.chat.id, await sendPhotos(token, run.replyTo.chat.id, pictures, run.replyTo.message_id, undefined, { captions: imageCaptions(rows) }), sessionID); save(); } catch (error) { console.error('Could not send picture:', error.message); await send(run.replyTo, `I made the picture but could not send it: ${error.message}`, sessionID).catch(() => {}); }
         const videos = generatedVideos(rows);
-        if (videos.length) try { await sendVideos(token, run.replyTo.chat.id, videos, run.replyTo.message_id); } catch (error) { console.error('Could not send video:', error.message); await send(run.replyTo, `I made the video but could not send it: ${error.message}`, sessionID).catch(() => {}); }
+        if (videos.length) try { trackMessages(state, run.replyTo.chat.id, await sendVideos(token, run.replyTo.chat.id, videos, run.replyTo.message_id), sessionID); save(); } catch (error) { console.error('Could not send video:', error.message); await send(run.replyTo, `I made the video but could not send it: ${error.message}`, sessionID).catch(() => {}); }
         await send(run.replyTo, answer + actionReport(rows, routed) + (runUsage.passes ? formatFinalUsage(runUsage, usageTotals.lifetime, usageTotals.since, loadPricing(PRICING_FILE)) : ''), sessionID, { assistantIDs: rows.filter(row => row.type === 'assistant').map(row => row.id) });
       } catch (error) {
         console.error('Request failed:', error.stack || error.name);   // the stack goes to the journal; the chat only gets the short reason
@@ -675,10 +676,12 @@ export async function main({transcriber = createTranscriber()} = {}) {
       if (active.has(sessionID)) await stopSession(sessionID);
       await openCodeAPI(`/api/session/${encodeURIComponent(sessionID)}`, 'DELETE').catch(error => { if (!String(error.message).includes('404')) throw error; });
       await gatewayCall('/v1/forget', {session_id: sessionID}).catch(error => console.error('Gateway forget failed:', error.message));
+      const toRemove = messagesOfSession(state, sessionID);                 // the question, the answers, the status bar, pictures and videos of this conversation
       for (const table of [state.messages, state.answers, state.permissions]) for (const [k, v] of Object.entries(table)) if ((typeof v === 'string' ? v : v?.sessionID) === sessionID) delete table[k];
       save();
-      await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});
-      await answer('Forgotten. This chat can no longer be continued.');
+      const removed = await deleteMessages(tg, toRemove.filter(m => m.chatId === message.chat.id));
+      await tg('editMessageReplyMarkup', {chat_id: message.chat.id, message_id: message.message_id, reply_markup: {inline_keyboard: []}}).catch(() => {});       // only matters when that message could not be deleted
+      await answer(removed.failed ? `Forgotten. ${removed.failed} message${removed.failed > 1 ? 's' : ''} could not be removed from Telegram (older than 48 hours); delete ${removed.failed > 1 ? 'them' : 'it'} by hand.` : 'Forgotten, and removed from this chat.');
     } catch (error) {
       console.error('Forget button failed:', error.message || error.name);
       await answer('Could not delete this chat. Try again later.');
@@ -757,7 +760,8 @@ export async function main({transcriber = createTranscriber()} = {}) {
   console.log(`Telegram connected as @${me.username}; standalone messages create native sessions.`);
   startOutboxWatcher({ token, sendText: (chatId, text, replyTo) => tg('sendMessage', { chat_id: chatId, text, ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}) }),
     editStatus: (chatId, messageId, text, { stop } = {}) => tg('editMessageText', { chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: stop ? [[{ text: '⏹ Stop', callback_data: `job:stop:${stop}` }]] : [] } }),
-    onImages: runs => usageTotals.recordImages(runs) });      // posts finished picture sets and videos
+    onImages: runs => usageTotals.recordImages(runs),
+    onSent: (chatId, ids, sessionID) => { trackMessages(state, chatId, ids, sessionID); save(); } });      // posts finished picture sets and videos
   await tg('setMyCommands', { commands: [{ command: 'claude', description: 'Talk to Claude (the developer assistant)' }, { command: BRAND.command, description: `Talk to ${BRAND.assistant} (default)` }, { command: 'status', description: 'Connection and mode' }, { command: 'approve', description: 'Approve the pending request (reply to it)' }, { command: 'deny', description: 'Deny the pending request (reply to it)' }, { command: 'stop', description: 'Stop the running request' }, { command: 'help', description: 'How to use this chat' }] }).catch(error => console.error('setMyCommands failed:', error.message));
   // RoyVa test hook (additive): ROYVA_INJECT_DIR holds {label,text}.json jobs. Each is mirrored into the owner's chat
   // as a visible "test" message, then fed to handle() as if the owner typed it, so the whole run is watchable on Telegram.

@@ -15,7 +15,7 @@ const moveTo = (dir, folder, file, name) => { mkdirSync(join(dir, folder), { rec
 export function registerJob(dir, job, target) {
   if (!safeName(job)) return false;
   mkdirSync(join(dir, 'pending'), { recursive: true });
-  writeFileSync(join(dir, 'pending', `${job}.json`), JSON.stringify({ job, chatId: target.chatId, replyTo: target.replyTo, statusMessageId: target.statusMessageId, startedAt: target.startedAt ?? Date.now(), kind: target.kind === 'video' ? 'video' : 'set', createdAt: Date.now(), attempts: 0 }));
+  writeFileSync(join(dir, 'pending', `${job}.json`), JSON.stringify({ job, chatId: target.chatId, replyTo: target.replyTo, statusMessageId: target.statusMessageId, sessionID: target.sessionID, startedAt: target.startedAt ?? Date.now(), kind: target.kind === 'video' ? 'video' : 'set', createdAt: Date.now(), attempts: 0 }));
   return true;
 }
 
@@ -69,32 +69,34 @@ export async function updateStatuses({ dir = OUTBOX_DIR, editStatus, now = Date.
 
 async function post(done, to, ctx) {
   const { token, sendText, fetchImpl, imageDir, videoDir, sendOpts } = ctx;
+  const report = ids => { try { ctx.onSent?.(to.chatId, ids, to.sessionID); } catch { /* bookkeeping for Forget: never blocks a delivery */ } };       // the messages posted for this conversation
+  const say = async text => { const r = await sendText(to.chatId, text, to.replyTo); report([r?.message_id]); };
   const title = done.title ? `: ${String(done.title).slice(0, 120)}` : '';
   if (to.statusMessageId && ctx.editStatus && !finalized.has(to.job)) {                                         // the live bar ends with its last line before the results arrive
     finalized.add(to.job); lastStatus.delete(to.job);
     try { await ctx.editStatus(to.chatId, to.statusMessageId, finalText(done, to, (ctx.now || Date.now)()), {}); } catch { /* courtesy */ }
   }
   if (done.cancelled) return;
-  if (!done.ok) { await sendText(to.chatId, `Sorry, I could not finish that ${done.kind === 'video' ? 'video' : 'picture set'}: ${String(done.error || 'something went wrong').slice(0, 300)}`, to.replyTo); return; }
+  if (!done.ok) { await say(`Sorry, I could not finish that ${done.kind === 'video' ? 'video' : 'picture set'}: ${String(done.error || 'something went wrong').slice(0, 300)}`); return; }
   if (done.kind === 'video') {
     const file = done.video?.path ? resolve(done.video.path) : '';
     if (!file || !inside(file, videoDir) || !file.endsWith('.mp4') || !existsSync(file)) throw new Error('the finished video is not a sendable file');
-    if (statSync(file).size > MAX_VIDEO_BYTES) { await sendText(to.chatId, `Your video is ready but too large for Telegram (${(statSync(file).size / 1e6).toFixed(0)} MB, the limit is 50 MB).`, to.replyTo); return; }
-    await sendVideos(token, to.chatId, [file], to.replyTo, fetchImpl);
-    await sendText(to.chatId, `Here is your video${title}.`, to.replyTo);
+    if (statSync(file).size > MAX_VIDEO_BYTES) { await say(`Your video is ready but too large for Telegram (${(statSync(file).size / 1e6).toFixed(0)} MB, the limit is 50 MB).`); return; }
+    report(await sendVideos(token, to.chatId, [file], to.replyTo, fetchImpl));
+    await say(`Here is your video${title}.`);
     return;
   }
   const images = (done.images || []).filter(i => typeof i?.path === 'string'), files = images.map(i => resolve(i.path)).filter(f => inside(f, imageDir) && f.endsWith('.png') && existsSync(f));
   if (!files.length) throw new Error('no sendable pictures');
   const captions = new Map(images.filter(i => files.includes(resolve(i.path)) && typeof i.caption === 'string' && i.caption.trim())
     .map(i => [resolve(i.path), ([Number.isInteger(i.index) ? `${i.index}.` : '', typeof i.topic === 'string' ? i.topic.trim() : ''].filter(Boolean).join(' ') + '\n' + i.caption.trim()).trim().slice(0, 1000)]));
-  await sendPhotos(token, to.chatId, files, to.replyTo, fetchImpl, { ...sendOpts, captions });
+  report(await sendPhotos(token, to.chatId, files, to.replyTo, fetchImpl, { ...sendOpts, captions }));
   try { const each = (Number(done.stage_seconds?.images) || 0) / files.length; ctx.onImages?.(files.map(file => ({ file, secs: each, tokens: 0 }))); } catch { /* usage numbers are a courtesy */ }       // image usage for background sets (the run itself never saw the pictures)
-  await sendText(to.chatId, `Here are your ${files.length} pictures${title}.`, to.replyTo);
+  await say(`Here are your ${files.length} pictures${title}.`);
 }
 
 // One pass over the outbox: post every finished job whose chat is known; leave the rest for the next pass.
-export async function deliverOnce({ dir = OUTBOX_DIR, token, sendText, editStatus, onImages, fetchImpl = fetch, imageDir = IMAGE_DIR, videoDir = VIDEO_DIR, sendOpts = {}, now = Date.now, log = console } = {}) {
+export async function deliverOnce({ dir = OUTBOX_DIR, token, sendText, editStatus, onImages, onSent, fetchImpl = fetch, imageDir = IMAGE_DIR, videoDir = VIDEO_DIR, sendOpts = {}, now = Date.now, log = console } = {}) {
   const doneDir = join(dir, 'done'); let delivered = 0;
   if (!existsSync(doneDir)) return { delivered };
   for (const name of readdirSync(doneDir).filter(n => n.endsWith('.json') && !n.startsWith('.'))) {
@@ -103,7 +105,7 @@ export async function deliverOnce({ dir = OUTBOX_DIR, token, sendText, editStatu
     const pendingFile = join(dir, 'pending', `${job}.json`), pending = readJson(pendingFile);
     if (!pending) { if (now() - statSync(file).mtimeMs > ORPHAN_MS) moveTo(dir, 'orphaned', file, name); continue; }     // no chat is known for it (yet): keep it
     try {
-      await post(done, pending, { token, sendText, editStatus, onImages, fetchImpl, imageDir, videoDir, sendOpts, now });
+      await post(done, pending, { token, sendText, editStatus, onImages, onSent, fetchImpl, imageDir, videoDir, sendOpts, now });
       moveTo(dir, 'delivered', file, name); rmSync(pendingFile, { force: true }); delivered++;
     } catch (error) {
       log.error?.(`Could not post background job ${job}: ${error.message}`);

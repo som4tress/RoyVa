@@ -112,7 +112,7 @@ const realSleep = ms => new Promise(done => setTimeout(done, ms));
 export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetch, opts = {}) {
   const sleep = opts.sleep || realSleep, now = opts.now || Date.now;
   const gap = opts.gapMs ?? Number(process.env.ROYVA_PHOTO_GAP_MS ?? 2000);
-  let failed = 0, lastCode = 0;
+  let failed = 0, lastCode = 0; const ids = [];
   for (let i = 0; i < files.length; i++) {
     if (i > 0 && gap > 0) await sleep(gap);
     const form = new FormData();
@@ -133,7 +133,7 @@ export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetc
         if (attempt < 3) { await sleep(opts.retryDelayMs ?? 2000); continue; }
         break;
       }
-      if (result.ok) { sent = true; break; }
+      if (result.ok) { sent = true; if (result.result?.message_id) ids.push(result.result.message_id); break; }
       lastCode = result.error_code;
       if (result.error_code === 429) { flood.until = Math.max(flood.until, now() + floodMs(result)); continue; }
       break;
@@ -141,9 +141,11 @@ export async function sendPhotos(token, chatId, files, replyTo, fetchImpl = fetc
     if (!sent) failed++;
   }
   if (failed) throw new Error(`Telegram sendPhoto: ${lastCode}` + (files.length > 1 ? ` (${failed} of ${files.length} pictures not sent)` : ''));
+  return ids;                                                                  // the ids of the messages sent, so Forget this chat can remove them
 }
 
 export async function sendVideos(token, chatId, files, replyTo, fetchImpl = fetch) {
+  const ids = [];
   for (const file of files) {
     const form = new FormData();
     form.set('chat_id', String(chatId));
@@ -162,10 +164,12 @@ export async function sendVideos(token, chatId, files, replyTo, fetchImpl = fetc
       // Telegram says exactly how long to wait; retrying sooner is refused again and prolongs the wait, so honour the full time (a video is worth waiting for).
       if (!result.ok && result.error_code === 429 && attempt < 6) { await new Promise(done => setTimeout(done, videoRetryMs(result))); continue; }
       if (!result.ok) throw new Error(`Telegram sendVideo: ${result.error_code}`);
+      if (result.result?.message_id) ids.push(result.result.message_id);
       console.log(`Sent video ${basename(file)} to chat (message ${result.result?.message_id}${attempt ? `, after ${attempt} flood-control wait(s)` : ''})`);
       break;
     }
   }
+  return ids;
 }
 
 // Send a text file (e.g. the full call of an approval request) as a Telegram document. Throws if it could not be sent.
