@@ -33,10 +33,11 @@ class DirectoryError(Exception):
 
 class Directory:
     def __init__(self, users_file: Path, state_dir: Path, enroller: Enroller | None = None, opencode_config: Path | None = None,
-                 now: Callable[[], float] = time.time):
+                 now: Callable[[], float] = time.time, drive_enroller: Enroller | None = None):
         self.users_file = Path(users_file)
         self.dir = Path(state_dir)
         self.enroller = enroller or Enroller(self.dir)
+        self.drive_enroller = drive_enroller or Enroller(self.dir, service="drive")       # Google Drive: its own token, accounts and servers per person
         self.opencode_config = opencode_config
         self.now = now
         self._fails: dict[str, list[float]] = {}
@@ -151,13 +152,15 @@ class Directory:
     def people(self, owner: str) -> list[dict]:
         self._need_owner(owner)
         accts = self.enroller.accounts()
+        drive_accts = self.drive_enroller.accounts()
         out = []
         for key, u in self.users().items():
             if key.startswith("_"):
                 continue
             mail = u.get("mail")
             out.append({"name": u.get("person") or key, "role": u.get("role") or ("owner" if "*" in u.get("scopes", []) else "member"),
-                        "mail": "default" if mail == "default" else (accts.get(mail, {}).get("mode") if mail in accts else None)})
+                        "mail": "default" if mail == "default" else (accts.get(mail, {}).get("mode") if mail in accts else None),
+                        "drive": bool(u.get("drive")) and u.get("drive") in drive_accts})
         out += [{"name": j["name"], "role": "waiting", "mail": None} for j in self._joins().values()]
         return out
 
@@ -173,15 +176,17 @@ class Directory:
         users.pop(user)
         self._write(self.users_file, users)
         had_mail = self.enroller.revoke(name)
+        had_drive = self.drive_enroller.revoke(name)
         self._sync()
         invites = {k: v for k, v in self._invites().items() if v["name"] != name}
         self._write(self.dir / "invites.json", invites)
-        return {"user": user, "name": name, "mailbox_removed": had_mail}
+        return {"user": user, "name": name, "mailbox_removed": had_mail, "drive_removed": had_drive}
 
     # ---- Gmail connection for the member themself -------------------------------------------------------------------
     def _sync(self) -> None:
         if self.opencode_config:
             self.enroller.sync_opencode_config(self.opencode_config)
+            self.drive_enroller.sync_opencode_config(self.opencode_config)
 
     def gmail_start(self, user: str, manage: bool = False) -> str:
         name = self.name_of(user)
@@ -219,6 +224,57 @@ class Directory:
         self._write(self.users_file, users)
         self._sync()
         return {"name": name, "email": r["email"], "mode": r["mode"], "needs_restart": True, "owners": self.owner_ids()}
+
+    # ---- Google Drive connection for the member themself (same flow as Gmail, read-only, its own token) --------------------------------------
+    def drive_start(self, user: str) -> str:
+        name = self.name_of(user)
+        if not name or not self.is_active(user):
+            raise DirectoryError("You are not enrolled.")
+        try:
+            return self.drive_enroller.start(name)
+        except EnrollError as e:
+            raise DirectoryError(str(e)) from None
+
+    def finish_signin(self, user: str, pasted: str) -> dict:
+        """A pasted sign-in goes to the service whose sign-in it belongs to (decided by the state in it), Gmail when it is not a live Drive one."""
+        try:
+            state, _ = Enroller.parse_pasted(pasted)
+        except EnrollError as e:
+            raise DirectoryError(str(e)) from None
+        if state and self.drive_enroller.has_pending(state):
+            return self.drive_finish(user, pasted)
+        return {**self.gmail_finish(user, pasted), "service": "gmail"}
+
+    def drive_finish(self, user: str, pasted: str) -> dict:
+        name = self.name_of(user)
+        if not name or not self.is_active(user):
+            raise DirectoryError("You are not enrolled.")
+        try:
+            r = self.drive_enroller.finish(pasted, person=name)
+        except EnrollError as e:
+            raise DirectoryError(str(e)) from None
+        users = self.users()
+        want = (users[user].get("expected_gmail") or "").lower()
+        if want and r["email"].lower() != want:
+            self.drive_enroller.revoke(name)                            # wrong Google account: undo everything
+            self._sync()
+            raise DirectoryError("That Google account is not the one you were invited with. Nothing was connected.")
+        users[user]["drive"] = name
+        self._write(self.users_file, users)
+        self._sync()
+        return {"service": "drive", "name": name, "email": r["email"], "mode": r["mode"], "needs_restart": True, "owners": self.owner_ids()}
+
+    def drive_stop(self, user: str) -> dict:
+        """A member disconnects their own Drive: token deleted and revoked at Google, their Drive server removed. Gmail is not touched."""
+        name = self.name_of(user)
+        if not name or not self.is_active(user):
+            raise DirectoryError("You are not enrolled.")
+        had = self.drive_enroller.revoke(name)
+        users = self.users()
+        users[user].pop("drive", None)
+        self._write(self.users_file, users)
+        self._sync()
+        return {"name": name, "had_connection": had, "needs_restart": had}
 
     def gmail_stop(self, user: str) -> dict:
         """A member disconnects their own Gmail: token deleted and revoked at Google, servers removed, Gmail scope dropped."""

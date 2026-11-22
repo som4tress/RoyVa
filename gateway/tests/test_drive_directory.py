@@ -52,7 +52,7 @@ def _enroll(d, who=ALICE, name="alice", email=None):
 
 def test_an_enrolled_member_gets_a_drive_sign_in_link_a_stranger_does_not(d):
     _enroll(d)
-    assert "service=drive" in d.drive_start(ALICE) or "s=drive" in d.drive_start(ALICE)
+    assert "s=drive" in d.drive_start(ALICE)
     assert d.drive_enroller.started == [("alice", False)]
     with pytest.raises(DirectoryError, match="not enrolled"):
         d.drive_start(EVE)
