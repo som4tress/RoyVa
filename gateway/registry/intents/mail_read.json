@@ -22,7 +22,8 @@
   "Add the dentist appointment to my calendar",
   "Move all the PayPal emails to trash",
   "Summarize this PDF",
-  "What does the attached document say?"
+  "What does the attached document say?",
+  "Find the lease in my Google Drive"
  ],
  "continuations": [
   "read the top one",

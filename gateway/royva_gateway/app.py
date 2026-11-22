@@ -247,7 +247,19 @@ async def enroll_gmail_start(r: Enroll):
 async def enroll_gmail_finish(r: Enroll):
     """The pasted sign-in text goes only here: it is never logged and never reaches the model."""
     d: Directory = app.state.dir
-    return _enroll_call(lambda: d.gmail_finish(r.user, r.text))
+    return _enroll_call(lambda: d.finish_signin(r.user, r.text))             # Gmail or Drive, whichever sign-in the pasted state belongs to
+
+
+@app.post("/v1/enroll/drive/start", dependencies=[Depends(require_token)])
+async def enroll_drive_start(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: {"url": d.drive_start(r.user)})
+
+
+@app.post("/v1/enroll/drive/stop", dependencies=[Depends(require_token)])
+async def enroll_drive_stop(r: Enroll):
+    d: Directory = app.state.dir
+    return _enroll_call(lambda: d.drive_stop(r.user))
 
 
 @app.post("/v1/enroll/gmail/stop", dependencies=[Depends(require_token)])

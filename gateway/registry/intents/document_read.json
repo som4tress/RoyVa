@@ -21,7 +21,9 @@
   "What did the school email me this week?",
   "Did the landlord email me back?",
   "Search the web for a lease template",
-  "What's on my calendar tomorrow?"
+  "What's on my calendar tomorrow?",
+  "Find the file called lease in my Drive",
+  "Summarize the newest files in my Google Drive"
  ],
  "continuations": [
   "and what about page 2?",

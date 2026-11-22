@@ -230,8 +230,22 @@ class Gateway:
         except (OSError, ValueError):
             return ()
 
+    def user_drive(self, user: str) -> str | None:
+        """The person's connected Google Drive account name, or None (no Drive connected, or the name is not in the enrollment store: fail closed)."""
+        acct = (self._users().get(user) or {}).get("drive")
+        return acct if acct and acct in self.drive_accounts() else None
+
+    def drive_accounts(self) -> tuple[str, ...]:
+        try:
+            return tuple(json.loads((self.s.state_dir / "drive" / "accounts.json").read_text()))
+        except (OSError, ValueError):
+            return ()
+
+    def _uses_drive(self, intent) -> bool:
+        return any(self.reg.tools[t].server in profiles.DRIVE_SERVERS for t in intent.profile.tools if t in self.reg.tools)
+
     def expected_servers(self) -> tuple[str, ...]:
-        extra = tuple(f"{s}-u-{a}" for a in self.mail_accounts() for s in profiles.MAIL_SERVERS)
+        extra = tuple(f"{s}-u-{a}" for a in self.mail_accounts() for s in profiles.MAIL_SERVERS) + tuple(f"{s}-u-{a}" for a in self.drive_accounts() for s in profiles.DRIVE_SERVERS)
         return tuple(self.s.expected_mcp) + extra
 
     def user_scopes(self, user: str) -> set:
@@ -314,6 +328,11 @@ class Gateway:
                         outcome="no_mailbox", classifier=d.classifier, latency_ms=d.latency_ms)
             return Prepared("answer", d, trace_id, req.session_id, state=state,
                             answer="Your Gmail isn't connected yet. Ask the account owner to connect it, then try again.")
+        if acting and not self.user_drive(req.user) and all(self._uses_drive(i) for i in acting) and not forbidden and not blocked:
+            self._trace(trace_id=trace_id, session_id=req.session_id, text=req.text[:200], mode=d.mode, chosen=d.intents,
+                        outcome="no_drive", classifier=d.classifier, latency_ms=d.latency_ms)
+            return Prepared("answer", d, trace_id, req.session_id, state=state,
+                            answer="Your Google Drive isn't connected yet. Send /connect-drive to connect it (read-only), then ask again.")
         quiet = self.silent_scopes()
         unsupported = [f"{i.id.replace('_', ' ')} ({i.status})" for i in blocked] + [f"{i.profile.scope} access is limited to the account owner"
                                                                                   for i in forbidden if i.profile.scope not in quiet]
@@ -345,7 +364,7 @@ class Gateway:
             cap = profiles.step_cap(acting)
 
         tools = list(grant_map)
-        perms = profiles.permissions(self.reg, grant_map, self.s, self.user_mail(req.user), self.mail_accounts(), self.mail_readonly(req.user))
+        perms = profiles.permissions(self.reg, grant_map, self.s, self.user_mail(req.user), self.mail_accounts(), self.mail_readonly(req.user), drive_account=self.user_drive(req.user))
         known = self.store.get(req.session_id)
         now = datetime.now(timezone.utc).isoformat()
         if known is not None:                                  # a session the gateway already manages

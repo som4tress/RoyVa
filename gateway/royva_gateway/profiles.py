@@ -62,6 +62,7 @@ def grants(reg: Registry, intents: list[Intent]) -> dict[str, str]:
 
 MAIL_SERVERS = ("gmail", "gmail-tidy")      # registry server names whose tools are per-mailbox
 DEFAULT_MAIL = "default"                    # users.json "mail": "default" = the original (owner) servers; anything else = an enrolled account
+DRIVE_SERVERS = ("drive",)                   # registry server names whose tools are per-person: each person's Drive runs as drive-u-<person>
 MAIL_WRITE_ACTIONS = ("send_message", "send_draft", "create_draft", "create_label")
 
 
@@ -77,14 +78,25 @@ def account_action(server: str, action: str, account: str | None) -> str | None:
     return action.replace(server + "_", f"{server}-u-{account}_", 1)
 
 
+def drive_action(server: str, action: str, account: str | None) -> str | None:
+    """The OpenCode action name of a Drive tool for one person, or None when that person has not connected Drive (fail closed: the base name is never granted)."""
+    if server not in DRIVE_SERVERS:
+        return action
+    if not account:
+        return None
+    return action.replace(server + "_", f"{server}-u-{account}_", 1)
+
+
 def permissions(reg: Registry, grant_map: dict[str, str], settings: Settings, mail_account: str | None = None,
-                mail_accounts: tuple[str, ...] = (), mail_readonly: bool = False) -> list[dict]:
+                mail_accounts: tuple[str, ...] = (), mail_readonly: bool = False, drive_account: str | None = None) -> list[dict]:
     """Session-level rules. They are evaluated after the agent's rules and the last match wins, so these open exactly the granted tools.
     Mail tools are opened only for the requester's own mailbox; every other mailbox's send/draft tools are denied explicitly as well."""
     rules = []
     for t, eff in grant_map.items():
         spec = reg.tools[t]
         action = account_action(spec.server, spec.action, mail_account)
+        if action is not None:
+            action = drive_action(spec.server, action, drive_account)
         if action is None or action in settings.never_grant:
             continue
         if mail_readonly and spec.server in MAIL_SERVERS and spec.risk != "read":      # a read-only connection never gets change tools

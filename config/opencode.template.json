@@ -216,6 +216,15 @@
         ],
         "codemode": false
       },
+      "drive": {
+        "type": "local",
+        "command": [
+          "@HOME@/RoyVa/gateway/.venv/bin/python",
+          "@HOME@/RoyVa/mcp/drive/server.py"
+        ],
+        "enabled": false,
+        "codemode": false
+      },
       "ha-speakers": {
         "type": "local",
         "command": [

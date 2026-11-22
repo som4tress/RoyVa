@@ -48,6 +48,27 @@ def document_not_mail(text: str, intents: list) -> list:
     return ["document_read"] + rest
 
 
+DRIVE_WORD = re.compile(r"\b(google\s+)?drive\b|\bgoogle\s+(docs?|sheets?|slides)\b", re.I)
+FILE_WORD = re.compile(r"\b(files?|folders?|spreadsheets?|pdfs?)\b", re.I)
+
+
+def drive_not_mail(text: str, intents: list) -> list:
+    """Questions about the user's files are Drive questions, never Gmail: "summarize the new files in my Drive" or "find the file called lease".
+    Explicit Drive words (Drive, Google Docs/Sheets/Slides) always add the Drive skill; plain file words (file, folder, spreadsheet, pdf) only correct a classifier that picked
+    only mail. A message whose words are about email keeps its mail intent as well."""
+    clean = DOC_MARK.sub("", text or "")
+    explicit = bool(DRIVE_WORD.search(clean))
+    implied = bool(FILE_WORD.search(clean)) and bool(intents) and set(intents) <= MAIL_INTENTS
+    if not (explicit or implied):
+        return list(intents)
+    rest = [i for i in intents if i != "drive_search"]
+    if not DOC_MARK.search(text or ""):
+        rest = [i for i in rest if i != "document_read"]               # nothing is attached, so the attachment reader has nothing to read
+    if not MAIL_WORD.search(clean):
+        rest = [i for i in rest if i not in MAIL_INTENTS]
+    return ["drive_search"] + rest
+
+
 class RouterUnavailable(Exception):
     """No classifier in the chain could route this message."""
 
@@ -123,7 +144,7 @@ class Router:
                 continue
             self._ok(e)
             ms = int((time.perf_counter() - t0) * 1000)
-            pred.intents = document_not_mail(req.text, pred.intents)           # a file attached to the message decides, even when the classifier found nothing
+            pred.intents = document_not_mail(req.text, drive_not_mail(req.text, pred.intents))           # a file attached to the message decides, even when the classifier found nothing
             if not pred.intents:
                 if e.degraded:                                       # a keyword fallback finding nothing is not evidence of "no intent"
                     tried.append(f"{e.name}: no match")

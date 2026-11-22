@@ -65,6 +65,11 @@ def test_a_file_search_never_goes_to_gmail():
     assert drive_not_mail("hello", []) == []
 
 
+def test_a_drive_question_without_an_attachment_never_uses_the_attachment_reader():
+    assert drive_not_mail("Read my latest Google Doc and give me the key points", ["document_read"]) == ["drive_search"]
+    assert drive_not_mail("Find the file called lease in Drive", ["document_read", "web_lookup"]) == ["drive_search", "web_lookup"]
+
+
 def test_an_attached_file_still_wins_over_drive():
     att = "\n\n[Attached document: /x/inbox/docs/a.pdf]"
     assert drive_not_mail("Summarize this" + att, ["drive_search"]) == ["drive_search"]                  # the Drive rule does not look at attachments; the attachment rule runs after it
