@@ -16,7 +16,9 @@
   "List the oldest unread emails in my inbox",
   "Do I have any emails from PayPal?",
   "Email my boss that I'm running late",
-  "What was the last email from Amazon about?"
+  "What was the last email from Amazon about?",
+  "Summarize this PDF",
+  "What does the attached document say?"
  ],
  "continuations": [
   "yes do it",

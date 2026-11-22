@@ -20,7 +20,9 @@
   "Email my boss that I'm running late",
   "What's the weather forecast?",
   "Add the dentist appointment to my calendar",
-  "Move all the PayPal emails to trash"
+  "Move all the PayPal emails to trash",
+  "Summarize this PDF",
+  "What does the attached document say?"
  ],
  "continuations": [
   "read the top one",

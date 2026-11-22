@@ -592,5 +592,21 @@
   "risk": "write",
   "description": "Make a set of several pictures from one request (planned, looked up on the web if needed, captioned and drawn on the GPU box). It is made in the background: the call returns at once and the pictures are posted to the chat, each with its caption, when they are ready.",
   "available": true
+ },
+ {
+  "id": "docs.read_document",
+  "action": "docs_read_document",
+  "server": "docs",
+  "risk": "read",
+  "description": "Read the text of a document the user sent in the chat (PDF, Word, OpenDocument, Excel, PowerPoint, text, CSV), one piece at a time.",
+  "available": true
+ },
+ {
+  "id": "docs.find_in_document",
+  "action": "docs_find_in_document",
+  "server": "docs",
+  "risk": "read",
+  "description": "Find where a word or phrase appears in a document the user sent, with the text around it and the page number.",
+  "available": true
  }
 ]

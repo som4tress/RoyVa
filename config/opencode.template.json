@@ -208,6 +208,14 @@
         ],
         "codemode": false
       },
+      "docs": {
+        "type": "local",
+        "command": [
+          "@HOME@/RoyVa/gateway/.venv/bin/python",
+          "@HOME@/RoyVa/mcp/docs/server.py"
+        ],
+        "codemode": false
+      },
       "ha-speakers": {
         "type": "local",
         "command": [

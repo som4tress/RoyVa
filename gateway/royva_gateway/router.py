@@ -32,6 +32,22 @@ def video_not_pictures(text: str, intents: list) -> list:
     return list(intents)
 
 
+DOC_MARK = re.compile(r"\[Attached document: [^\]]+\]")
+MAIL_WORD = re.compile(r"\b(e-?mails?|gmail|inbox|mailbox)\b", re.I)
+MAIL_INTENTS = {"mail_read", "mail_manage"}
+
+
+def document_not_mail(text: str, intents: list) -> list:
+    """A message that carries an attached document is about that file: the document reader comes first and the mail intents are dropped,
+    unless the words themselves are about email ("did the landlord email me back"). Other intents in the same message are kept."""
+    if not DOC_MARK.search(text or ""):
+        return list(intents)
+    rest = [i for i in intents if i != "document_read"]
+    if not MAIL_WORD.search(DOC_MARK.sub("", text)):          # the saved path (…/inbox/docs/…) is not the user's words
+        rest = [i for i in rest if i not in MAIL_INTENTS]
+    return ["document_read"] + rest
+
+
 class RouterUnavailable(Exception):
     """No classifier in the chain could route this message."""
 
@@ -107,6 +123,7 @@ class Router:
                 continue
             self._ok(e)
             ms = int((time.perf_counter() - t0) * 1000)
+            pred.intents = document_not_mail(req.text, pred.intents)           # a file attached to the message decides, even when the classifier found nothing
             if not pred.intents:
                 if e.degraded:                                       # a keyword fallback finding nothing is not evidence of "no intent"
                     tried.append(f"{e.name}: no match")
