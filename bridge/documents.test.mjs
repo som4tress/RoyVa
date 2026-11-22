@@ -59,3 +59,31 @@ test('downloading saves the file and returns the prompt with its path', async ()
   assert.deepEqual(calls[0], ['getFile', { file_id: 'F1' }]); assert.match(calls[1][1], /botTOKEN\/documents\/file_1\.pdf/);
   const p = /\[Attached document: (.+)\]/.exec(out)[1]; assert.equal(readFileSync(p, 'utf8'), '%PDF-bytes'); assert.ok(existsSync(p)); assert.match(out, /^summarize\n\n/);
 });
+
+test('several documents sent together are all saved and all named in the prompt, in the order sent', async () => {
+  const d = dir(); const asked = [];
+  const tg = async (m, a) => { asked.push(a.file_id); return { file_path: `documents/${a.file_id}.pdf` }; };
+  const fetchFn = async url => new Response(Buffer.from('bytes of ' + url.split('/').at(-1)));
+  const doc = (n, id) => ({ message_id: id, document: { file_id: `F${id}`, file_size: 10, mime_type: 'application/pdf', file_name: `${n}.pdf` } });
+  const album = { caption: 'summarize these', _album: [doc('alpha', 1), doc('beta', 2), doc('gamma', 3)] };
+  const out = await telegramDocument(album, tg, 'T', d, fetchFn);
+  assert.deepEqual(asked, ['F1', 'F2', 'F3']); assert.match(out, /^summarize these\n\n/);
+  const paths = [...out.matchAll(/\[Attached document: (.+?)\]/g)].map(m => m[1]); assert.equal(paths.length, 3);
+  assert.deepEqual(paths.map(p => /-(alpha|beta|gamma)\.pdf$/.exec(p)[1]), ['alpha', 'beta', 'gamma']);
+  assert.equal(readFileSync(paths[1], 'utf8'), 'bytes of F2.pdf');
+});
+
+test('in a group of files, one that cannot be read is named as not read and the others are still saved', async () => {
+  const d = dir(); const tg = async (m, a) => ({ file_path: `documents/${a.file_id}` });
+  const fetchFn = async () => new Response(Buffer.from('x'));
+  const mk = (n, mime, id) => ({ message_id: id, document: { file_id: `F${id}`, file_size: 10, mime_type: mime, file_name: n } });
+  const out = await telegramDocument({ _album: [mk('a.pdf', 'application/pdf', 1), mk('tool.zip', 'application/zip', 2), mk('b.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3)] }, tg, 'T', d, fetchFn);
+  assert.equal([...out.matchAll(/\[Attached document: /g)].length, 2); assert.match(out, /\[Not read: tool\.zip/);
+});
+
+test('a group where the total is too big is refused before anything is downloaded', async () => {
+  let downloaded = false; const tg = async () => { downloaded = true; return { file_path: 'x' }; };
+  const big = id => ({ message_id: id, document: { file_id: `F${id}`, file_size: 12 * 1024 * 1024, mime_type: 'application/pdf', file_name: `b${id}.pdf` } });
+  await assert.rejects(() => telegramDocument({ _album: [big(1), big(2), big(3)] }, tg, 'T', dir()), /60 MB|too large|limit/i);
+  assert.equal(downloaded, false);
+});
