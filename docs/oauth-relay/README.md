@@ -9,3 +9,10 @@ The page cannot do anything with the code: it is useless without the PKCE verifi
 
 Enroll a person: `scripts/royva-gmail start <name> [--manage]` -> open the link, sign in, paste the code: `scripts/royva-gmail finish '<code>'`
 (read-only by default; `--manage` also allows trash/archive/label). Then restart OpenCode and set `"mail": "<name>"` on that user in `users.json`.
+
+## Google Drive
+
+The same client and relay page serve Drive. Enable the **Google Drive API** in the Google Cloud project and add the read-only scope
+`https://www.googleapis.com/auth/drive.readonly` to the consent screen. A person connects with `/connect-drive` in Telegram (and removes it with
+`/disconnect-drive`); the token is stored separately from Gmail (`runtime/gateway/drive/`). While the app is in Testing mode each person must be a test user
+and tokens expire after 7 days.
