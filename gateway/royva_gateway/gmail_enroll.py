@@ -29,6 +29,15 @@ from typing import Callable
 SCOPE_READ = "https://www.googleapis.com/auth/gmail.readonly"
 SCOPE_MANAGE = "https://www.googleapis.com/auth/gmail.modify"
 SCOPE = SCOPE_MANAGE                                 # kept for older imports
+SCOPE_DRIVE = "https://www.googleapis.com/auth/drive.readonly"      # read-only: there is no Drive scope that writes, shares or deletes in RoyVa
+DRIVE_ABOUT_URL = "https://www.googleapis.com/drive/v3/about?fields=user"
+# One sign-in flow, several Google services. Each has its own folder, account list, token and per-person MCP servers, so disconnecting one never touches another.
+SERVICES = {
+    "gmail": {"dir": "gmail", "label": "Gmail", "servers": ("gmail", "gmail-tidy"), "env": ("GMAIL_OAUTH_KEYS_PATH", "GMAIL_CREDENTIALS_PATH"),
+              "read": SCOPE_READ, "manage": SCOPE_MANAGE},
+    "drive": {"dir": "drive", "label": "Drive", "servers": ("drive",), "env": ("DRIVE_OAUTH_KEYS_PATH", "DRIVE_CREDENTIALS_PATH"),
+              "read": SCOPE_DRIVE, "manage": SCOPE_DRIVE},
+}
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 PROFILE_URL = "https://gmail.googleapis.com/gmail/v1/users/me/profile"
@@ -66,8 +75,9 @@ def _b64url(b: bytes) -> str:
 
 class Enroller:
     def __init__(self, state_dir: Path, client_file: Path | str | None = None, http: Callable = _default_http,
-                 now: Callable[[], float] = time.time):
-        self.dir = Path(state_dir) / "gmail"
+                 now: Callable[[], float] = time.time, service: str = "gmail"):
+        self.service, self.svc = service, SERVICES[service]
+        self.dir = Path(state_dir) / self.svc["dir"]
         # Google OAuth client file: explicit arg > $ROYVA_GMAIL_CLIENT > ~/.royva/gmail-client.json > the Gmail MCP's own keys file (works out of the box).
         default = Path.home() / ".royva" / "gmail-client.json"
         legacy = Path.home() / ".gmail-mcp" / "gcp-oauth.keys.json"
@@ -110,10 +120,15 @@ class Enroller:
         pending = {k: v for k, v in pending.items() if v["person"] != person}          # one open request per person
         pending[state] = {"person": person, "verifier": verifier, "manage": bool(manage), "expires": self.now() + PENDING_TTL_S}
         self._write(self.dir / "pending.json", pending)
-        q = {"client_id": c["client_id"], "redirect_uri": c["redirect_uris"][0], "response_type": "code", "scope": SCOPE_MANAGE if manage else SCOPE_READ,
+        q = {"client_id": c["client_id"], "redirect_uri": c["redirect_uris"][0], "response_type": "code", "scope": self.svc["manage"] if manage else self.svc["read"],
              "access_type": "offline", "prompt": "consent", "state": state,
              "code_challenge": _b64url(hashlib.sha256(verifier.encode()).digest()), "code_challenge_method": "S256"}
         return AUTH_URL + "?" + urllib.parse.urlencode(q)
+
+    def has_pending(self, state: str) -> bool:
+        """True when a live sign-in with this state was started for THIS service (so a pasted code can be sent to the right one)."""
+        rec = self._read(self.dir / "pending.json", {}).get(state)
+        return bool(rec) and rec["expires"] > self.now()
 
     @staticmethod
     def parse_pasted(pasted: str) -> tuple[str | None, str]:
@@ -157,15 +172,23 @@ class Enroller:
             raise EnrollError("Google did not return a long-lived token. Remove RoyVa under myaccount.google.com/permissions and try again.")
         granted = tok.get("scope", "")
         have = granted.split()
-        if SCOPE_MANAGE not in have and SCOPE_READ not in have:
-            raise EnrollError("Gmail access was not granted. Tick the Gmail permission box on the Google screen and try again.")
-        if rec.get("manage") and SCOPE_MANAGE not in have:
-            raise EnrollError("Only read access was granted. Tick every Gmail permission box and try again.")
-        mode = "manage" if SCOPE_MANAGE in have else "readonly"
-        prof = self.http("GET", PROFILE_URL, None, {"authorization": f"Bearer {tok['access_token']}"})
-        email = prof.get("emailAddress")
+        gmail = self.service == "gmail"
+        if gmail:
+            if SCOPE_MANAGE not in have and SCOPE_READ not in have:
+                raise EnrollError("Gmail access was not granted. Tick the Gmail permission box on the Google screen and try again.")
+            if rec.get("manage") and SCOPE_MANAGE not in have:
+                raise EnrollError("Only read access was granted. Tick every Gmail permission box and try again.")
+            mode = "manage" if SCOPE_MANAGE in have else "readonly"
+            prof = self.http("GET", PROFILE_URL, None, {"authorization": f"Bearer {tok['access_token']}"})
+            email = prof.get("emailAddress")
+        else:
+            if self.svc["read"] not in have:
+                raise EnrollError(f"{self.svc['label']} access was not granted. Tick the {self.svc['label']} permission box on the Google screen and try again.")
+            mode = "readonly"
+            prof = self.http("GET", DRIVE_ABOUT_URL, None, {"authorization": f"Bearer {tok['access_token']}"})
+            email = (prof.get("user") or {}).get("emailAddress")
         if not email:
-            raise EnrollError("signed in, but could not read the mailbox address.")
+            raise EnrollError("signed in, but could not read the account address.")
         person = rec["person"]
         self._write(self.dir / f"{person}.credentials.json", {
             "access_token": tok["access_token"], "refresh_token": tok["refresh_token"], "scope": granted,
@@ -205,23 +228,25 @@ class Enroller:
 
     # ---- OpenCode wiring ----------------------------------------------------------------------------------------------
     def sync_opencode_config(self, config_path: Path | str) -> list[str]:
-        """Make the OpenCode config hold one Gmail server pair per enrolled person (cloned from the base `gmail` / `gmail-tidy` entries with that
-        person's credential paths), and drop pairs of people who are gone. Returns the server names now present. OpenCode must be restarted to load them."""
+        """Make the OpenCode config hold one server per enrolled person for this service (cloned from the base entries with that person's credential
+        paths), and drop servers of people who are gone. Other services' servers are never touched. Returns the server names now present.
+        OpenCode must be restarted to load them."""
         cp = Path(config_path)
         cfg = json.loads(cp.read_text())
         servers = cfg.setdefault("mcp", {}).setdefault("servers", {})
-        accts = self.accounts()
         wanted: dict[str, dict] = {}
-        for person in accts:
+        for person in self.accounts():
             paths = self.paths(person)
-            for base in ("gmail", "gmail-tidy"):
+            for base in self.svc["servers"]:
                 if base not in servers:
                     continue
                 entry = json.loads(json.dumps(servers[base]))
-                entry.setdefault("environment", {}).update({"GMAIL_OAUTH_KEYS_PATH": paths["keys"], "GMAIL_CREDENTIALS_PATH": paths["credentials"]})
+                entry["enabled"] = True                                 # a base entry may be switched off (it has no credentials); the person's copy runs
+                entry.setdefault("environment", {}).update({self.svc["env"][0]: paths["keys"], self.svc["env"][1]: paths["credentials"]})
                 wanted[f"{base}-u-{person}"] = entry
+        mine = re.compile("^(" + "|".join(re.escape(b) for b in self.svc["servers"]) + ")-u-")
         for name in list(servers):
-            if re.match(r"^(gmail|gmail-tidy)-u-", name) and name not in wanted:
+            if mine.match(name) and name not in wanted:
                 del servers[name]
         servers.update(wanted)
         tmp = cp.with_suffix(".tmp")
