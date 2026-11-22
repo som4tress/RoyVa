@@ -14,5 +14,6 @@ Enroll a person: `scripts/royva-gmail start <name> [--manage]` -> open the link,
 
 The same client and relay page serve Drive. Enable the **Google Drive API** in the Google Cloud project and add the read-only scope
 `https://www.googleapis.com/auth/drive.readonly` to the consent screen. A person connects with `/connect-drive` in Telegram (and removes it with
-`/disconnect-drive`); the token is stored separately from Gmail (`runtime/gateway/drive/`). While the app is in Testing mode each person must be a test user
-and tokens expire after 7 days.
+`/disconnect-drive`); the token is stored separately from Gmail (`runtime/gateway/drive/`). The Google app (project `<google-cloud-project-id>`) is **In production** (Audience page, checked 2026-11-22), so there is no 7-day token expiry and no test-user list; each person sees Google's
+"unverified app" screen once (Advanced, then Go to app). Unverified apps are capped at 100 people over the lifetime of the project (2 used so far). Because `drive.readonly` and the
+Gmail scopes are restricted, do not submit the app for verification; staying unverified is fine for a household.

@@ -77,7 +77,7 @@ export function makeEnrollment({call, reply, tell, allowlist, restartWhenIdle = 
         const r = await must('/v1/enroll/invite', {user: u, name, gmail: gmail || ''});
         await reply(message, r.ok
           ? `Invite for ${r.name}. Code ${r.code} (one use, ${r.expires_in_hours} h). They open t.me/roy_has_bot?start=${r.code} or send /join ${r.code}.` +
-            `\nIf they will connect Gmail: while the Google app is in Testing mode, add their address as a test user in Google Cloud first.`
+            `\nWhen they connect Gmail or Drive, Google shows an "unverified app" screen once (Advanced, then Go to app). The Google app is In production, with a limit of 100 people in total.`
           : r.error);
         return true;
       }
